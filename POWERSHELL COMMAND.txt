@@ -1,0 +1,58 @@
+Windal APPTEST — client setup commands
+========================================
+
+1) Open Admin PowerShell and go to app folder
+cd <APP_ROOT>
+
+2) Run setup-client.ps1 (change only values in <>)
+.\setup-client.ps1 -ClientKey "<clientkey>" -OraclePrimaryUser "DAL" -OraclePrimaryPassword "DAL" -OracleSecondaryUser "DAL" -OracleSecondaryPassword "DAL" -OracleConnectString "XE" -OfflinePackageRoot "<offline-package-root>"
+
+3) Cloudflare login and tunnel creation (one-time per machine/account)
+cloudflared.exe tunnel login
+cloudflared.exe tunnel create <clientkey>
+
+4) Map DNS hostnames to tunnel (overwrite if record already exists)
+cloudflared.exe tunnel route dns -f <clientkey> <clientkey>.fasaccountingsoftware.in
+cloudflared.exe tunnel route dns -f <clientkey> <clientkey>-api.fasaccountingsoftware.in
+
+5) Update config.yml (set tunnel UUID and credentials JSON path from step 3)
+tunnel: <new-tunnel-uuid>
+credentials-file: C:\Users\<WindowsUser>\.cloudflared\<new-tunnel-uuid>.json
+ingress:
+  - hostname: <clientkey>.fasaccountingsoftware.in
+    service: http://localhost:5173
+  - hostname: <clientkey>-api.fasaccountingsoftware.in
+    service: http://localhost:5001
+  - service: http_status:404
+
+6) Start runtime (keep all 3 terminals open)
+Terminal A (API):
+cd <APP_ROOT>
+npm.cmd run server
+
+Terminal B (Frontend):
+cd <APP_ROOT>
+npm.cmd run dev -- --host 0.0.0.0 --port 5173
+
+Terminal C (Tunnel):
+cd <APP_ROOT>
+cloudflared.exe tunnel --config ".\config.yml" run
+
+7) Test URLs
+Local PC: http://localhost:5173
+iPhone / outside network: https://<clientkey>.fasaccountingsoftware.in
+
+8) Quick troubleshoot
+- If "npm.ps1 blocked": use npm.cmd (already used above)
+- If tunnel says credentials-file missing: update config.yml to existing JSON in C:\Users\<WindowsUser>\.cloudflared\
+- If host blocked in browser: restart frontend and check vite.config.js allowedHosts
+
+9) Auto-start on Windows login (Task Scheduler)
+Run this in PowerShell (prefer Run as Administrator):
+schtasks /Create /SC ONLOGON /TN "FAS_WINDAL_APPTEST_AutoStart" /TR "powershell.exe -ExecutionPolicy Bypass -File \"<APP_ROOT>\start-apptest-services.ps1\"" /F
+
+Verify task:
+schtasks /Query /TN "FAS_WINDAL_APPTEST_AutoStart" /V /FO LIST
+
+If schtasks shows "Access is denied", use current-user startup registry fallback:
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "FAS_WINDAL_APPTEST_AutoStart" /t REG_SZ /d "powershell.exe -ExecutionPolicy Bypass -File \"<APP_ROOT>\start-apptest-services.ps1\"" /f

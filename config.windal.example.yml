@@ -1,0 +1,21 @@
+# Windal: after `cloudflared tunnel create dal-rgind`, copy your UUID credentials JSON
+# next to this file and set tunnel + credentials-file below. Rename to config.yml.
+#
+# Public hostnames (DNS cannot use underscore — use dal-rgind, not dal_rgind):
+#   https://dal-rgind.fasaccountingsoftware.in
+#   https://dal-rgind-api.fasaccountingsoftware.in
+#
+# tunnel: <YOUR_TUNNEL_UUID>
+#
+# Portable across drives: put <UUID>.json in %USERPROFILE%\.cloudflared\ and use:
+#   credentials-file: ~/.cloudflared/<YOUR_TUNNEL_UUID>.json
+#
+# Or keep JSON next to app and always run cloudflared after: cd /d <APP_ROOT>
+#   credentials-file: ./<YOUR_TUNNEL_UUID>.json
+#
+# ingress:
+#   - hostname: dal-rgind.fasaccountingsoftware.in
+#     service: http://localhost:5174
+#   - hostname: dal-rgind-api.fasaccountingsoftware.in
+#     service: http://localhost:5001
+#   - service: http_status:404

@@ -1,0 +1,3 @@
+cd\windal\apptest
+cd E:\WINDAL\APPTEST
+powershell -ExecutionPolicy Bypass -File .\setup-scheduled-task-all-services.ps1

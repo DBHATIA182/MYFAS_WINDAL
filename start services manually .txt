@@ -1,0 +1,51 @@
+1. To install on client
+
+FIRST TIME (installs Node, npm, cloudflared, npm packages, build, task):
+  Open PowerShell as Administrator
+  cd E:\WINDAL\APPTEST
+  powershell -ExecutionPolicy Bypass -File .\setup-client.ps1 -OracleConnectString "XE" -OraclePrimaryPassword "CLIENT_PASSWORD_HERE"
+
+If you see "node is not recognized" or "npm is not recognized":
+  - Node is not installed or not on PATH. Run setup-client.ps1 above (it installs Node LTS via winget), then CLOSE PowerShell and open a NEW Administrator window, then cd to APPTEST again.
+  - Or install Node.js 18+ LTS from https://nodejs.org/ (64-bit), reboot or open new PowerShell, verify:  node --version
+
+To use Node in THIS session only (typical install paths):
+  $env:Path += ";C:\Program Files\nodejs;${env:LOCALAPPDATA}\Programs\nodejs"
+  node --version
+
+If PowerShell says npm.ps1 "running scripts is disabled":
+  Use the CMD shim (avoids ExecutionPolicy on npm.ps1):
+    npm.cmd run server
+  Or relax policy for your user (one-time):
+    Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+
+To Start Services Manually
+go to powershell run as administrator
+
+cd E:\WINDAL\APPTEST
+.\run-all-services.cmd
+******************************
+setup schedule task for auto start services
+
+1. Open PowerShell as Administrator
+
+cd e:\WINDAL\APPTEST
+2. Run the script
+
+powershell -ExecutionPolicy Bypass -File .\setup-scheduled-task-all-services.ps1
+
+******************************
+Optional: ONE task for node server.cjs + Vite dev + cloudflared (not run-all-services.cmd)
+
+  powershell -ExecutionPolicy Bypass -File .\setup-scheduled-task-app-stack.ps1
+
+  Client PC must include these files (copy from dev APPTEST if missing):
+    run-autostart-stack.cmd, server.cjs, connection.config.json, config.yml + tunnel <uuid>.json
+
+  Registers FAS-<client>-AppStack using run-autostart-stack.cmd:
+    - node server.cjs
+    - npm.cmd run dev -- --host 0.0.0.0 --port 5173
+    - cloudflared tunnel --config config.yml run
+
+  Disable FAS-*-API and/or FAS-*-AllServices if you use this, to avoid duplicate ports.
+

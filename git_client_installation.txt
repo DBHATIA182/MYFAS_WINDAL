@@ -1,0 +1,180 @@
+<#
+  Windal — client PC first-time Git setup (Node, cloudflared, Oracle already installed).
+  Renames existing APPTEST to APPTEST_OLD, clones GitHub repo, copies local-only files,
+  runs npm ci and npm run build.
+
+  IMPORTANT: Copy this file to E:\WINDAL\ (parent folder) BEFORE running.
+             If you run it from inside APPTEST, renaming APPTEST -> APPTEST_OLD
+             moves this script into the backup folder (still works, but messy).
+
+  HOW TO RUN (pick one):
+    A) Rename to git_client_installation.ps1, then PowerShell (Admin):
+         cd E:\WINDAL
+         Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+         .\git_client_installation.ps1
+
+    B) Keep .txt — PowerShell (Admin):
+         Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+         Invoke-Expression (Get-Content -LiteralPath 'E:\WINDAL\git_client_installation.txt' -Raw)
+
+  EDIT the variables below if paths or repo URL differ on this PC.
+#>
+
+$ErrorActionPreference = 'Stop'
+
+# --- Settings (change if needed) ---
+$GFasRoot   = 'E:\WINDAL'
+$RepoUrl    = 'https://github.com/DBHATIA182/MYFAS_WINDAL.git'
+$AppFolder  = 'APPTEST'
+$BackupName = 'APPTEST_OLD'
+
+$AppPath   = Join-Path $GFasRoot $AppFolder
+$BackupPath = Join-Path $GFasRoot $BackupName
+
+function Write-Step([string]$msg) {
+    Write-Host ''
+    Write-Host "==> $msg" -ForegroundColor Cyan
+}
+
+function Test-IsGitRepo([string]$path) {
+    return (Test-Path -LiteralPath (Join-Path $path '.git'))
+}
+
+Write-Step "Checking Git"
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    throw "Git is not in PATH. Install Git for Windows and reopen PowerShell."
+}
+
+Write-Step "Checking Node / npm"
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    throw "npm is not in PATH. Install Node.js and reopen PowerShell."
+}
+
+if (-not (Test-Path -LiteralPath $GFasRoot)) {
+    throw "Folder not found: $GFasRoot"
+}
+
+if (Test-Path -LiteralPath $AppPath) {
+    if (Test-IsGitRepo $AppPath) {
+        Write-Host ''
+        Write-Host "APPTEST is already a Git clone. First-time install is not needed." -ForegroundColor Yellow
+        Write-Host "For updates run:" -ForegroundColor Yellow
+        Write-Host "  cd `"$AppPath`"" -ForegroundColor White
+        Write-Host "  .\update-from-git.ps1" -ForegroundColor White
+        exit 0
+    }
+
+    if (Test-Path -LiteralPath $BackupPath) {
+        throw "Backup folder already exists: $BackupPath`nRename or delete it, then run this script again."
+    }
+
+    Write-Step "Renaming existing APPTEST to $BackupName"
+    Rename-Item -LiteralPath $AppPath -NewName $BackupName
+} else {
+    Write-Host ''
+    Write-Host "No existing $AppFolder at $AppPath — will clone fresh." -ForegroundColor Yellow
+    if (-not (Test-Path -LiteralPath $BackupPath)) {
+        Write-Host "WARNING: $BackupName not found. After clone, copy connection.config.json, config.yml, and tunnel JSON manually from your backup." -ForegroundColor Yellow
+    }
+}
+
+if (-not (Test-Path -LiteralPath $AppPath)) {
+    Write-Step "Cloning repository into $AppPath"
+    Set-Location -LiteralPath $GFasRoot
+    git clone $RepoUrl $AppFolder
+    if ($LASTEXITCODE -ne 0) { throw "git clone failed." }
+}
+
+if (Test-Path -LiteralPath $BackupPath) {
+    Write-Step "Copying machine-only files from $BackupName"
+
+    $copyList = @('connection.config.json', 'config.yml')
+    foreach ($name in $copyList) {
+        $src = Join-Path $BackupPath $name
+        $dst = Join-Path $AppPath $name
+        if (Test-Path -LiteralPath $src) {
+            Copy-Item -LiteralPath $src -Destination $dst -Force
+            Write-Host "  Copied $name"
+        } else {
+            Write-Host "  (skip) not found: $name" -ForegroundColor DarkYellow
+        }
+    }
+
+    $cfgOld = Join-Path $BackupPath 'config.yml'
+    if (Test-Path -LiteralPath $cfgOld) {
+        $credLine = Get-Content -LiteralPath $cfgOld -ErrorAction SilentlyContinue |
+            Where-Object { $_ -match '^\s*credentials-file:\s*(.+?)\s*$' } |
+            Select-Object -First 1
+        if ($credLine -match 'credentials-file:\s*(.+?)\s*$') {
+            $credRaw = $Matches[1].Trim().Trim('"')
+            $credName = Split-Path -Leaf $credRaw
+            if ($credName -match '^\.[/\\]') {
+                $credName = $credName -replace '^\.[/\\]', ''
+            }
+            $srcCred = Join-Path $BackupPath $credName
+            if (Test-Path -LiteralPath $srcCred) {
+                $dstCred = Join-Path $AppPath $credName
+                Copy-Item -LiteralPath $srcCred -Destination $dstCred -Force
+                Write-Host "  Copied tunnel credentials: $credName"
+            } else {
+                Write-Host "  (skip) credentials file not found at: $srcCred" -ForegroundColor DarkYellow
+            }
+        }
+    }
+}
+
+Write-Step "npm ci"
+Set-Location -LiteralPath $AppPath
+npm ci
+if ($LASTEXITCODE -ne 0) { throw "npm ci failed." }
+
+Write-Step "npm run build"
+npm run build
+if ($LASTEXITCODE -ne 0) { throw "npm run build failed." }
+
+Write-Host ''
+Write-Host "Done. Next:" -ForegroundColor Green
+Write-Host "  1) Start API + frontend + tunnel (e.g. .\start-apptest-services.ps1 or your scheduled tasks)." -ForegroundColor White
+Write-Host "  2) Test the site in the browser." -ForegroundColor White
+Write-Host "  3) When satisfied, you may remove or zip $BackupPath" -ForegroundColor White
+Write-Host ''
+
+
+
+
+
+
+
+****************************
+Install Git from
+https://git-scm.com/download/win
+
+Open new PowerShell and verify:
+
+git --version
+Check existing folder:
+
+cd E:\WINDAL\APPTEST
+git status
+Decide:
+
+If git status works -> keep folder, no rename.
+If not a git repository -> rename folder:
+cd E:\WINDAL
+Rename-Item APPTEST APPTEST_OLD
+then clone fresh:
+git clone https://github.com/DBHATIA182/MYFAS_WINDAL.git APPTEST
+cd APPTEST
+npm ci
+npm run build
+copy connection.config.json to \windal\apptest
+.\start-apptest-services.ps1
+
+After setup, future update command:
+
+cd E:\WINDAL\APPTEST
+.\update-from-git.ps1 -Branch main
+.\start-apptest-services.ps1
+
+
+

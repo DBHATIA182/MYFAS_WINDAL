@@ -1,0 +1,15 @@
+1 Get-NetTCPConnection -LocalPort 5001,5173,5174 -State Listen -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty OwningProcess -Unique |
+  Where-Object { $_ -gt 0 } |
+  ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
+
+Get-Process cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+Write-Host "Done. Ports 5001/5173/5174 should be free."
+
+
+2 Get-NetTCPConnection -LocalPort 5001,5173,5174 -State Listen -ErrorAction SilentlyContinue | Format-Table LocalPort, OwningProcess -AutoSize
+
+3 npm run server
+
+4 powershell -ExecutionPolicy Bypass -File "E:\WINDAL\APPTEST\start-apptest-services.ps1"

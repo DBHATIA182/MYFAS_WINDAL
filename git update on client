@@ -1,0 +1,6 @@
+on client machine
+cd\windal\apptest
+1.  Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -like '*E:\WINDAL\APPTEST*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+2.  Get-Process node,esbuild,cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force
+3.  .\update-from-git.ps1 -Branch main
+4.  .\start-apptest-services.ps1

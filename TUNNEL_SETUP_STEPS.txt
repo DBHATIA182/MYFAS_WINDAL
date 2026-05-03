@@ -1,0 +1,32 @@
+WINDAL — Cloudflare tunnel (client key: dal-rgind)
+=================================================
+
+Public URLs (after DNS routes):
+  https://dal-rgind.fasaccountingsoftware.in          (Vite / web UI)
+  https://dal-rgind-api.fasaccountingsoftware.in      (Node API)
+
+Note: DNS host labels cannot contain underscores. The name you want as "dal_rgind"
+maps to client key / hostname "dal-rgind" (hyphen).
+
+ONE-COMMAND SETUP (from E:\WINDAL\APPTEST, PowerShell):
+  powershell -ExecutionPolicy Bypass -File .\setup-new-client-tunnel.ps1 `
+    -ClientKey "dal-rgind" `
+    -OraclePrimaryUser "DAL" `
+    -OraclePrimaryPassword "DAL" `
+    -OracleSecondaryUser "DAL" `
+    -OracleSecondaryPassword "DAL" `
+    -OracleConnectString "XE"
+
+That script:
+  - Runs setup-client.ps1 (unless -SkipClientSetup)
+  - Creates or reuses Cloudflare tunnel "dal-rgind"
+  - Creates DNS CNAMEs dal-rgind.fasaccountingsoftware.in and dal-rgind-api.fasaccountingsoftware.in
+  - Writes config.yml and copies <tunnel-uuid>.json next to config.yml
+
+Then start (3 terminals or use run-all-services.cmd):
+  1) npm.cmd run server
+  2) npm.cmd run dev -- --host 0.0.0.0 --port 5173
+  3) cloudflared.exe tunnel --config .\config.yml run
+
+Git remote for this product line:
+  https://github.com/DBHATIA182/MYFAS_WINDAL.git

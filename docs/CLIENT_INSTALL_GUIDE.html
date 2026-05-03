@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>APPTEST — Client installation, scheduled tasks, and first manual run</title>
+  <style>
+    @page { margin: 18mm 16mm; }
+    * { box-sizing: border-box; }
+    body { font-family: "Segoe UI", Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.45; color: #222; max-width: 210mm; margin: 0 auto; padding: 12mm; }
+    h1 { font-size: 18pt; border-bottom: 2px solid #1a5fb4; padding-bottom: 6px; margin-top: 0; }
+    h2 { font-size: 13pt; color: #1a5fb4; margin-top: 1.4em; page-break-after: avoid; }
+    h3 { font-size: 11pt; margin-top: 1em; page-break-after: avoid; }
+    p, li { margin: 0.35em 0; }
+    ul, ol { margin: 0.4em 0 0.6em 1.2em; padding-left: 0.8em; }
+    code, .cmd { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; background: #f4f4f4; padding: 1px 5px; border-radius: 3px; }
+    pre { font-family: Consolas, "Courier New", monospace; font-size: 9pt; background: #f8f8f8; border: 1px solid #ddd; padding: 10px 12px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; page-break-inside: avoid; }
+    .note { background: #fff8e6; border-left: 4px solid #e6a800; padding: 8px 12px; margin: 10px 0; page-break-inside: avoid; }
+    .warn { background: #ffecec; border-left: 4px solid #c00; padding: 8px 12px; margin: 10px 0; page-break-inside: avoid; }
+    table { border-collapse: collapse; width: 100%; font-size: 10pt; margin: 8px 0; page-break-inside: avoid; }
+    th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: #eef4fc; }
+    footer { font-size: 9pt; color: #666; margin-top: 2em; border-top: 1px solid #ccc; padding-top: 8px; }
+    @media print {
+      body { padding: 0; }
+      a { color: #000; text-decoration: none; }
+      h2 { page-break-before: auto; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>APPTEST — Client installation guide</h1>
+<p>This document covers copying the app to a client PC, Cloudflare tunnel configuration, running <code>setup-client.ps1</code>, optional scheduled tasks for auto-start, and how to start all services manually the first time.</p>
+
+<h2>1. Prerequisites</h2>
+<ul>
+  <li>Windows 10 or 11 (64-bit).</li>
+  <li>Administrator PowerShell for setup and scheduled tasks.</li>
+  <li>Internet access for first-time <code>npm install</code> and optional <code>winget</code> installs (Node.js LTS, Cloudflare <code>cloudflared</code>).</li>
+  <li><code>winget</code> available (Microsoft App Installer), unless you install Node and cloudflared yourself.</li>
+</ul>
+
+<h2>2. What to copy to the client machine</h2>
+<p>Copy the entire <strong>APPTEST</strong> application folder to any drive/path on the client (this folder is called <strong>&lt;APP_ROOT&gt;</strong> below). Example: <code>C:\Apps\APPTEST</code>.</p>
+
+<h3>2.1 Include these items</h3>
+<table>
+  <tr><th>Item</th><th>Purpose</th></tr>
+  <tr><td><code>server.cjs</code>, <code>package.json</code>, <code>package-lock.json</code></td><td>Backend and dependencies</td></tr>
+  <tr><td><code>connection.config.json</code></td><td>Client name and Oracle settings (updated by setup)</td></tr>
+  <tr><td><code>setup-client.ps1</code></td><td>One-time client install</td></tr>
+  <tr><td><code>config.yml</code></td><td>Cloudflare tunnel ingress (edit per client)</td></tr>
+  <tr><td><code>run-backend.cmd</code>, <code>run-all-services.cmd</code></td><td>Launchers for Task Scheduler / manual use</td></tr>
+  <tr><td><code>setup-scheduled-task-all-services.ps1</code></td><td>Optional: register startup task for API + frontend + tunnel</td></tr>
+  <tr><td><code>start-apptest-services.ps1</code></td><td>Optional: open three PowerShell windows for manual dev-style start</td></tr>
+  <tr><td><code>SRC</code>, <code>public</code> (if present)</td><td>Frontend source and static assets</td></tr>
+</table>
+
+<h3>2.2 Do not copy</h3>
+<ul>
+  <li><code>node_modules</code> — the setup script runs <code>npm install</code> on the client.</li>
+</ul>
+
+<h3>2.3 Oracle Instant Client layout</h3>
+<p>The server expects Oracle Instant Client in a sibling folder next to the app parent, for example:</p>
+<ul>
+  <li><code>&lt;APP_ROOT&gt;</code> = <code>C:\Apps\APPTEST</code></li>
+  <li><code>C:\Apps\oracle_bridge\instantclient_23_0</code></li>
+</ul>
+<p>Adjust paths to match <code>server.cjs</code> expectations on your deployment.</p>
+
+<h2>3. Cloudflare tunnel (<code>config.yml</code>)</h2>
+<p>Before relying on the tunnel, on the client PC:</p>
+<ol>
+  <li>Create or use an existing tunnel in Cloudflare Zero Trust and note the <strong>tunnel UUID</strong>.</li>
+  <li>Place the tunnel <strong>credentials JSON</strong> on the machine (commonly under <code>C:\Users\&lt;User&gt;\.cloudflared\&lt;tunnel-uuid&gt;.json</code>).</li>
+  <li>Edit <code>&lt;APP_ROOT&gt;\config.yml</code>:
+    <ul>
+      <li><code>tunnel:</code> — your tunnel UUID.</li>
+      <li><code>credentials-file:</code> — full path to that JSON file.</li>
+      <li><code>ingress</code> — hostnames for this client. Example for client key <code>dal-rgind</code>:
+        <ul>
+          <li>Web: <code>dal-rgind.fasaccountingsoftware.in</code> → <code>http://localhost:5173</code></li>
+          <li>API: <code>dal-rgind-api.fasaccountingsoftware.in</code> → <code>http://localhost:5001</code></li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li>In Cloudflare DNS, route those hostnames to the same tunnel.</li>
+</ol>
+<div class="warn"><strong>Scheduled task as SYSTEM:</strong> If the startup task runs under SYSTEM, ensure <code>credentials-file</code> points to a path SYSTEM can read (for example a folder under the app root with restricted permissions), or run the tunnel under a user account that owns the credentials file.</div>
+
+<h2>4. First-time install (<code>setup-client.ps1</code>)</h2>
+<ol>
+  <li>Open <strong>PowerShell as Administrator</strong>.</li>
+  <li>Change to the app folder:
+<pre>cd &lt;APP_ROOT&gt;</pre>
+  </li>
+  <li>Run setup (replace Oracle values with the client’s real connect string and passwords):
+<pre>powershell -ExecutionPolicy Bypass -File .\setup-client.ps1 `
+  -ClientKey YOUR_CLIENT_KEY `
+  -OracleConnectString "HOST:1521/SERVICE_NAME" `
+  -OraclePrimaryUser DAL `
+  -OraclePrimaryPassword "YOUR_PASSWORD" `
+  -OracleSecondaryUser DAL `
+  -OracleSecondaryPassword "YOUR_PASSWORD" `
+  -AutoStartMode task</pre>
+  </li>
+</ol>
+<p>The script typically: updates <code>connection.config.json</code>, installs Node/npm and <code>cloudflared</code> if missing (via winget), runs <code>npm install</code>, runs <code>npm run build</code>, and registers a startup task for the <strong>API only</strong>.</p>
+
+<h3>4.1 <code>-AutoStartMode</code> options</h3>
+<table>
+  <tr><th>Value</th><th>Meaning</th></tr>
+  <tr><td><code>task</code></td><td>Task Scheduler runs <code>run-backend.cmd</code> at startup (API only). Task name: <code>FAS-&lt;client&gt;-API</code>.</td></tr>
+  <tr><td><code>nssm</code></td><td>Windows Service via NSSM (requires <code>nssm.exe</code> in the app).</td></tr>
+  <tr><td><code>none</code></td><td>No auto-start task.</td></tr>
+</table>
+
+<h2>5. Scheduled tasks (two approaches)</h2>
+
+<h3>5.1 API only (default from <code>setup-client.ps1</code>)</h3>
+<ul>
+  <li><strong>Task name:</strong> <code>FAS-&lt;client&gt;-API</code></li>
+  <li><strong>Runs:</strong> <code>run-backend.cmd</code> → <code>npm run server</code> → log <code>logs\server.log</code></li>
+  <li><strong>Trigger:</strong> At system startup, as SYSTEM, highest privileges.</li>
+</ul>
+<p>Use Task Scheduler (<code>taskschd.msc</code>) to confirm status and last run result.</p>
+
+<h3>5.2 API + Vite dev + Cloudflare tunnel (all three)</h3>
+<p>Use this when the client machine should bring up the web dev server and tunnel automatically after reboot.</p>
+<ol>
+  <li>Ensure <code>config.yml</code> and tunnel credentials are correct.</li>
+  <li>Open <strong>PowerShell as Administrator</strong>, <code>cd &lt;APP_ROOT&gt;</code>.</li>
+  <li>Run:
+<pre>powershell -ExecutionPolicy Bypass -File .\setup-scheduled-task-all-services.ps1</pre>
+  </li>
+</ol>
+<ul>
+  <li><strong>Default task name:</strong> <code>FAS-&lt;clientName&gt;-AllServices</code> (from <code>connection.config.json</code>).</li>
+  <li><strong>Runs:</strong> <code>run-all-services.cmd</code> — starts minimized CMD windows for API, frontend, and tunnel.</li>
+  <li><strong>Logs:</strong> <code>logs\server.log</code>, <code>logs\frontend.log</code>, <code>logs\tunnel.log</code>, plus <code>logs\all-services.log</code> for the launcher.</li>
+</ul>
+<div class="note"><strong>Important:</strong> If both <code>FAS-&lt;client&gt;-API</code> and <code>FAS-&lt;client&gt;-AllServices</code> are enabled, the API may start twice. Disable or delete the API-only task when using the “all services” task.</div>
+
+<h3>5.3 Optional: custom task name</h3>
+<pre>.\setup-scheduled-task-all-services.ps1 -TaskName "FAS-dal-rgind-AllServices"</pre>
+
+<h2>6. First-time manual run (all three services)</h2>
+<p>After <code>npm install</code> (and ideally <code>npm run build</code> from setup), use one of the following before relying on scheduled tasks.</p>
+
+<h3>6.1 Option A — Batch launcher (minimized windows)</h3>
+<p>From PowerShell or CMD, in <code>&lt;APP_ROOT&gt;</code>:</p>
+<pre>.\run-all-services.cmd</pre>
+<p>Starts API (port 5001 per app defaults), Vite on <code>0.0.0.0:5173</code>, and <code>cloudflared tunnel --config config.yml run</code>. Check <code>logs\</code> for output.</p>
+
+<h3>6.2 Option B — Interactive PowerShell windows</h3>
+<pre>powershell -ExecutionPolicy Bypass -File .\start-apptest-services.ps1</pre>
+<p>Opens three separate PowerShell windows (good for watching live logs during first-time testing).</p>
+
+<h3>6.3 Option C — Three separate manual commands</h3>
+<p>Open three terminals, each:</p>
+<pre>cd &lt;APP_ROOT&gt;
+npm run server</pre>
+<pre>cd &lt;APP_ROOT&gt;
+npm run dev -- --host 0.0.0.0 --port 5173</pre>
+<pre>cd &lt;APP_ROOT&gt;
+cloudflared tunnel --config config.yml run</pre>
+
+<h2>7. Verification checklist</h2>
+<ul>
+  <li>Task Scheduler: relevant task(s) show <strong>Ready</strong> and a successful last run (where applicable).</li>
+  <li><code>logs\server.log</code> — API listening / no Oracle path errors.</li>
+  <li>Browser: client web hostname loads; API hostname responds as expected.</li>
+  <li>Tunnel: Cloudflare dashboard shows the connector healthy.</li>
+</ul>
+
+<footer>
+  Generated from <code>docs/CLIENT_INSTALL_GUIDE.html</code> in the APPTEST project. Rebuild PDF with <code>build-install-guide-pdf.ps1</code> if present.
+</footer>
+
+</body>
+</html>

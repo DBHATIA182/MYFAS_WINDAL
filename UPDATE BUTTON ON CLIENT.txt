@@ -1,0 +1,1 @@
+powershell -ExecutionPolicy Bypass -File .\create-desktop-update-shortcut.ps1

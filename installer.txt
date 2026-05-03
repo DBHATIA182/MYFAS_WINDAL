@@ -1,0 +1,22 @@
+Client setup folder:
+
+<APP_ROOT>
+
+Install command (PowerShell as Administrator):
+
+powershell -ExecutionPolicy Bypass -File .\setup-client.ps1 -ClientKey dal-rgind -OracleConnectString "XE" -OraclePrimaryUser DAL -OraclePrimaryPassword DAL -OracleSecondaryUser DAL -OracleSecondaryPassword DAL -AutoStartMode task
+
+Guide:
+
+See CLIENT_SETUP.md
+.\start-apptest-services.ps1
+to stop
+
+.\stop-apptest-services.ps1 -ReleaseApiPort5001
+.\start-apptest-services.ps1
+
+
+START SERVICE ONE BY ONE
+node server.cjs
+npm run dev --host
+cloudflared tunnel --config .\config.yml run

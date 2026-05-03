@@ -1,0 +1,104 @@
+https://git-scm.com/download/win
+cd\windal\apptest\git --version
+git config --global user.name "Dinesh Bhatia"
+git config --global user.email "dinesh_bhatia@hotmail.com"
+https://github.com
+cd E:\WINDAL\APPTEST
+
+git init
+
+git add -A
+
+cd E:\WINDAL\APPTEST
+git rm --cached config.yml "b10096b7-6534-4c4a-8102-6d5251a04ed3.json"
+git add .gitignore
+git status
+
+cd E:\windal\apptest
+git commit -m "Initial commit"
+git branch -M main
+git remote add origin https://github.com/DBHATIA182/MYFAS_WINDAL.git
+git push -u origin main
+
+DBHATIA182/MYFAS_WINDAL
+https://github.com/DBHATIA182/MYFAS_WINDAL
+
+
+when changes
+git add -a
+git commit -m "today changes 19042026"
+git push origin main
+*************************************************
+
+client machine
+A. One-time: software on the PC
+Node.js LTS (same major version as your dev PC if possible) — from https://nodejs.org
+Git for Windows — https://git-scm.com/download/win
+During setup: “Git from the command line and also from 3rd-party software”
+Default branch main (if the installer asks)
+Oracle Instant Client — same folder layout as before, for example:
+E:\WINDAL\oracle_bridge\instantclient_23_0\
+cloudflared — install if missing (see TUNNEL_SETUP_STEPS.txt).
+Restart the PC once after installing Node + Git (or at least close and reopen PowerShell).
+
+B. One-time: move from “old copy” to “Git clone”
+Goal: E:\WINDAL\APPTEST is a Git clone of your GitHub repo, not a USB copy.
+
+Stop the app on that PC: close the windows from start-apptest-services.ps1 (API, Vite, tunnel), or disable/stop the scheduled tasks that start them.
+
+Rename the old folder (backup, nothing deleted):
+
+If you have E:\WINDAL\APPTEST
+Rename it to E:\WINDAL\APPTEST_OLD
+Open PowerShell (Administrator):
+
+cd E:\WINDAL
+git clone https://github.com/DBHATIA182/MYFAS_WINDAL.git APPTEST
+If the repo is private, Git will open the browser or ask for login / Personal Access Token the first time — complete that.
+Copy these files from APPTEST_OLD into APPTEST (they are not in Git; each PC keeps its own):
+
+Copy from APPTEST_OLD	Into APPTEST
+connection.config.json
+same name
+config.yml
+same name
+b10096b7-6534-4c4a-8102-6d5251a04ed3.json (or whatever tunnel JSON that PC uses — name in config.yml credentials-file:)
+same name
+Install dependencies and build the UI:
+
+cd E:\WINDAL\APPTEST
+npm ci
+npm run build
+Start the stack the same way you did before, for example:
+cd E:\WINDAL\APPTEST
+.\start-apptest-services.ps1
+(or your Task Scheduler / NSSM jobs if you use those instead)
+
+Open https://dal-rgind.fasaccountingsoftware.in in a browser and confirm login and reports work.
+
+When everything is OK, you can keep APPTEST_OLD as backup for a few days, then delete or zip it.
+
+C. Later: when you push updates from your dev PC
+On the client PC (PowerShell as Administrator):
+
+cd E:\WINDAL\APPTEST
+.\update-from-git.ps1
+Then restart API + frontend + tunnel (close old windows and run start-apptest-services.ps1 again, or restart the scheduled tasks).
+
+D. Quick reference
+Where	What
+GitHub
+Source code (MYFAS_WINDAL)
+Client APPTEST
+git clone once, then update-from-git.ps1
+Never in Git — copy per PC
+connection.config.json, config.yml, tunnel *.json
+Oracle
+E:\WINDAL\oracle_bridge\... next to APPTEST
+E. If git clone says “folder already exists”
+Delete or rename the existing E:\WINDAL\APPTEST first (after backup), then run git clone again.
+
+If the client uses a different path than E:\WINDAL\APPTEST, adjust the paths above.
+
+Node.js LTS: install the same major version as your build PC when possible.
+

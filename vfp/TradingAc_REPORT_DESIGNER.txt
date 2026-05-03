@@ -1,0 +1,50 @@
+TradingAc.frx — build steps (Visual FoxPro 9)
+==============================================
+
+1) Copy layout baseline
+   - In VFP: COPY FILE tdg.frx TO TradingAc.frx
+   - COPY FILE tdg.frt TO TradingAc.frt   (if .frt exists)
+
+2) Open the new report
+   - MODIFY REPORT TradingAc.frx
+   - Report > Title: e.g. "Trading Account"
+
+3) Record source (Data Environment)
+   - Remove old alias if it pointed only to FTDG, or add:
+   - Cursor TRADINGAC is built by: DO TradingAc_prep  (after FTDG exists)
+   - In DataEnvironment, InitialSelectedAlias = tradingac
+   - Alternatively bind controls to FTDG and use expressions below without prep.
+
+4) Detail band — one row per account (NAME / CODE)
+   Stock rows (ROW_KIND = "S" when using prep, or CODE <> "000000"):
+   - Left column block (labels are fixed text objects):
+       OPENING   OWGT    OAMT    OA_RATE
+       PURCHASE  PWGT    PAMT    PA_RATE
+       G.PROFIT  (blank) GPROFIT (blank)
+       TOTAL     (blank) L_AMT_TOTAL (blank)   ... or expression: OAMT+PAMT+GPROFIT
+   - Right column block:
+       SALES     SWGT    SAMT    SA_RATE
+       SHORT/ACCESS  SHORT (weight)  (amount blank or 0)
+       CLOSING   CWGT    CAMT    CA_RATE
+       G.LOSS    (blank) GLOSS   (blank)
+       TOTAL     (blank) R_AMT_TOTAL (blank)   ... or: SAMT+CAMT+GLOSS
+
+   Expense / freight style rows (CODE = "000000" or ROW_KIND = "E"):
+   - Print NAME, DR_AMT under debit amount column; CR_AMT if used.
+
+5) Grouping (optional)
+   - If category-wise TDG was used, group on CAT_CODE or CAT_NAME with header band.
+
+6) From your form / menu (after DO TDG WITH ...):
+   DO TradingAc_prep     && optional but recommended for rate/total fields
+   DO TradingAc_run WITH "PREVIEW"
+
+7) Bugfix in your TDG source (ledger insert line)
+   - Use M.DR_AMT not M.DR_aMT in:
+     INSERT INTO MYTDG (...,GPROFIT,GLOSS) VALUES (...,M.CR_AMT,M.DR_AMT)
+
+8) Remove debug BROW / DEFINE WINDOW blocks from production TDG if desired.
+
+File reference in this repo:
+   vfp\TradingAc_prep.prg   — builds TRADINGAC from FTDG
+   vfp\TradingAc_run.prg   — REPORT FORM TradingAc.frx

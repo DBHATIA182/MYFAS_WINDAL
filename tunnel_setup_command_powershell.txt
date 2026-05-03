@@ -1,0 +1,23 @@
+# Do not type <APP_ROOT> — that was a placeholder. Use your real folder path.
+
+# Windal install — from this folder:
+cd E:\WINDAL\APPTEST
+
+# Create tunnel + DNS + connection.config (replace nothing; run as-is after Oracle/client are set):
+powershell -ExecutionPolicy Bypass -File .\setup-new-client-tunnel.ps1 `
+  -ClientKey "dal-rgind" `
+  -OraclePrimaryUser "DAL" `
+  -OraclePrimaryPassword "DAL" `
+  -OracleSecondaryUser "DAL" `
+  -OracleSecondaryPassword "DAL" `
+  -OracleConnectString "XE"
+
+# Public URLs after DNS (underscores are invalid in hostnames — use dal-rgind):
+# - https://dal-rgind.fasaccountingsoftware.in
+# - https://dal-rgind-api.fasaccountingsoftware.in
+# Check them under Cloudflare -> DNS records (not only the Tunnel "Routes" card).
+
+# Then start stack (or use start services batch file.bat / start-apptest-services.ps1):
+#   npm.cmd run server
+#   npm.cmd run dev -- --host 0.0.0.0 --port 5173
+#   cloudflared.exe tunnel --config .\config.yml run
