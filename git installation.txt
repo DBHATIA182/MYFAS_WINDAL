@@ -10,7 +10,7 @@ git init
 git add -A
 
 cd E:\WINDAL\APPTEST
-git rm --cached config.yml "b10096b7-6534-4c4a-8102-6d5251a04ed3.json"
+git rm --cached config.yml "826551ea-2422-4caf-a5ac-7b5979e2ca4a.json"
 git add .gitignore
 git status
 
