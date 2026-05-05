@@ -51,6 +51,15 @@ function amountWords(billAmt) {
   return rupeesToWords(x);
 }
 
+function purchaseHeadName(typeRaw) {
+  const t = String(typeRaw ?? '').trim().toUpperCase();
+  if (t === 'DN') return 'DEBIT NOTE';
+  if (t === 'DX') return 'DEBIT NOTE OTHERS';
+  if (t === 'CX') return 'CREDIT NOTE OTHERS';
+  if (t === 'EV') return 'PURCHASE BILL OTHERS';
+  return 'PURCHASE BILL';
+}
+
 export default function PurchaseBillPrintModal({
   open,
   onClose,
@@ -120,8 +129,7 @@ export default function PurchaseBillPrintModal({
   const first = lines[0];
 
   const docTitle = useMemo(() => {
-    const t = String(first?.TYPE ?? first?.type ?? billParams?.type ?? '').trim().toUpperCase();
-    return t === 'PU' ? 'PURCHASE BILL' : 'DEBIT NOTE';
+    return purchaseHeadName(first?.TYPE ?? first?.type ?? billParams?.type ?? '');
   }, [first, billParams]);
 
   const totals = useMemo(() => {
@@ -148,23 +156,13 @@ export default function PurchaseBillPrintModal({
         sumI,
         sumDis,
         billAmt: 0,
-        oth1: 0,
-        oth2: 0,
-        oth3: 0,
-        oth4: 0,
-        oth5: 0,
-        oth6: 0,
-        oth7: 0,
-        oth8: 0,
-        brokPaid: 0,
-        freightPaid: 0,
-        mandiExp: 0,
+        damiAmt: 0,
+        mfeeAmt: 0,
         labourExp: 0,
-        bardanaExp: 0,
-        cdAmount: 0,
-        dharmKanta: 0,
-        tulwaiExp: 0,
-        roundOff: 0,
+        freightPaid: 0,
+        addExp: 0,
+        lessExp: 0,
+        tdsAmt: 0,
       };
     }
     return {
@@ -175,23 +173,13 @@ export default function PurchaseBillPrintModal({
       sumI,
       sumDis,
       billAmt: scalarDn(first, 'BILL_AMT', 'bill_amt'),
-      oth1: scalarDn(first, 'OTH_EXP_1', 'oth_exp_1'),
-      oth2: scalarDn(first, 'OTH_EXP_2', 'oth_exp_2'),
-      oth3: scalarDn(first, 'OTH_EXP_3', 'oth_exp_3'),
-      oth4: scalarDn(first, 'OTH_EXP_4', 'oth_exp_4'),
-      oth5: scalarDn(first, 'OTH_EXP_5', 'oth_exp_5'),
-      oth6: scalarDn(first, 'OTH_EXP_6', 'oth_exp_6'),
-      oth7: scalarDn(first, 'OTH_EXP_7', 'oth_exp_7'),
-      oth8: scalarDn(first, 'OTH_EXP_8', 'oth_exp_8'),
-      brokPaid: scalarDn(first, 'BROK_PAID', 'brok_paid'),
+      damiAmt: scalarDn(first, 'OTH_EXP_1', 'oth_exp_1'),
+      mfeeAmt: scalarDn(first, 'OTH_EXP_2', 'oth_exp_2'),
+      addExp: scalarDn(first, 'OTH_EXP_3', 'oth_exp_3'),
+      lessExp: scalarDn(first, 'OTH_EXP_4', 'oth_exp_4'),
       freightPaid: scalarDn(first, 'FREIGHT_PAID', 'freight_paid'),
-      mandiExp: scalarDn(first, 'MANDI_EXP', 'mandi_exp'),
       labourExp: scalarDn(first, 'LABOUR_EXP', 'labour_exp'),
-      bardanaExp: scalarDn(first, 'BARDANA_EXP', 'bardana_exp'),
-      cdAmount: scalarDn(first, 'CD_AMOUNT', 'cd_amount'),
-      dharmKanta: scalarDn(first, 'DHARM_KANTA', 'dharm_kanta'),
-      tulwaiExp: scalarDn(first, 'TULWAI_EXP', 'tulwai_exp'),
-      roundOff: scalarDn(first, 'ROUND_OFF', 'round_off'),
+      tdsAmt: scalarDn(first, 'TDS_AMT', 'tds_amt'),
     };
   }, [lines, first]);
 
@@ -278,23 +266,13 @@ export default function PurchaseBillPrintModal({
     ['SGST', totals.sumS],
     ['IGST', totals.sumI],
     ['Discount', totals.sumDis],
-    ['Oth exp 1', totals.oth1],
-    ['Oth exp 2', totals.oth2],
-    ['Oth exp 3', totals.oth3],
-    ['Oth exp 4', totals.oth4],
-    ['Oth exp 5', totals.oth5],
-    ['Oth exp 6', totals.oth6],
-    ['Oth exp 7', totals.oth7],
-    ['Oth exp 8', totals.oth8],
-    ['Broker paid', totals.brokPaid],
+    ['Dami amount', totals.damiAmt],
+    ['MFee amount', totals.mfeeAmt],
+    ['Labour', totals.labourExp],
     ['Freight paid', totals.freightPaid],
-    ['Mandi exp', totals.mandiExp],
-    ['Labour exp', totals.labourExp],
-    ['Bardana exp', totals.bardanaExp],
-    ['CD amount', totals.cdAmount],
-    ['Dharm kanta', totals.dharmKanta],
-    ['Tulwai exp', totals.tulwaiExp],
-    ['Round off', totals.roundOff],
+    ['Add exp', totals.addExp],
+    ['Less exp', totals.lessExp],
+    ['TDS', totals.tdsAmt],
     ['Bill amt', totals.billAmt],
   ];
 
@@ -334,7 +312,7 @@ export default function PurchaseBillPrintModal({
           {!loading && !err && lines.length === 0 ? <p>No lines returned for this bill.</p> : null}
 
           {!loading && !err && lines.length > 0 ? (
-            <div id="purchase-bill-print-area" className="sale-bill-print-doc">
+            <div id="purchase-bill-print-area" className="sale-bill-print-doc purchase-bill-print-doc">
               <div className="sale-bill-print-doc-banner">
                 <div className="sale-bill-print-banner-text">
                   <div className="sale-bill-print-doc-title">{docTitle}</div>
@@ -358,16 +336,16 @@ export default function PurchaseBillPrintModal({
 
               <div className="sale-bill-print-inv-row">
                 <span>
-                  <strong>R no.</strong> {v(first, 'R_NO', 'r_no') || '—'}
+                  <strong>R.Date</strong> {formatLedgerDateDisplay(first.R_DATE ?? first.r_date)}
                 </span>
                 <span>
-                  <strong>R date</strong> {formatLedgerDateDisplay(first.R_DATE ?? first.r_date)}
+                  <strong>R.No.</strong> {v(first, 'R_NO', 'r_no') || '—'}
                 </span>
                 <span>
-                  <strong>Bill no.</strong> {v(first, 'BILL_NO', 'bill_no') || '—'}
+                  <strong>Bill Date</strong> {formatLedgerDateDisplay(first.BILL_DATE ?? first.bill_date)}
                 </span>
                 <span>
-                  <strong>Bill date</strong> {formatLedgerDateDisplay(first.BILL_DATE ?? first.bill_date)}
+                  <strong>Bill No.</strong> {v(first, 'BILL_NO', 'bill_no') || '—'}
                 </span>
               </div>
 

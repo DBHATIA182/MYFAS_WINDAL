@@ -13,15 +13,6 @@ function n(row, upper, lower) {
   return Number.isNaN(x) ? 0 : x;
 }
 
-function isDn(row) {
-  return String(row?.TYPE ?? row?.type ?? '').trim().toUpperCase() === 'DN';
-}
-
-function signedDnVal(row, upper, lower) {
-  const v = n(row, upper, lower);
-  return isDn(row) ? -Math.abs(v) : v;
-}
-
 function fmtQty(v) {
   const x = parseFloat(v);
   if (Number.isNaN(x)) return '0';
@@ -41,18 +32,28 @@ function cmpTxt(a, b) {
   return String(a).localeCompare(String(b), 'en', { sensitivity: 'base', numeric: true });
 }
 
+function purchaseHeadName(typeRaw) {
+  const t = String(typeRaw ?? '').trim().toUpperCase();
+  if (t === 'DN') return 'DEBIT NOTE';
+  if (t === 'DX') return 'DEBIT NOTE OTHERS';
+  if (t === 'CX') return 'CREDIT NOTE OTHERS';
+  if (t === 'EV') return 'PURCHASE BILL OTHERS';
+  return 'PURCHASE BILL';
+}
+
 export default function Slide11({ apiBase, formData, onPrev, onReset }) {
+  const [type, setType] = useState('PU');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [code, setCode] = useState('');
   const [itemCode, setItemCode] = useState('');
-  const [purCode, setPurCode] = useState('');
-  const [godCode, setGodCode] = useState('');
+  const [bkCode, setBkCode] = useState('');
+  const [plantCode, setPlantCode] = useState('');
 
   const [suppliers, setSuppliers] = useState([]);
   const [items, setItems] = useState([]);
-  const [purCodes, setPurCodes] = useState([]);
-  const [godowns, setGodowns] = useState([]);
+  const [brokers, setBrokers] = useState([]);
+  const [plants, setPlants] = useState([]);
   const [lookupError, setLookupError] = useState('');
 
   const [rows, setRows] = useState([]);
@@ -60,6 +61,8 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
   const [error, setError] = useState('');
   const [showReport, setShowReport] = useState(false);
   const [purchaseSortMode, setPurchaseSortMode] = useState('date');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(100);
   const [billPrintOpen, setBillPrintOpen] = useState(false);
   const [billPrintParams, setBillPrintParams] = useState(null);
 
@@ -84,12 +87,12 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
           axios.get(`${apiBase}/api/purchaselist-suppliers`, { params: { comp_code: compCode, comp_uid: compUid } }),
           axios.get(`${apiBase}/api/purchaselist-items`, { params: { comp_code: compCode, comp_uid: compUid } }),
           axios.get(`${apiBase}/api/purchaselist-purcodes`, { params: { comp_code: compCode, comp_uid: compUid } }),
-          axios.get(`${apiBase}/api/purchaselist-godowns`, { params: { comp_code: compCode, comp_uid: compUid } }),
+          axios.get(`${apiBase}/api/purchaselist-plants`, { params: { comp_code: compCode, comp_uid: compUid } }),
         ]);
         setSuppliers(Array.isArray(s.data) ? s.data : []);
         setItems(Array.isArray(i.data) ? i.data : []);
-        setPurCodes(Array.isArray(p.data) ? p.data : []);
-        setGodowns(Array.isArray(g.data) ? g.data : []);
+        setBrokers(Array.isArray(p.data) ? p.data : []);
+        setPlants(Array.isArray(g.data) ? g.data : []);
       } catch (err) {
         setLookupError(
           err.response?.status === 404
@@ -121,9 +124,9 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
         const cCmp = cmpTxt(t(a, 'ITEM_CODE', 'item_code'), t(b, 'ITEM_CODE', 'item_code'));
         if (cCmp !== 0) return cCmp;
       } else if (purchaseSortMode === 'broker') {
-        const nCmp = cmpTxt(t(a, 'PUR_NAME', 'pur_name'), t(b, 'PUR_NAME', 'pur_name'));
+        const nCmp = cmpTxt(t(a, 'BK_NAME', 'bk_name'), t(b, 'BK_NAME', 'bk_name'));
         if (nCmp !== 0) return nCmp;
-        const cCmp = cmpTxt(t(a, 'PUR_CODE', 'pur_code'), t(b, 'PUR_CODE', 'pur_code'));
+        const cCmp = cmpTxt(t(a, 'BK_CODE', 'bk_code'), t(b, 'BK_CODE', 'bk_code'));
         if (cCmp !== 0) return cCmp;
       }
       return compareDateTail(a, b);
@@ -134,37 +137,56 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
   const totals = useMemo(() => {
     let q = 0;
     let w = 0;
+    let sw = 0;
     let a = 0;
+    let d = 0;
     let tx = 0;
     let c = 0;
     let s = 0;
     let i = 0;
+    let tds = 0;
     let b = 0;
     for (const r of sortedRows) {
-      q += signedDnVal(r, 'QNTY', 'qnty');
-      w += signedDnVal(r, 'WEIGHT', 'weight');
-      a += signedDnVal(r, 'AMOUNT', 'amount');
-      tx += signedDnVal(r, 'TAXABLE', 'taxable');
-      c += signedDnVal(r, 'CGST_AMT', 'cgst_amt');
-      s += signedDnVal(r, 'SGST_AMT', 'sgst_amt');
-      i += signedDnVal(r, 'IGST_AMT', 'igst_amt');
-      b += signedDnVal(r, 'BILL_AMT', 'bill_amt');
+      q += n(r, 'QNTY', 'qnty');
+      w += n(r, 'WEIGHT', 'weight');
+      sw += n(r, 'STK_WEIGHT', 'stk_weight');
+      a += n(r, 'AMOUNT', 'amount');
+      d += n(r, 'DIS_AMT', 'dis_amt');
+      tx += n(r, 'TAXABLE', 'taxable');
+      c += n(r, 'CGST_AMT', 'cgst_amt');
+      s += n(r, 'SGST_AMT', 'sgst_amt');
+      i += n(r, 'IGST_AMT', 'igst_amt');
+      tds += n(r, 'TDS_AMT', 'tds_amt');
+      b += n(r, 'BILL_AMT', 'bill_amt');
     }
-    return { q, w, a, tx, c, s, i, b };
+    return { q, w, sw, a, d, tx, c, s, i, tds, b };
   }, [sortedRows]);
+
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(sortedRows.length / rowsPerPage)), [sortedRows.length, rowsPerPage]);
+
+  const pagedRows = useMemo(() => {
+    const p = Math.min(Math.max(1, currentPage), totalPages);
+    const start = (p - 1) * rowsPerPage;
+    return sortedRows.slice(start, start + rowsPerPage);
+  }, [sortedRows, currentPage, totalPages, rowsPerPage]);
+
+  useEffect(() => {
+    setCurrentPage((p) => Math.min(Math.max(1, p), totalPages));
+  }, [totalPages]);
 
   const pdfData = useMemo(() => ({ rows: sortedRows }), [sortedRows]);
   const pdfMeta = useMemo(
     () => ({
       companyName: compName,
+      type,
       startDate: toDisplayDate(startDate),
       endDate: toDisplayDate(endDate),
       supplierLabel: code || 'All',
       itemLabel: itemCode || 'All',
-      purLabel: purCode || 'All',
-      godLabel: godCode || 'All',
+      brokerLabel: bkCode || 'All',
+      plantLabel: plantCode || 'All',
     }),
-    [compName, startDate, endDate, code, itemCode, purCode, godCode]
+    [compName, type, startDate, endDate, code, itemCode, bkCode, plantCode]
   );
 
   const handleSubmit = async (e) => {
@@ -182,18 +204,20 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
         params: {
           comp_code: compCode,
           comp_uid: compUid,
+          type,
           s_date: sDate,
           e_date: eDate,
           code,
           item_code: itemCode,
-          pur_code: purCode,
-          god_code: godCode,
+          bk_code: bkCode,
+          plant_code: plantCode,
         },
         withCredentials: true,
         timeout: 120000,
       });
       setRows(Array.isArray(data) ? data : []);
       setPurchaseSortMode('date');
+      setCurrentPage(1);
       setShowReport(true);
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'Failed to load purchase list');
@@ -222,11 +246,12 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
       alert('Cannot open bill: missing type, R no, or R date.');
       return;
     }
+    const headName = purchaseHeadName(typ);
     setBillPrintParams({
       type: String(typ).trim(),
       rNo: String(rNo).trim(),
       oracleDt,
-      label: `Purchase — ${String(typ).trim()} / ${String(rNo).trim()} / ${toDisplayDate(ymd)}`,
+      label: `${headName} — ${String(typ).trim()} / ${String(rNo).trim()} / ${toDisplayDate(ymd)}`,
     });
     setBillPrintOpen(true);
   };
@@ -316,17 +341,55 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
 
         <div className="report-info">
           <p>
-            <strong>Dates</strong> {toDisplayDate(startDate)} - {toDisplayDate(endDate)} · <strong>Supplier</strong> {code || 'All'} ·{' '}
-            <strong>Item</strong> {itemCode || 'All'} · <strong>Purchase code</strong> {purCode || 'All'} · <strong>Godown</strong>{' '}
-            {godCode || 'All'}
+            <strong>Type</strong> {type} · <strong>Dates</strong> {toDisplayDate(startDate)} - {toDisplayDate(endDate)} ·{' '}
+            <strong>Party</strong> {code || 'All'} · <strong>Broker</strong> {bkCode || 'All'} · <strong>Item</strong>{' '}
+            {itemCode || 'All'} · <strong>Plant</strong> {plantCode || 'All'}
           </p>
           <p>
-            {compName} | FY {compYear} — TYPE DN rows show qty/weight/amount/tax columns in negative. Click any data row to
-            open the purchase bill / debit note print. Current view: <strong>{purchaseSortLabel}</strong>.
+            {compName} | FY {compYear}. Click any data row to open purchase bill print. Current view:{' '}
+            <strong>{purchaseSortLabel}</strong>.
           </p>
         </div>
 
-        <div className="report-display table-responsive">
+        <div className="report-sort-switch" role="group" aria-label="Purchase list paging">
+          <span className="report-sort-switch__label">
+            Page {Math.min(currentPage, totalPages)} / {totalPages} · Rows {sortedRows.length}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sort-switch"
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage <= 1}
+          >
+            Prev
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sort-switch"
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage >= totalPages}
+          >
+            Next
+          </button>
+          <select
+            className="form-input"
+            style={{ maxWidth: '140px' }}
+            value={rowsPerPage}
+            onChange={(e) => {
+              const v = parseInt(e.target.value, 10) || 100;
+              setRowsPerPage(v);
+              setCurrentPage(1);
+            }}
+          >
+            <option value={50}>50 / page</option>
+            <option value={100}>100 / page</option>
+            <option value={200}>200 / page</option>
+            <option value={500}>500 / page</option>
+          </select>
+        </div>
+
+        <div className="report-display">
+          <div className="table-responsive table-responsive--bill-ledger">
           <table className="report-table purchase-list-table">
             <thead>
               <tr>
@@ -334,32 +397,34 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
                 <th>R date</th>
                 <th>R no</th>
                 <th>Bill date</th>
+                <th>Stk date</th>
                 <th>Bill no</th>
                 <th>Supplier</th>
                 <th>Name</th>
                 <th>Trn</th>
-                <th>Pur code</th>
-                <th>Pur name</th>
+                <th>Broker</th>
+                <th>Broker name</th>
                 <th>Item</th>
                 <th>Item name</th>
-                <th>God</th>
-                <th>Lot</th>
-                <th>B no</th>
+                <th>Plant</th>
+                <th>P code</th>
+                <th>Status</th>
                 <th className="text-right">Qty</th>
                 <th className="text-right">Weight</th>
+                <th className="text-right">Stk wt</th>
                 <th className="text-right">Rate</th>
                 <th className="text-right">Amount</th>
+                <th className="text-right">Dis amt</th>
                 <th className="text-right">Taxable</th>
                 <th className="text-right">CGST</th>
                 <th className="text-right">SGST</th>
                 <th className="text-right">IGST</th>
-                <th className="text-right">Freight</th>
-                <th className="text-right">Labour</th>
+                <th className="text-right">TDS</th>
                 <th className="text-right">Bill amt</th>
               </tr>
             </thead>
             <tbody>
-              {sortedRows.map((r, i) => (
+              {pagedRows.map((r, i) => (
                 <tr
                   key={`${r.R_NO ?? r.r_no}-${r.TRN_NO ?? r.trn_no}-${i}`}
                   className="purchase-list-row-clickable"
@@ -377,33 +442,35 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
                   <td style={{ whiteSpace: 'nowrap' }}>{formatLedgerDateDisplay(r.R_DATE ?? r.r_date)}</td>
                   <td>{r.R_NO ?? r.r_no ?? '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{formatLedgerDateDisplay(r.BILL_DATE ?? r.bill_date)}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatLedgerDateDisplay(r.STK_DATE ?? r.stk_date)}</td>
                   <td>{r.BILL_NO ?? r.bill_no ?? '—'}</td>
                   <td>{r.CODE ?? r.code ?? '—'}</td>
                   <td className="ledger-detail">{r.NAME ?? r.name ?? '—'}</td>
                   <td>{r.TRN_NO ?? r.trn_no ?? '—'}</td>
-                  <td>{r.PUR_CODE ?? r.pur_code ?? '—'}</td>
-                  <td className="ledger-detail">{r.PUR_NAME ?? r.pur_name ?? '—'}</td>
+                  <td>{r.BK_CODE ?? r.bk_code ?? '—'}</td>
+                  <td className="ledger-detail">{r.BK_NAME ?? r.bk_name ?? '—'}</td>
                   <td>{r.ITEM_CODE ?? r.item_code ?? '—'}</td>
                   <td className="ledger-detail">{r.ITEM_NAME ?? r.item_name ?? '—'}</td>
-                  <td>{r.GOD_CODE ?? r.god_code ?? '—'}</td>
-                  <td>{r.LOT ?? r.lot ?? '—'}</td>
-                  <td>{r.B_NO ?? r.b_no ?? '—'}</td>
-                  <td className="text-right">{fmtQty(signedDnVal(r, 'QNTY', 'qnty'))}</td>
-                  <td className="text-right">{fmtAmt(signedDnVal(r, 'WEIGHT', 'weight'))}</td>
+                  <td>{r.PLANT_CODE ?? r.plant_code ?? '—'}</td>
+                  <td>{r.P_CODE ?? r.p_code ?? '—'}</td>
+                  <td>{r.STATUS ?? r.status ?? '—'}</td>
+                  <td className="text-right">{fmtQty(n(r, 'QNTY', 'qnty'))}</td>
+                  <td className="text-right">{fmtAmt(n(r, 'WEIGHT', 'weight'))}</td>
+                  <td className="text-right">{fmtAmt(n(r, 'STK_WEIGHT', 'stk_weight'))}</td>
                   <td className="text-right">{fmtAmt(n(r, 'RATE', 'rate'))}</td>
-                  <td className="text-right">{fmtAmt(signedDnVal(r, 'AMOUNT', 'amount'))}</td>
-                  <td className="text-right">{fmtAmt(signedDnVal(r, 'TAXABLE', 'taxable'))}</td>
-                  <td className="text-right">{fmtAmt(signedDnVal(r, 'CGST_AMT', 'cgst_amt'))}</td>
-                  <td className="text-right">{fmtAmt(signedDnVal(r, 'SGST_AMT', 'sgst_amt'))}</td>
-                  <td className="text-right">{fmtAmt(signedDnVal(r, 'IGST_AMT', 'igst_amt'))}</td>
-                  <td className="text-right">{fmtAmt(n(r, 'FREIGHT', 'freight'))}</td>
-                  <td className="text-right">{fmtAmt(n(r, 'LABOUR', 'labour'))}</td>
-                  <td className="text-right">{fmtAmt(signedDnVal(r, 'BILL_AMT', 'bill_amt'))}</td>
+                  <td className="text-right">{fmtAmt(n(r, 'AMOUNT', 'amount'))}</td>
+                  <td className="text-right">{fmtAmt(n(r, 'DIS_AMT', 'dis_amt'))}</td>
+                  <td className="text-right">{fmtAmt(n(r, 'TAXABLE', 'taxable'))}</td>
+                  <td className="text-right">{fmtAmt(n(r, 'CGST_AMT', 'cgst_amt'))}</td>
+                  <td className="text-right">{fmtAmt(n(r, 'SGST_AMT', 'sgst_amt'))}</td>
+                  <td className="text-right">{fmtAmt(n(r, 'IGST_AMT', 'igst_amt'))}</td>
+                  <td className="text-right">{fmtAmt(n(r, 'TDS_AMT', 'tds_amt'))}</td>
+                  <td className="text-right">{fmtAmt(n(r, 'BILL_AMT', 'bill_amt'))}</td>
                 </tr>
               ))}
               <tr className="stock-sum-grand">
-                <td colSpan={15}>
-                  <strong>Grand total</strong>
+                <td colSpan={16}>
+                  <strong>Grand total (all pages)</strong>
                 </td>
                 <td className="text-right">
                   <strong>{fmtQty(totals.q)}</strong>
@@ -411,9 +478,15 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
                 <td className="text-right">
                   <strong>{fmtAmt(totals.w)}</strong>
                 </td>
+                <td className="text-right">
+                  <strong>{fmtAmt(totals.sw)}</strong>
+                </td>
                 <td className="text-right">—</td>
                 <td className="text-right">
                   <strong>{fmtAmt(totals.a)}</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAmt(totals.d)}</strong>
                 </td>
                 <td className="text-right">
                   <strong>{fmtAmt(totals.tx)}</strong>
@@ -427,14 +500,16 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
                 <td className="text-right">
                   <strong>{fmtAmt(totals.i)}</strong>
                 </td>
-                <td className="text-right">—</td>
-                <td className="text-right">—</td>
+                <td className="text-right">
+                  <strong>{fmtAmt(totals.tds)}</strong>
+                </td>
                 <td className="text-right">
                   <strong>{fmtAmt(totals.b)}</strong>
                 </td>
               </tr>
             </tbody>
           </table>
+          </div>
           {sortedRows.length === 0 ? <p className="stock-sum-empty">No rows returned.</p> : null}
         </div>
 
@@ -454,8 +529,7 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
         {compName} | FY {compYear}
         <br />
         <span className="compdet-date-hint">
-          PURCHASE lines for <strong>PU/DN</strong>. For <strong>DN</strong>, qty/weight/amount/tax columns are shown in
-          negative.
+          Purchase report with filters for type, party, broker, item and plant.
         </span>
       </p>
       {lookupError ? (
@@ -477,6 +551,16 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
           <button type="submit" className="btn btn-primary" disabled={loading}>
             {loading ? 'Loading…' : 'Run'}
           </button>
+        </div>
+        <div className="form-group">
+          <label htmlFor="pl-type">Type</label>
+          <select id="pl-type" className="form-select" value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="PU">PU</option>
+            <option value="DN">DN</option>
+            <option value="DX">DX</option>
+            <option value="CX">CX</option>
+            <option value="EV">EV</option>
+          </select>
         </div>
         <div className="form-group">
           <label htmlFor="pl-sdate">Starting date</label>
@@ -509,10 +593,10 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
           </datalist>
         </div>
         <div className="form-group">
-          <label htmlFor="pl-pur">Specific purchase code</label>
-          <input id="pl-pur" list="pl-pur-list" className="form-input" value={purCode} onChange={(e) => setPurCode(e.target.value)} />
+          <label htmlFor="pl-pur">Specific broker</label>
+          <input id="pl-pur" list="pl-pur-list" className="form-input" value={bkCode} onChange={(e) => setBkCode(e.target.value)} />
           <datalist id="pl-pur-list">
-            {purCodes.map((p) => (
+            {brokers.map((p) => (
               <option key={String(p.CODE ?? p.code)} value={String(p.CODE ?? p.code)}>
                 {`${String(p.NAME ?? p.name ?? '')} ${String(p.CITY ?? p.city ?? '')}`.trim()}
               </option>
@@ -520,12 +604,18 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
           </datalist>
         </div>
         <div className="form-group">
-          <label htmlFor="pl-god">Specific godown</label>
-          <input id="pl-god" list="pl-god-list" className="form-input" value={godCode} onChange={(e) => setGodCode(e.target.value)} />
+          <label htmlFor="pl-god">Specific plant</label>
+          <input
+            id="pl-god"
+            list="pl-god-list"
+            className="form-input"
+            value={plantCode}
+            onChange={(e) => setPlantCode(e.target.value)}
+          />
           <datalist id="pl-god-list">
-            {godowns.map((g) => (
-              <option key={String(g.GOD_CODE ?? g.god_code)} value={String(g.GOD_CODE ?? g.god_code)}>
-                {String(g.GOD_NAME ?? g.god_name ?? '')}
+            {plants.map((g) => (
+              <option key={String(g.PLANT_CODE ?? g.plant_code)} value={String(g.PLANT_CODE ?? g.plant_code)}>
+                {String(g.PLANT_NAME ?? g.plant_name ?? '')}
               </option>
             ))}
           </datalist>

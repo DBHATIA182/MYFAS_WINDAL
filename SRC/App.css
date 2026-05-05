@@ -4013,6 +4013,35 @@ td.sale-list-total-pad {
 
 .purchase-list-table {
   font-size: 0.72rem;
+  table-layout: auto !important;
+  width: max-content !important;
+  min-width: 2400px;
+  max-width: none !important;
+}
+
+.purchase-list-table thead th.text-right {
+  text-align: right !important;
+  padding-right: 6px !important;
+}
+
+.slide-11 .table-responsive--bill-ledger {
+  overflow-x: auto !important;
+  overflow-y: auto;
+  max-height: min(62vh, 560px);
+  border: 1px solid #dbe2ea;
+  border-radius: 8px;
+}
+
+.purchase-list-table th,
+.purchase-list-table td {
+  white-space: nowrap;
+}
+
+.purchase-list-table .stock-sum-grand td {
+  white-space: nowrap;
+  font-size: 0.68rem;
+  padding-left: 4px !important;
+  padding-right: 4px !important;
 }
 
 .purchase-list-row-clickable {
@@ -4027,6 +4056,50 @@ td.sale-list-total-pad {
 
 .purchase-bill-print-table {
   font-size: 0.68rem;
+}
+
+.purchase-bill-print-doc .sale-bill-print-banner-text,
+.purchase-bill-print-doc .sale-bill-print-company,
+.purchase-bill-print-doc .sale-bill-print-comp-name {
+  text-align: center !important;
+}
+
+.purchase-bill-print-doc .sale-bill-print-doc-banner {
+  display: block !important;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.28rem;
+}
+
+.purchase-bill-print-doc .sale-bill-print-banner-text {
+  max-width: 100% !important;
+  margin: 0 auto !important;
+}
+
+.purchase-bill-print-doc .sale-bill-print-inv-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  justify-content: initial;
+  margin-bottom: 0.24rem;
+  gap: 0.2rem 0.55rem;
+  font-size: 0.84rem;
+}
+
+.purchase-bill-print-doc .sale-bill-print-two-col {
+  margin-bottom: 0.45rem;
+  padding: 0.45rem 0.55rem;
+}
+
+.purchase-bill-print-doc .sale-bill-print-broker {
+  margin-bottom: 0.35rem;
+}
+
+.purchase-bill-print-doc .sale-bill-print-sum-block {
+  margin-left: auto !important;
+  margin-right: 0 !important;
+}
+
+.purchase-bill-print-doc .sale-bill-print-totals td {
+  padding: 0.22rem 0.4rem;
 }
 
 .stock-sum-row-clickable {

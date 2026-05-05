@@ -2455,23 +2455,13 @@ function buildPurchaseBillReportHtml(data, metadata) {
     ['SGST', t.sumS],
     ['IGST', t.sumI],
     ['Discount', t.sumDis],
-    ['Oth exp 1', t.oth1],
-    ['Oth exp 2', t.oth2],
-    ['Oth exp 3', t.oth3],
-    ['Oth exp 4', t.oth4],
-    ['Oth exp 5', t.oth5],
-    ['Oth exp 6', t.oth6],
-    ['Oth exp 7', t.oth7],
-    ['Oth exp 8', t.oth8],
-    ['Broker paid', t.brokPaid],
+    ['Dami amount', t.damiAmt],
+    ['MFee amount', t.mfeeAmt],
+    ['Labour', t.labourExp],
     ['Freight paid', t.freightPaid],
-    ['Mandi exp', t.mandiExp],
-    ['Labour exp', t.labourExp],
-    ['Bardana exp', t.bardanaExp],
-    ['CD amount', t.cdAmount],
-    ['Dharm kanta', t.dharmKanta],
-    ['Tulwai exp', t.tulwaiExp],
-    ['Round off', t.roundOff],
+    ['Add exp', t.addExp],
+    ['Less exp', t.lessExp],
+    ['TDS', t.tdsAmt],
     ['Bill amt', t.billAmt],
   ];
   let sumBody = '';
@@ -2557,86 +2547,99 @@ function buildPurchaseBillReportHtml(data, metadata) {
   `;
 }
 
-/** Purchase list (PU / DN) */
+/** Purchase list */
 function buildPurchaseListReportHtml(data, metadata) {
   const rows = Array.isArray(data?.rows) ? data.rows : [];
   const company = escHtml(metadata.companyName || '');
+  const type = escHtml(metadata.type || 'PU');
   const sdt = escHtml(metadata.startDate || '');
   const edt = escHtml(metadata.endDate || '');
-  const sup = escHtml(metadata.supplierLabel || 'All');
+  const party = escHtml(metadata.supplierLabel || 'All');
+  const broker = escHtml(metadata.brokerLabel || 'All');
   const item = escHtml(metadata.itemLabel || 'All');
-  const pur = escHtml(metadata.purLabel || 'All');
-  const god = escHtml(metadata.godLabel || 'All');
+  const plant = escHtml(metadata.plantLabel || 'All');
   const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
 
   let tq = 0;
   let tw = 0;
+  let tsw = 0;
   let ta = 0;
+  let td = 0;
   let tt = 0;
   let tc = 0;
   let ts = 0;
   let ti = 0;
+  let ttds = 0;
   let tb = 0;
   let body = '';
   rows.forEach((r) => {
-    const q = purchaseDnSigned(r, 'QNTY', 'qnty');
-    const w = purchaseDnSigned(r, 'WEIGHT', 'weight');
-    const a = purchaseDnSigned(r, 'AMOUNT', 'amount');
-    const tx = purchaseDnSigned(r, 'TAXABLE', 'taxable');
-    const c = purchaseDnSigned(r, 'CGST_AMT', 'cgst_amt');
-    const s = purchaseDnSigned(r, 'SGST_AMT', 'sgst_amt');
-    const i = purchaseDnSigned(r, 'IGST_AMT', 'igst_amt');
-    const b = purchaseDnSigned(r, 'BILL_AMT', 'bill_amt');
+    const q = stockNum(r, 'QNTY', 'qnty');
+    const w = stockNum(r, 'WEIGHT', 'weight');
+    const sw = stockNum(r, 'STK_WEIGHT', 'stk_weight');
+    const a = stockNum(r, 'AMOUNT', 'amount');
+    const dis = stockNum(r, 'DIS_AMT', 'dis_amt');
+    const tx = stockNum(r, 'TAXABLE', 'taxable');
+    const c = stockNum(r, 'CGST_AMT', 'cgst_amt');
+    const s = stockNum(r, 'SGST_AMT', 'sgst_amt');
+    const i = stockNum(r, 'IGST_AMT', 'igst_amt');
+    const tds = stockNum(r, 'TDS_AMT', 'tds_amt');
+    const b = stockNum(r, 'BILL_AMT', 'bill_amt');
     tq += q;
     tw += w;
+    tsw += sw;
     ta += a;
+    td += dis;
     tt += tx;
     tc += c;
     ts += s;
     ti += i;
+    ttds += tds;
     tb += b;
     body += `<tr>
       <td>${escHtml(String(r.TYPE ?? r.type ?? ''))}</td>
       <td>${escHtml(formatLedgerDateDisplay(r.R_DATE ?? r.r_date))}</td>
       <td>${escHtml(String(r.R_NO ?? r.r_no ?? ''))}</td>
       <td>${escHtml(formatLedgerDateDisplay(r.BILL_DATE ?? r.bill_date))}</td>
+      <td>${escHtml(formatLedgerDateDisplay(r.STK_DATE ?? r.stk_date))}</td>
       <td>${escHtml(String(r.BILL_NO ?? r.bill_no ?? ''))}</td>
       <td>${escHtml(String(r.CODE ?? r.code ?? ''))}</td>
       <td class="col-name">${escHtml(String(r.NAME ?? r.name ?? ''))}</td>
       <td>${escHtml(String(r.TRN_NO ?? r.trn_no ?? ''))}</td>
-      <td>${escHtml(String(r.PUR_CODE ?? r.pur_code ?? ''))}</td>
-      <td class="col-name">${escHtml(String(r.PUR_NAME ?? r.pur_name ?? ''))}</td>
+      <td>${escHtml(String(r.BK_CODE ?? r.bk_code ?? ''))}</td>
+      <td class="col-name">${escHtml(String(r.BK_NAME ?? r.bk_name ?? ''))}</td>
       <td>${escHtml(String(r.ITEM_CODE ?? r.item_code ?? ''))}</td>
       <td class="col-name">${escHtml(String(r.ITEM_NAME ?? r.item_name ?? ''))}</td>
-      <td>${escHtml(String(r.GOD_CODE ?? r.god_code ?? ''))}</td>
-      <td>${escHtml(String(r.LOT ?? r.lot ?? ''))}</td>
-      <td>${escHtml(String(r.B_NO ?? r.b_no ?? ''))}</td>
+      <td>${escHtml(String(r.PLANT_CODE ?? r.plant_code ?? ''))}</td>
+      <td>${escHtml(String(r.P_CODE ?? r.p_code ?? ''))}</td>
+      <td>${escHtml(String(r.STATUS ?? r.status ?? ''))}</td>
       <td class="amount">${formatStockPdf(q, 3)}</td>
       <td class="amount">${formatStockPdf(w)}</td>
+      <td class="amount">${formatStockPdf(sw)}</td>
       <td class="amount">${formatStockPdf(stockNum(r, 'RATE', 'rate'))}</td>
       <td class="amount">${formatStockPdf(a)}</td>
+      <td class="amount">${formatStockPdf(dis)}</td>
       <td class="amount">${formatStockPdf(tx)}</td>
       <td class="amount">${formatStockPdf(c)}</td>
       <td class="amount">${formatStockPdf(s)}</td>
       <td class="amount">${formatStockPdf(i)}</td>
-      <td class="amount">${formatStockPdf(stockNum(r, 'FREIGHT', 'freight'))}</td>
-      <td class="amount">${formatStockPdf(stockNum(r, 'LABOUR', 'labour'))}</td>
+      <td class="amount">${formatStockPdf(tds)}</td>
       <td class="amount">${formatStockPdf(b)}</td>
     </tr>`;
   });
 
   const grand = `<tr class="report-grand-total">
-      <td colspan="15" class="lbl-total">Grand total</td>
+      <td colspan="16" class="lbl-total">Grand total</td>
       <td class="amount">${formatStockPdf(tq, 3)}</td>
       <td class="amount">${formatStockPdf(tw)}</td>
+      <td class="amount">${formatStockPdf(tsw)}</td>
       <td class="amount">—</td>
       <td class="amount">${formatStockPdf(ta)}</td>
+      <td class="amount">${formatStockPdf(td)}</td>
       <td class="amount">${formatStockPdf(tt)}</td>
       <td class="amount">${formatStockPdf(tc)}</td>
       <td class="amount">${formatStockPdf(ts)}</td>
       <td class="amount">${formatStockPdf(ti)}</td>
-      <td class="amount">—</td>
-      <td class="amount">—</td>
+      <td class="amount">${formatStockPdf(ttds)}</td>
       <td class="amount">${formatStockPdf(tb)}</td>
     </tr>`;
 
@@ -2645,28 +2648,29 @@ function buildPurchaseListReportHtml(data, metadata) {
       <style>${PDF_REPORT_STYLES}</style>
       <div class="report-topbar">
         <div class="kicker">PURCHASE</div>
-        <h1>Purchase list (PU / DN)</h1>
+        <h1>Purchase list</h1>
         <div class="company">${company}</div>
         <table class="report-grid">
-          <tr><td class="lbl">Dates</td><td class="val">${sdt} to ${edt}</td><td class="lbl">Supplier</td><td class="val">${sup}</td></tr>
-          <tr><td class="lbl">Item</td><td class="val">${item}</td><td class="lbl">Purchase code</td><td class="val">${pur}</td></tr>
-          <tr><td class="lbl">Godown</td><td class="val" colspan="3">${god}</td></tr>
+          <tr><td class="lbl">Type</td><td class="val">${type}</td><td class="lbl">Dates</td><td class="val">${sdt} to ${edt}</td></tr>
+          <tr><td class="lbl">Party</td><td class="val">${party}</td><td class="lbl">Broker</td><td class="val">${broker}</td></tr>
+          <tr><td class="lbl">Item</td><td class="val">${item}</td><td class="lbl">Plant</td><td class="val">${plant}</td></tr>
         </table>
         <div class="report-period">Generated: ${generated}</div>
       </div>
       <table class="table-report">
         <thead>
           <tr>
-            <th>Type</th><th>R date</th><th>R no</th><th>Bill dt</th><th>Bill no</th><th>Code</th><th>Name</th><th>Trn</th>
-            <th>Pur code</th><th>Pur name</th><th>Item</th><th>Item name</th><th>God</th><th>Lot</th><th>B no</th>
-            <th class="amount">Qty</th><th class="amount">Wt</th><th class="amount">Rate</th><th class="amount">Amt</th>
+            <th>Type</th><th>R date</th><th>R no</th><th>Bill dt</th><th>Stk dt</th><th>Bill no</th><th>Code</th><th>Name</th><th>Trn</th>
+            <th>Broker</th><th>Broker name</th><th>Item</th><th>Item name</th><th>Plant</th><th>P code</th><th>Status</th>
+            <th class="amount">Qty</th><th class="amount">Wt</th><th class="amount">Stk wt</th><th class="amount">Rate</th><th class="amount">Amt</th>
+            <th class="amount">Dis amt</th>
             <th class="amount">Taxable</th><th class="amount">CGST</th><th class="amount">SGST</th><th class="amount">IGST</th>
-            <th class="amount">Freight</th><th class="amount">Labour</th><th class="amount">Bill amt</th>
+            <th class="amount">TDS</th><th class="amount">Bill amt</th>
           </tr>
         </thead>
         <tbody>${body}${grand}</tbody>
       </table>
-      <div class="report-foot">For TYPE DN, qty/weight/amount/tax and bill amount are shown as negative.</div>
+      <div class="report-foot">Report generated from PURCHASE with selected filters.</div>
     </div>
   `;
 }

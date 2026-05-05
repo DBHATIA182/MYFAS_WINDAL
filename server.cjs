@@ -1175,7 +1175,7 @@ async function resolvePreviousCompUid(comp_code, comp_uid) {
 
 const AGEING_LEDGER_OP_EXCLUDE = `AND NVL(UPPER(TRIM(A.VR_TYPE)), ' ') <> 'OP'`;
 
-/** Merge prior-year + current-year ledger lines for ageing (FIFO order); OP excluded only on current schema */
+/** Merge prior-year + current-year ledger lines for ageing (FIFO order). */
 async function fetchAgeingLedgerRawRowsMerged({ comp_code, comp_uid, e_date, scheduleNum, codeFilter }) {
   const prevUid = await resolvePreviousCompUid(comp_code, comp_uid);
   const binds = { comp_code, e_date, schedule: scheduleNum };
@@ -1211,9 +1211,11 @@ async function fetchAgeingLedgerRawRowsMerged({ comp_code, comp_uid, e_date, sch
   const orderSummary = `ORDER BY B.NAME, A.CODE, A.VR_DATE, A.VR_NO, A.VR_TYPE`;
   const orderDetail = `ORDER BY A.VR_DATE, A.VR_NO, A.VR_TYPE`;
 
+  const currentYearOpClause = prevUid ? AGEING_LEDGER_OP_EXCLUDE : '';
+
   const sqlCur = `${baseSelect}${detailCol}
         ${fromWhere}
-          ${AGEING_LEDGER_OP_EXCLUDE}
+          ${currentYearOpClause}
         ${codeClause ? orderDetail : orderSummary}`;
 
   const sqlPrev = `${baseSelect}${detailCol}
@@ -4300,7 +4302,7 @@ app.get('/api/purchaselist-purcodes', async (req, res) => {
   try {
     const { comp_code, comp_uid } = req.query;
     const rows = await runQuery(
-      `SELECT NAME, CITY, CODE FROM MASTER WHERE COMP_CODE = :comp_code ORDER BY NAME, CITY, CODE`,
+      `SELECT NAME, CITY, CODE FROM MASTER WHERE COMP_CODE = :comp_code AND ROUND(NVL(SCHEDULE,0), 2) = 11.20 ORDER BY NAME, CITY, CODE`,
       { comp_code },
       comp_uid
     );
@@ -4311,29 +4313,34 @@ app.get('/api/purchaselist-purcodes', async (req, res) => {
   }
 });
 
-app.get('/api/purchaselist-godowns', async (req, res) => {
+app.get('/api/purchaselist-plants', async (req, res) => {
   try {
     const { comp_code, comp_uid } = req.query;
     const rows = await runQuery(
-      `SELECT GOD_CODE, GOD_NAME FROM GODOWN WHERE COMP_CODE = :comp_code ORDER BY GOD_CODE`,
+      `SELECT PLANT_NAME, PLANT_CODE FROM PLANT WHERE COMP_CODE = :comp_code ORDER BY PLANT_CODE`,
       { comp_code },
       comp_uid
     );
     res.json(rows || []);
   } catch (err) {
-    console.error('❌ PurchaseList godowns error:', err.message);
+    console.error('❌ PurchaseList plants error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-/** Purchase list (PU / DN) */
+/** Purchase list */
 app.get('/api/purchase-list', async (req, res) => {
   try {
-    const { comp_code, comp_uid, s_date, e_date, code, item_code, pur_code, god_code } = req.query;
+    const { comp_code, comp_uid, type, s_date, e_date, code, item_code, bk_code, plant_code } = req.query;
+    const typeVal = String(type ?? '').trim().toUpperCase();
+    const validTypes = ['PU', 'DN', 'DX', 'CX', 'EV'];
+    if (!validTypes.includes(typeVal)) {
+      return res.status(400).json({ error: 'type is required (PU, DN, DX, CX, EV)' });
+    }
     const item = String(item_code ?? '').trim();
     const supBind = parseMasterCodeForSql(code);
-    const purBind = parseMasterCodeForSql(pur_code);
-    const god = String(god_code ?? '').trim();
+    const brokerBind = parseMasterCodeForSql(bk_code);
+    const plant = String(plant_code ?? '').trim();
     const sql = `
       SELECT
         A.TYPE,
@@ -4341,55 +4348,56 @@ app.get('/api/purchase-list', async (req, res) => {
         A.R_NO,
         A.BILL_DATE,
         A.BILL_NO,
+        A.V_DATE,
+        A.STK_DATE,
         A.CODE,
         B.NAME,
         B.CITY,
-        B.GST_NO,
         B.PAN,
+        B.GST_NO,
+        A.BK_CODE,
+        A.BK_CODE AS B_CODE,
+        C.NAME AS BK_NAME,
+        A.PLANT_CODE,
         A.TRN_NO,
-        A.PUR_CODE,
-        D.NAME AS PUR_NAME,
+        A.P_CODE,
         A.ITEM_CODE,
-        C.ITEM_NAME,
-        A.GOD_CODE,
-        A.LOT,
-        A.B_NO,
+        D.ITEM_NAME,
         A.QNTY,
+        A.STATUS,
         A.WEIGHT,
+        A.STK_WEIGHT,
         A.RATE,
         A.AMOUNT,
+        A.DIS_AMT,
         A.TAXABLE,
         A.CGST_AMT,
         A.SGST_AMT,
         A.IGST_AMT,
-        A.FREIGHT,
-        A.LABOUR,
-        A.BILL_AMT
+        A.BILL_AMT,
+        A.NTDS_AMT AS TDS_AMT
       FROM PURCHASE A
       JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
-      JOIN ITEMMAST C ON A.COMP_CODE = C.COMP_CODE AND A.ITEM_CODE = C.ITEM_CODE
-      LEFT JOIN MASTER D ON A.COMP_CODE = D.COMP_CODE AND A.PUR_CODE = D.CODE
+      LEFT JOIN MASTER C ON A.COMP_CODE = C.COMP_CODE AND A.BK_CODE = C.CODE
+      LEFT JOIN ITEMMAST D ON A.COMP_CODE = D.COMP_CODE AND A.ITEM_CODE = D.ITEM_CODE
       WHERE A.COMP_CODE = :comp_code
-        AND A.TYPE IN ('PU', 'DN')
+        AND A.TYPE = :type
         AND A.R_DATE BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))
-        AND (:item_all = 1 OR A.ITEM_CODE = :item_code)
-        AND (:sup_all = 1 OR A.CODE = :sup_code)
-        AND (:pur_all = 1 OR A.PUR_CODE = :pur_code)
-        AND (:god_all = 1 OR NVL(A.GOD_CODE, '') = :god_code)
-      ORDER BY A.R_DATE, A.R_NO, A.TRN_NO`;
+        AND A.CODE = DECODE(:code, 0, NVL(A.CODE, 0), :code)
+        AND A.BK_CODE = DECODE(:bk_code, 0, NVL(A.BK_CODE, 0), :bk_code)
+        AND A.ITEM_CODE = DECODE(:item_code, '', A.ITEM_CODE, :item_code)
+        AND A.PLANT_CODE = DECODE(:plant_code, '', A.PLANT_CODE, :plant_code)
+      ORDER BY A.R_DATE, A.R_NO`;
 
     const binds = {
       comp_code,
+      type: typeVal,
       s_date,
       e_date,
-      item_all: item === '' ? 1 : 0,
       item_code: item,
-      sup_all: supBind === undefined ? 1 : 0,
-      sup_code: supBind === undefined ? 0 : supBind,
-      pur_all: purBind === undefined ? 1 : 0,
-      pur_code: purBind === undefined ? 0 : purBind,
-      god_all: god === '' ? 1 : 0,
-      god_code: god,
+      code: supBind === undefined ? 0 : supBind,
+      bk_code: brokerBind === undefined ? 0 : brokerBind,
+      plant_code: plant,
     };
     const rows = await runQuery(sql, binds, comp_uid);
     res.json(rows || []);
@@ -4475,33 +4483,29 @@ app.get('/api/purchase-bill-print', async (req, res) => {
     }
     const sql = `
       SELECT
+        A.TYPE,
         A.R_DATE,
         A.R_NO,
-        A.TYPE,
         A.BILL_DATE,
         A.BILL_NO,
+        A.V_DATE,
+        A.STK_DATE,
         A.CODE,
         PRT.NAME,
-        PRT.ADD1,
-        PRT.ADD2,
-        PRT.ADD3,
         PRT.CITY,
-        PRT.GST_NO,
-        PRT.STATE,
-        PRT.STATE_CODE,
         PRT.PAN,
-        PRT.TEL_NO_O,
-        PRT.TEL_NO_R,
+        PRT.GST_NO,
+        A.BK_CODE,
         BK.NAME AS BK_NAME,
-        A.B_CODE,
+        A.PLANT_CODE,
         A.TRN_NO,
-        IT.ITEM_CODE,
+        A.P_CODE,
+        A.ITEM_CODE,
         IT.ITEM_NAME,
-        IT.HSN_CODE,
-        PURM.NAME AS PUR_NAME,
-        A.GOD_CODE,
         A.QNTY,
+        A.STATUS,
         A.WEIGHT,
+        A.STK_WEIGHT,
         A.RATE,
         A.AMOUNT,
         A.DIS_AMT,
@@ -4509,33 +4513,21 @@ app.get('/api/purchase-bill-print', async (req, res) => {
         A.CGST_AMT,
         A.SGST_AMT,
         A.IGST_AMT,
-        A.OTH_EXP_1,
-        A.OTH_EXP_2,
-        A.OTH_EXP_3,
-        A.OTH_EXP_4,
-        A.OTH_EXP_5,
-        A.OTH_EXP_6,
-        A.OTH_EXP_7,
-        A.OTH_EXP_8,
-        A.BROK_PAID,
-        A.MANDI_EXP,
+        A.DAMIAMT AS OTH_EXP_1,
+        A.MFEE_AMT AS OTH_EXP_2,
         A.LABOUR AS LABOUR_EXP,
-        A.BARDANA_EXP,
         A.FREIGHT AS FREIGHT_PAID,
-        A.CD_AMOUNT,
-        A.DHARAM_KANTA AS DHARM_KANTA,
-        A.TULWAI_EXP,
-        A.ROUND_OFF,
+        A.ADDEXP AS OTH_EXP_3,
+        A.LESSEXP AS OTH_EXP_4,
         A.BILL_AMT,
+        A.NTDS_AMT AS TDS_AMT,
         A.TRUCK,
         A.GR_NO,
-        A.TPT,
-        A.COST_CODE
+        A.TPT
       FROM PURCHASE A
-      JOIN ITEMMAST IT ON A.COMP_CODE = IT.COMP_CODE AND A.ITEM_CODE = IT.ITEM_CODE
       JOIN MASTER PRT ON A.COMP_CODE = PRT.COMP_CODE AND A.CODE = PRT.CODE
-      LEFT JOIN MASTER PURM ON A.COMP_CODE = PURM.COMP_CODE AND A.PUR_CODE = PURM.CODE
-      LEFT JOIN MASTER BK ON A.COMP_CODE = BK.COMP_CODE AND A.B_CODE = BK.CODE
+      LEFT JOIN MASTER BK ON A.COMP_CODE = BK.COMP_CODE AND A.BK_CODE = BK.CODE
+      LEFT JOIN ITEMMAST IT ON A.COMP_CODE = IT.COMP_CODE AND A.ITEM_CODE = IT.ITEM_CODE
       WHERE A.COMP_CODE = :comp_code
         AND TRIM(A.TYPE) = TRIM(:type)
         AND TRUNC(A.R_DATE) = TRUNC(TO_DATE(:r_date, 'DD-MM-YYYY'))
