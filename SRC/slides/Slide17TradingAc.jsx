@@ -489,11 +489,15 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
       return;
     }
     const bTypeFromLedger = ledgerLineType != null && String(ledgerLineType).trim() !== '' ? String(ledgerLineType).trim() : ' ';
+    const ptypeNum =
+      typeof vrType === 'number' ? vrType : parseInt(String(vrType ?? '').trim(), 10);
     setBillPrintParams({
       type: saleType,
+      ...(Number.isFinite(ptypeNum) && ptypeNum >= 1 && ptypeNum <= 9 ? { oracleTypeNum: ptypeNum } : {}),
       billNo: String(billNo).trim(),
       bType: bTypeFromLedger,
       oracleDt,
+      compYear: String(formData.comp_year ?? formData.COMP_YEAR ?? '').trim(),
       label: `Sale bill — ${saleType} · ${String(billNo)} · ${toDisplayDate(ymd)}`,
     });
     setBillPrintOpen(true);

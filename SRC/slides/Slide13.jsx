@@ -4,6 +4,32 @@ import SaleBillPrintModal from '../components/SaleBillPrintModal';
 import { toDisplayDate, toInputDateString, toOracleDate } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
 
+/** Maps Oracle SALE.TYPE (1–9) to print/API letter bucket (same as sale list / Slide8). */
+const SALE_LIST_NUMTYPE_TO_PRINT = {
+  1: 'SL',
+  2: 'CH',
+  3: 'SL',
+  4: 'SL',
+  5: 'SL',
+  6: 'SE',
+  7: 'SL',
+  8: 'CN',
+  9: 'RC',
+};
+
+const SALE_BILL_PRINT_PTYPE_OPTIONS = [
+  { value: '', label: 'Mixed — TYPE 1–9' },
+  { value: '1', label: '1 — Retail invoice' },
+  { value: '2', label: '2 — Consignment challan' },
+  { value: '3', label: '3 — Tax invoice' },
+  { value: '4', label: '4 — Goods return' },
+  { value: '5', label: '5 — Goods return consignment' },
+  { value: '6', label: '6 — Tax invoice others' },
+  { value: '7', label: '7 — Debit note' },
+  { value: '8', label: '8 — Credit note' },
+  { value: '9', label: '9 — Reverse charge invoice' },
+];
+
 function highlightMatch(text, q) {
   if (text == null) return null;
   const s = String(text);
@@ -22,18 +48,27 @@ function highlightMatch(text, q) {
 }
 
 export default function Slide13({ apiBase, formData, onPrev, onReset }) {
-  const [type, setType] = useState('SL');
-  const [billNo, setBillNo] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [billNoStart, setBillNoStart] = useState('');
+  const [billNoEnd, setBillNoEnd] = useState('');
+  const [salePtype, setSalePtype] = useState('');
+  const [pageType, setPageType] = useState('1');
+  const [copyNo, setCopyNo] = useState('0');
   const [bType, setBType] = useState('');
-  const [billDate, setBillDate] = useState('');
+  const [revchg, setRevchg] = useState('');
   const [printGrossDane, setPrintGrossDane] = useState('N');
   const [printPacking, setPrintPacking] = useState('N');
 
   const [parties, setParties] = useState([]);
+  const [brokers, setBrokers] = useState([]);
   const [lookupError, setLookupError] = useState('');
   const [partySearch, setPartySearch] = useState('');
+  const [brokerSearch, setBrokerSearch] = useState('');
   const [partyHi, setPartyHi] = useState(0);
+  const [brokerHi, setBrokerHi] = useState(0);
   const [selectedMcode, setSelectedMcode] = useState('');
+  const [selectedBk, setSelectedBk] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
@@ -48,22 +83,32 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
   const compYear = formData.comp_year ?? formData.COMP_YEAR ?? '';
 
   useEffect(() => {
+    const sRaw = formData.comp_s_dt ?? formData.COMP_S_DT;
+    const eRaw = formData.comp_e_dt ?? formData.COMP_E_DT;
+    const s = toInputDateString(sRaw);
+    const e = toInputDateString(eRaw);
+    if (s) setStartDate(s);
+    if (e) setEndDate(e);
+  }, [formData.comp_s_dt, formData.comp_e_dt, formData.COMP_S_DT, formData.COMP_E_DT]);
+
+  useEffect(() => {
     const load = async () => {
       if (!compCode || !compUid) return;
       setLookupError('');
       try {
-        const { data } = await axios.get(`${apiBase}/api/salelist-parties`, {
-          params: { comp_code: compCode, comp_uid: compUid },
-          withCredentials: true,
-          timeout: 120000,
-        });
-        setParties(Array.isArray(data) ? data : []);
+        const params = { comp_code: compCode, comp_uid: compUid };
+        const [pr, br] = await Promise.all([
+          axios.get(`${apiBase}/api/salelist-parties`, { params, withCredentials: true, timeout: 120000 }),
+          axios.get(`${apiBase}/api/salelist-brokers`, { params, withCredentials: true, timeout: 120000 }),
+        ]);
+        setParties(Array.isArray(pr.data) ? pr.data : []);
+        setBrokers(Array.isArray(br.data) ? br.data : []);
       } catch (err) {
-        console.error('Sale bill printing parties lookup:', err);
+        console.error('Sale bill printing lookups:', err);
         const st = err.response?.status;
         setLookupError(
           st === 404
-            ? `No /api/salelist-parties route on ${formatApiOrigin(apiBase)}. Run \`npm run server\` with latest server.cjs and refresh.`
+            ? `Parties/brokers routes missing on ${formatApiOrigin(apiBase)}. Run latest server.cjs.`
             : err.response?.data?.error || err.message || 'Request failed'
         );
       }
@@ -82,12 +127,33 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
     });
   }, [parties, partySearch]);
 
+  const filteredBrokers = useMemo(() => {
+    const q = brokerSearch.trim().toLowerCase();
+    if (!q) return brokers.slice(0, 150);
+    return brokers.filter((p) => {
+      const code = String(p.CODE ?? p.code ?? '').toLowerCase();
+      const name = String(p.NAME ?? p.name ?? '').toLowerCase();
+      const city = String(p.CITY ?? p.city ?? '').toLowerCase();
+      return code.includes(q) || name.includes(q) || city.includes(q);
+    });
+  }, [brokers, brokerSearch]);
+
   useEffect(() => {
     setPartyHi(0);
   }, [partySearch]);
+  useEffect(() => {
+    setBrokerHi(0);
+  }, [brokerSearch]);
 
   const safePartyHi = Math.min(partyHi, Math.max(0, filteredParties.length - 1));
+  const safeBrokerHi = Math.min(brokerHi, Math.max(0, filteredBrokers.length - 1));
   const selectedPartyRow = parties.find((p) => String(p.CODE ?? p.code ?? '') === String(selectedMcode));
+  const selectedBrokerRow = brokers.find((b) => String(b.CODE ?? b.code ?? '') === String(selectedBk));
+
+  const printTypeForOracleNum = (num) => {
+    if (!Number.isFinite(num)) return 'SL';
+    return SALE_LIST_NUMTYPE_TO_PRINT[num] || 'SL';
+  };
 
   const openSaleBill = (row) => {
     const typ = row.TYPE ?? row.type;
@@ -96,27 +162,25 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
     const bTypeFromRow = row.B_TYPE ?? row.b_type ?? '';
     const ymd = toInputDateString(billDt);
     const oracleDt = toOracleDate(ymd);
-    if (!typ || billNoFromRow == null || !oracleDt) {
+    if (typ == null || typ === '' || billNoFromRow == null || !oracleDt) {
       alert('Cannot open bill: missing type, bill no, or date.');
       return;
     }
-    let askGrossDane = printGrossDane;
-    let askPacking = printPacking;
-    // Explicit ask at open-time so user never misses these options.
-    const qGross = window.confirm('Print Gross Weight & Dane Weight? Click OK for Yes, Cancel for No.');
-    askGrossDane = qGross ? 'Y' : 'N';
-    const qPacking = window.confirm('Print Packing? Click OK for Yes, Cancel for No.');
-    askPacking = qPacking ? 'Y' : 'N';
-    setPrintGrossDane(askGrossDane);
-    setPrintPacking(askPacking);
+    const ptypeNum = typeof typ === 'number' ? typ : parseInt(String(typ ?? '').trim(), 10);
+    const printType = Number.isFinite(ptypeNum) && ptypeNum >= 1 && ptypeNum <= 9 ? printTypeForOracleNum(ptypeNum) : String(typ).trim();
 
     setBillPrintParams({
-      type: String(typ).trim(),
+      type: printType,
+      ...(Number.isFinite(ptypeNum) && ptypeNum >= 1 && ptypeNum <= 9 ? { oracleTypeNum: ptypeNum } : {}),
       billNo: String(billNoFromRow).trim(),
       bType: String(bTypeFromRow).trim(),
       oracleDt,
-      printGrossDane: askGrossDane,
-      printPacking: askPacking,
+      compYear: String(compYear ?? '').trim(),
+      printGrossDane: printGrossDane,
+      printPacking: printPacking,
+      pageType,
+      copyNo,
+      revchg: revchg || undefined,
       label: `Sale bill — ${typ} / ${billNoFromRow} / ${toDisplayDate(ymd)}`,
     });
     setBillPrintOpen(true);
@@ -124,8 +188,8 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!type) {
-      alert('Please select type.');
+    if (!startDate || !endDate) {
+      alert('Please set starting date and ending date.');
       return;
     }
 
@@ -134,12 +198,16 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
       const params = {
         comp_code: compCode,
         comp_uid: compUid,
-        type: String(type).trim().toUpperCase(),
+        s_date: toOracleDate(startDate),
+        e_date: toOracleDate(endDate),
       };
-      if (billNo.trim()) params.bill_no = billNo.trim();
+      if (salePtype.trim()) params.ptype = salePtype.trim();
+      if (billNoStart.trim()) params.sb_no = billNoStart.trim();
+      if (billNoEnd.trim()) params.eb_no = billNoEnd.trim();
       if (bType.trim()) params.b_type = bType.trim();
-      if (billDate) params.bill_date = toOracleDate(billDate);
       if (selectedMcode.trim()) params.mcode = selectedMcode.trim();
+      if (selectedBk.trim()) params.b_code = selectedBk.trim();
+      if (revchg === 'Y' || revchg === 'N') params.revchg = revchg;
 
       const { data } = await axios.get(`${apiBase}/api/sale-bill-printing-list`, {
         params,
@@ -148,7 +216,7 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
       });
       const list = Array.isArray(data) ? data : [];
       if (list.length === 0) {
-        alert('No matching sale bills found. Change filters and try again.');
+        alert('No matching sale bills found. Widen dates or clear bill range / party / broker filters.');
         return;
       }
       setRows(list);
@@ -163,7 +231,7 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
 
   if (showReport && rows.length > 0) {
     return (
-      <div className="slide slide-report">
+      <div className="slide slide-report slide-13-report">
         <SaleBillPrintModal
           open={billPrintOpen}
           onClose={() => {
@@ -187,40 +255,45 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
 
         <div className="report-info">
           <p>
-            <strong>Type</strong> {type}
-            {billNo.trim() ? (
+            <strong>Dates</strong> {toDisplayDate(startDate)} – {toDisplayDate(endDate)}
+            {billNoStart.trim() || billNoEnd.trim() ? (
               <>
                 {' · '}
-                <strong>Bill no</strong> {billNo.trim()}
+                <strong>Bill no</strong> {billNoStart.trim() || '—'} – {billNoEnd.trim() || '—'}
               </>
             ) : null}
+            {' · '}
+            <strong>SALETYPE</strong>{' '}
+            {SALE_BILL_PRINT_PTYPE_OPTIONS.find((o) => o.value === salePtype)?.label ?? 'Mixed'}
+            {' · '}
+            <strong>PAGETYPE</strong> {pageType}
+            {' · '}
+            <strong>COPY NO</strong> {copyNo}
             {bType.trim() ? (
               <>
                 {' · '}
                 <strong>B type</strong> {bType.trim()}
               </>
             ) : null}
-            {billDate ? (
+            {revchg ? (
               <>
                 {' · '}
-                <strong>Bill date</strong> {toDisplayDate(billDate)}
+                <strong>REVCHG</strong> {revchg}
               </>
             ) : null}
             {' · '}
-            <strong>Print Gross/Dane</strong> {printGrossDane}
-            {' · '}
-            <strong>Print Packing</strong> {printPacking}
+            <strong>Gross/Dane</strong> {printGrossDane} · <strong>Packing</strong> {printPacking}
           </p>
           <p>
             {compName} | FY {compYear}
             <br />
-            Click a row to open full printable sale bill.
+            Click a row to open the printable sale bill. (PAGETYPE / COPY NO apply to the Fox-style print stack; values are passed for future PDF parity.)
           </p>
         </div>
 
         <div className="report-display">
           <div className="table-responsive table-responsive--bill-ledger">
-            <table className="report-table report-table--bill-ledger">
+            <table className="report-table report-table--bill-ledger report-table--sale-print-list">
               <thead>
                 <tr>
                   <th>Type</th>
@@ -283,19 +356,20 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
   }
 
   return (
-    <div className="slide slide-8">
+    <div className="slide slide-13">
       <h2>Sale Bill Printing</h2>
       <p className="company-info">
         {compName} | FY {compYear}
         <br />
         <span className="compdet-date-hint">
-          Choose <strong>TYPE</strong> and optional bill filters. You can also select a specific party by code, name, or city.
+          VFP-style filters: <strong>date range</strong>, <strong>bill no range</strong>, <strong>SALETYPE</strong>, <strong>PAGETYPE</strong>,{' '}
+          <strong>COPY NO</strong>, <strong>BTYPE</strong>, <strong>REVCHG</strong>, optional party and broker.
         </span>
       </p>
 
       {lookupError ? (
         <div className="form-api-error" role="alert">
-          <strong>Could not load party list.</strong> {lookupError}
+          <strong>Could not load lookups.</strong> {lookupError}
         </div>
       ) : null}
 
@@ -308,29 +382,114 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
             {loading ? 'Loading...' : 'Run'}
           </button>
         </div>
+
         <div className="form-row-broker">
           <div className="form-group">
-            <label htmlFor="sbp-type">TYPE</label>
-            <select id="sbp-type" value={type} onChange={(e) => setType(e.target.value)}>
-              <option value="SL">SL</option>
-              <option value="SE">SE</option>
-              <option value="CN">CN</option>
-            </select>
+            <label htmlFor="sbp-sdt">Starting date</label>
+            <input
+              id="sbp-sdt"
+              type="date"
+              lang="en-GB"
+              className="form-input"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              required
+            />
           </div>
           <div className="form-group">
-            <label htmlFor="sbp-bill-no">Bill no</label>
+            <label htmlFor="sbp-edt">Ending date</label>
             <input
-              id="sbp-bill-no"
-              type="text"
+              id="sbp-edt"
+              type="date"
+              lang="en-GB"
               className="form-input"
-              value={billNo}
-              onChange={(e) => setBillNo(e.target.value)}
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              required
+            />
+          </div>
+        </div>
+
+        <div className="form-row-broker">
+          <div className="form-group">
+            <label htmlFor="sbp-sbno">Starting bill no</label>
+            <input
+              id="sbp-sbno"
+              type="text"
+              inputMode="numeric"
+              className="form-input"
+              value={billNoStart}
+              onChange={(e) => setBillNoStart(e.target.value)}
+              placeholder="Optional"
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="sbp-ebno">Ending bill no</label>
+            <input
+              id="sbp-ebno"
+              type="text"
+              inputMode="numeric"
+              className="form-input"
+              value={billNoEnd}
+              onChange={(e) => setBillNoEnd(e.target.value)}
               placeholder="Optional"
             />
           </div>
         </div>
 
         <div className="form-row-broker">
+          <div className="form-group">
+            <label htmlFor="sbp-saletype">SALETYPE</label>
+            <select id="sbp-saletype" value={salePtype} onChange={(e) => setSalePtype(e.target.value)}>
+              {SALE_BILL_PRINT_PTYPE_OPTIONS.map((o) => (
+                <option key={o.value || 'mix'} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label htmlFor="sbp-pagetype">PAGETYPE</label>
+            <select id="sbp-pagetype" value={pageType} onChange={(e) => setPageType(e.target.value)} title="Fox: 1 = standard, 2 = line padding">
+              <option value="1">1 — Standard page</option>
+              <option value="2">2 — Line padding (Fox PAGETYPE 2)</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="form-row-broker">
+          <div className="form-group">
+            <label htmlFor="sbp-copyno">COPY NO</label>
+            <select id="sbp-copyno" value={copyNo} onChange={(e) => setCopyNo(e.target.value)} title="Fox: 0 = original+duplicate+triplicate">
+              <option value="0">0 — All copies (Original + Duplicate + Triplicate)</option>
+              <option value="1">1 — Original for buyer</option>
+              <option value="2">2 — Duplicate</option>
+              <option value="3">3 — Triplicate</option>
+              <option value="4">4 — Quadruplicate</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label htmlFor="sbp-b-type">BTYPE</label>
+            <input
+              id="sbp-b-type"
+              type="text"
+              className="form-input"
+              value={bType}
+              onChange={(e) => setBType(e.target.value)}
+              placeholder="Optional bill branch / godown type"
+            />
+          </div>
+        </div>
+
+        <div className="form-row-broker">
+          <div className="form-group">
+            <label htmlFor="sbp-revchg">REVCHG</label>
+            <select id="sbp-revchg" value={revchg} onChange={(e) => setRevchg(e.target.value)} title="Y = only TYPE 9; N = exclude TYPE 9">
+              <option value="">— All (no filter)</option>
+              <option value="Y">Y — Reverse charge only (TYPE 9)</option>
+              <option value="N">N — Exclude reverse charge</option>
+            </select>
+          </div>
           <div className="form-group">
             <label htmlFor="sbp-print-gross-dane">Print Gross Weight &amp; Dane Weight</label>
             <select id="sbp-print-gross-dane" value={printGrossDane} onChange={(e) => setPrintGrossDane(e.target.value)}>
@@ -338,6 +497,9 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
               <option value="Y">Yes</option>
             </select>
           </div>
+        </div>
+
+        <div className="form-row-broker">
           <div className="form-group">
             <label htmlFor="sbp-print-packing">Print Packing</label>
             <select id="sbp-print-packing" value={printPacking} onChange={(e) => setPrintPacking(e.target.value)}>
@@ -345,42 +507,17 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
               <option value="Y">Yes</option>
             </select>
           </div>
-        </div>
-
-        <div className="form-row-broker">
-          <div className="form-group">
-            <label htmlFor="sbp-b-type">B type</label>
-            <input
-              id="sbp-b-type"
-              type="text"
-              className="form-input"
-              value={bType}
-              onChange={(e) => setBType(e.target.value)}
-              placeholder="Optional"
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="sbp-bill-date">Bill date</label>
-            <input
-              id="sbp-bill-date"
-              type="date"
-              lang="en-GB"
-              className="form-input"
-              value={billDate}
-              onChange={(e) => setBillDate(e.target.value)}
-              title="Optional: leave blank to search all dates for this type / filters"
-            />
-          </div>
+          <div className="form-group" aria-hidden="true" />
         </div>
 
         <div className="form-group account-search-group">
-          <label htmlFor="sbp-party-search">Specific party (optional) — search by code, name, city</label>
+          <label htmlFor="sbp-party-search">Specific party (optional)</label>
           <input
             id="sbp-party-search"
             type="search"
             className="form-input"
             autoComplete="off"
-            placeholder="Search code, name, city..."
+            placeholder="Search code, name, city…"
             value={partySearch}
             onChange={(e) => setPartySearch(e.target.value)}
             onKeyDown={(e) => {
@@ -420,9 +557,9 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
           ) : (
             <div className="account-search-results party-search-results" role="listbox">
               <div className="account-search-header party-search-header" aria-hidden="true">
-                <span>Code</span>
-                <span>Name</span>
-                <span>City</span>
+                <span>CODE</span>
+                <span>NAME</span>
+                <span>CITY</span>
               </div>
               {filteredParties.length === 0 ? (
                 <div className="account-search-empty">
@@ -446,6 +583,88 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
                     >
                       <span className="account-search-code">{highlightMatch(code, partySearch)}</span>
                       <span className="account-search-name">{highlightMatch(row.NAME ?? row.name, partySearch)}</span>
+                      <span className="account-search-city">{row.CITY ?? row.city ?? '—'}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="form-group account-search-group">
+          <label htmlFor="sbp-broker-search">Specific broker (optional)</label>
+          <input
+            id="sbp-broker-search"
+            type="search"
+            className="form-input"
+            autoComplete="off"
+            placeholder="Search broker code, name, city…"
+            value={brokerSearch}
+            onChange={(e) => setBrokerSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (selectedBk) return;
+              const max = Math.max(0, filteredBrokers.length - 1);
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (filteredBrokers.length === 0) return;
+                setBrokerHi((h) => Math.min(max, h + 1));
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setBrokerHi((h) => Math.max(0, h - 1));
+              } else if (e.key === 'Enter') {
+                const r = filteredBrokers[safeBrokerHi];
+                if (r) {
+                  e.preventDefault();
+                  setSelectedBk(String(r.CODE ?? r.code ?? '').trim());
+                  setBrokerSearch('');
+                }
+              }
+            }}
+          />
+          {selectedBk ? (
+            <p className="account-selected-hint">
+              Broker: <strong>{selectedBrokerRow?.NAME ?? '—'}</strong> (<code>{selectedBk}</code>)
+              <button
+                type="button"
+                className="btn-text-clear"
+                onClick={() => {
+                  setSelectedBk('');
+                  setBrokerSearch('');
+                }}
+              >
+                Clear
+              </button>
+            </p>
+          ) : (
+            <div className="account-search-results party-search-results" role="listbox">
+              <div className="account-search-header party-search-header" aria-hidden="true">
+                <span>CODE</span>
+                <span>NAME</span>
+                <span>CITY</span>
+              </div>
+              {filteredBrokers.length === 0 ? (
+                <div className="account-search-empty">
+                  {brokerSearch.trim() ? 'No matches found.' : 'Type to search or leave empty for all brokers.'}
+                </div>
+              ) : (
+                filteredBrokers.map((row, index) => {
+                  const code = row.CODE ?? row.code;
+                  const rowHi = safeBrokerHi === index;
+                  return (
+                    <button
+                      key={`b-${code}`}
+                      type="button"
+                      role="option"
+                      className={`account-search-row party-search-row${rowHi ? ' is-highlight' : ''}`}
+                      onMouseEnter={() => setBrokerHi(index)}
+                      onClick={() => {
+                        setSelectedBk(String(code).trim());
+                        setBrokerSearch('');
+                      }}
+                    >
+                      <span className="account-search-code">{highlightMatch(code, brokerSearch)}</span>
+                      <span className="account-search-name">{highlightMatch(row.NAME ?? row.name, brokerSearch)}</span>
                       <span className="account-search-city">{row.CITY ?? row.city ?? '—'}</span>
                     </button>
                   );

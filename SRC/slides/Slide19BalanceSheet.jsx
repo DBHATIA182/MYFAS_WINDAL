@@ -318,11 +318,15 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
       return;
     }
     const bTypeFromLedger = ledgerLineType != null && String(ledgerLineType).trim() !== '' ? String(ledgerLineType).trim() : ' ';
+    const ptypeNum =
+      typeof vrType === 'number' ? vrType : parseInt(String(vrType ?? '').trim(), 10);
     setBillPrintParams({
       type: saleType,
+      ...(Number.isFinite(ptypeNum) && ptypeNum >= 1 && ptypeNum <= 9 ? { oracleTypeNum: ptypeNum } : {}),
       billNo: String(billNo).trim(),
       bType: bTypeFromLedger,
       oracleDt,
+      compYear: String(formData.comp_year ?? formData.COMP_YEAR ?? '').trim(),
       label: `Sale bill — sale.type=${saleType} · bill_no=${String(billNo)} · b_type=${bTypeFromLedger.trim() || ' '} · ${toDisplayDate(ymd)}`,
     });
     setBillPrintOpen(true);

@@ -1,11 +1,16 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { formatLedgerDateDisplay } from '../utils/dateFormat';
 import { rupeesToWords } from '../utils/rupeesInWords';
+import {
+  saleBillDocTitleFromVfpType,
+  saleBillOracleTypeIsCreditNote,
+  saleBillStatusUnitLabel,
+} from '../utils/saleBillDocTitle';
 import { signedQrCodeToDataUrl, dataUrlToObjectUrl } from '../utils/qrDataUrl';
 import { buildReportHtml, generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelWorkbook } from '../utils/excelExport';
-import { rowFieldCI, rowFieldAny } from '../utils/rowFieldCI';
+import { rowFieldCI, rowFieldAny, saleBillEinvoiceText, stripLeadingRegistrationJunk } from '../utils/rowFieldCI';
 
 function signedQrRaw(row) {
   if (!row) return null;
@@ -54,6 +59,19 @@ function n(row, upper, lower) {
   return Number.isNaN(p) ? 0 : p;
 }
 
+/** VFP: prefer RATE_QW when non-zero, else RATE. */
+function effectiveSaleBillLineRate(row) {
+  if (!row) return 0;
+  const dr = row.DISPLAY_RATE ?? row.display_rate;
+  if (dr != null && dr !== '') {
+    const p = parseFloat(dr);
+    if (!Number.isNaN(p)) return p;
+  }
+  const rq = n(row, 'RATE_QW', 'rate_qw');
+  if (Math.abs(rq) > 0.000001) return rq;
+  return n(row, 'RATE', 'rate');
+}
+
 function fmtAmt(val) {
   const x = parseFloat(val) || 0;
   return x.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -89,18 +107,29 @@ function cleanPrintText(raw) {
   return s;
 }
 
+function normalizeWhatsappDigits(raw) {
+  if (raw == null || raw === '') return '';
+  let d = String(raw).replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.length === 10 && /^[6-9]/.test(d)) return `91${d}`;
+  return d;
+}
+
 export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, compUid, billParams, companyName = '' }) {
   const [header, setHeader] = useState(null);
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [mobilePdfPreview, setMobilePdfPreview] = useState(() => window.innerWidth <= 768);
-
   useEffect(() => {
     const onResize = () => setMobilePdfPreview(window.innerWidth <= 768);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  /** Invalidates stale fetches so StrictMode / reopen never leaves loading stuck forever. */
+  const billFetchGenRef = useRef(0);
 
   useEffect(() => {
     if (!open || !billParams) return;
@@ -112,65 +141,114 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
   }, [open, billParams, onClose]);
 
   useEffect(() => {
-    if (!open || !billParams || !compCode || !compUid) return;
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setErr('');
-      setHeader(null);
-      setLines([]);
-      try {
-        const [hRes, lRes] = await Promise.all([
-          axios.get(`${apiBase}/api/compdet-print-header`, {
-            params: { comp_code: compCode, comp_uid: compUid },
-            withCredentials: true,
-            timeout: 120000,
-          }),
-          axios.get(`${apiBase}/api/sale-bill-print`, {
-            params: {
-              comp_code: compCode,
-              comp_uid: compUid,
-              type: billParams.type,
-              bill_no: billParams.billNo,
-              b_type: billParams.bType,
-              bill_date: billParams.oracleDt,
-            },
-            withCredentials: true,
-            timeout: 120000,
-          }),
-        ]);
-        if (cancelled) return;
+    if (!open || !billParams || !compCode || !compUid) {
+      setLoading(false);
+      return;
+    }
+    const gen = ++billFetchGenRef.current;
+    const abortCtl = new AbortController();
+    setLoading(true);
+    setErr('');
+    setHeader(null);
+    setLines([]);
+    const headerParams = { comp_code: compCode, comp_uid: compUid };
+    const cy = String(billParams.compYear ?? '').trim();
+    if (cy) headerParams.comp_year = cy;
+
+    const printReq = {
+      comp_code: compCode,
+      comp_uid: compUid,
+      type: billParams.type ?? '',
+      bill_no: billParams.billNo,
+      b_type: billParams.bType,
+      bill_date: billParams.oracleDt,
+    };
+    const ots = String(billParams.oracleTypesCsv ?? '').trim();
+    if (ots) printReq.oracle_types = ots;
+    else if (billParams.oracleTypeNum != null && String(billParams.oracleTypeNum).trim() !== '')
+      printReq.oracle_types = String(billParams.oracleTypeNum).trim();
+    const manualFin = String(billParams.saleInvFinYear ?? '').trim();
+    if (manualFin) printReq.fin_year = manualFin;
+    if (cy) printReq.comp_year = cy;
+
+    /** Sale-bill-print can run several Oracle probes; keep above worst-case server timeouts. */
+    const reqOpts = { withCredentials: true, timeout: 420000, signal: abortCtl.signal };
+
+    axios
+      .get(`${apiBase}/api/compdet-print-header`, { params: headerParams, ...reqOpts })
+      .then((hRes) => {
+        if (gen !== billFetchGenRef.current) return;
         setHeader(hRes.data || null);
+      })
+      .catch(() => {
+        if (gen !== billFetchGenRef.current) return;
+        setHeader(null);
+      });
+
+    (async () => {
+      try {
+        const lRes = await axios.get(`${apiBase}/api/sale-bill-print`, { params: printReq, ...reqOpts });
+        if (gen !== billFetchGenRef.current) return;
         setLines(Array.isArray(lRes.data) ? lRes.data : []);
       } catch (e) {
-        if (!cancelled) {
-          setErr(e.response?.data?.error || e.message || 'Failed to load bill');
+        if (gen !== billFetchGenRef.current) return;
+        const ax = e && typeof e === 'object' ? e : {};
+        const axCode = String(ax.code || '');
+        const axMsg = String(ax.message || '');
+        if (axCode === 'ERR_CANCELED' || ax.name === 'CanceledError' || axMsg.toLowerCase().includes('canceled')) {
+          return;
         }
+        setErr(ax.response?.data?.error || axMsg || 'Failed to load bill');
       } finally {
-        if (!cancelled) setLoading(false);
+        if (gen === billFetchGenRef.current) setLoading(false);
       }
     })();
+
     return () => {
-      cancelled = true;
+      billFetchGenRef.current += 1;
+      abortCtl.abort();
     };
   }, [open, billParams, apiBase, compCode, compUid]);
 
   const first = lines[0];
+  const irnNoDisp = first ? saleBillEinvoiceText(first, ['IRN_NO', 'irn_no']) : '';
+  const ackNoDisp = first ? saleBillEinvoiceText(first, ['ACK_NO', 'ack_no']) : '';
+  const ewayNoDisp = first ? saleBillEinvoiceText(first, ['EWAY_NO', 'eway_no']) : '';
+  const hasEinvoiceRow = !!(irnNoDisp || ackNoDisp || ewayNoDisp);
   const totals = useMemo(() => {
     let sumAmt = 0;
     let sumTax = 0;
     let sumC = 0;
     let sumS = 0;
     let sumI = 0;
+    let sumBk = 0;
+    let sumDami = 0;
     for (const r of lines) {
       sumAmt += n(r, 'AMOUNT', 'amount');
       sumTax += n(r, 'TAXABLE', 'taxable');
       sumC += n(r, 'CGST_AMT', 'cgst_amt');
       sumS += n(r, 'SGST_AMT', 'sgst_amt');
       sumI += n(r, 'IGST_AMT', 'igst_amt');
+      sumBk += n(r, 'BK_AMT', 'bk_amt');
+      sumDami += n(r, 'DAMI', 'dami');
     }
     const freight = first ? n(first, 'FREIGHT', 'freight') : 0;
     const billAmt = first ? n(first, 'BILL_AMT', 'bill_amt') : 0;
+    const labourBill = first ? n(first, 'LABOUR', 'labour') : 0;
+    const insuranceBill = first ? n(first, 'INS', 'ins') : 0;
+    const othExpBill = first ? n(first, 'OTH_EXP', 'oth_exp') : 0;
+    const othNameBill = first ? rowFieldCI(first, 'oth_name') : '';
+    const tdsAmt = first ? n(first, 'TDS_AMT', 'tds_amt') : 0;
+    const tdsPerBill = first ? n(first, 'TDS_PER', 'tds_per') : 0;
+    const tdsOnBill = first ? n(first, 'TDS_ON_AMT', 'tds_on_amt') : 0;
+    const tcsAmt = first ? n(first, 'TCS_AMT', 'tcs_amt') : 0;
+    const tcsPerBill = first ? n(first, 'TCS_PER', 'tcs_per') : 0;
+    const disPerBill = first ? n(first, 'DIS_PER', 'dis_per') : 0;
+    const labAmtBill = first ? n(first, 'LAB_AMT', 'lab_amt') : 0;
+    const bardAmtBill = first ? n(first, 'BARD_AMT', 'bard_amt') : 0;
+    const fgtAmtBill = first ? n(first, 'FGT_AMT', 'fgt_amt') : 0;
+    const insAmtBill = first ? n(first, 'INS_AMT', 'ins_amt') : 0;
+    const othAmtBill = first ? n(first, 'OTH_AMT', 'oth_amt') : 0;
     const expenseItems = first
       ? [
           {
@@ -197,7 +275,37 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
       disAmt += n(r, 'DIS_AMT', 'dis_amt');
       othExp5 += n(r, 'OTH_EXP5', 'oth_exp5');
     }
-    return { sumAmt, sumTax, sumC, sumS, sumI, freight, billAmt, disAmt, othExp5, expenseItems };
+    const netPayable = billAmt - tdsAmt;
+    return {
+      sumAmt,
+      sumTax,
+      sumC,
+      sumS,
+      sumI,
+      sumBk,
+      sumDami,
+      freight,
+      billAmt,
+      labourBill,
+      insuranceBill,
+      othExpBill,
+      othNameBill,
+      tdsAmt,
+      tdsPerBill,
+      tdsOnBill,
+      tcsAmt,
+      tcsPerBill,
+      disPerBill,
+      labAmtBill,
+      bardAmtBill,
+      fgtAmtBill,
+      insAmtBill,
+      othAmtBill,
+      disAmt,
+      othExp5,
+      expenseItems,
+      netPayable,
+    };
   }, [lines, first]);
 
   const saleTypeFromBillParams = useMemo(() => {
@@ -213,13 +321,31 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
     return raw != null && String(raw).trim() !== '' ? String(raw).trim().toUpperCase() : '';
   }, [first]);
 
-  const isCreditNoteSale = saleTypeFromBillParams === 'CN' || saleTypeFromFirstLine === 'CN';
+  const oracleSaleTypeNum = useMemo(() => {
+    const raw = first ? first.TYPE ?? first.type : null;
+    const num = typeof raw === 'number' ? raw : parseInt(String(raw ?? '').trim(), 10);
+    if (Number.isFinite(num) && num >= 1 && num <= 9) return num;
+    const fromParams = parseInt(String(billParams?.oracleTypeNum ?? '').trim(), 10);
+    if (Number.isFinite(fromParams) && fromParams >= 1 && fromParams <= 9) return fromParams;
+    return null;
+  }, [first, billParams?.oracleTypeNum]);
+
+  const isCreditNoteSale =
+    saleTypeFromBillParams === 'CN' ||
+    saleTypeFromFirstLine === 'CN' ||
+    saleBillOracleTypeIsCreditNote(oracleSaleTypeNum);
 
   const docTitle = useMemo(() => {
+    const taxSum = totals.sumC + totals.sumS + totals.sumI;
+    const vfp = saleBillDocTitleFromVfpType(oracleSaleTypeNum, {
+      monO: billParams?.monO,
+      billTaxSum: taxSum,
+    });
+    if (vfp) return vfp;
     if (isCreditNoteSale) return 'CREDIT NOTE';
-    if (totals.sumC + totals.sumS + totals.sumI === 0) return 'BILL OF SUPPLY';
+    if (taxSum === 0) return 'BILL OF SUPPLY';
     return 'TAX INVOICE';
-  }, [isCreditNoteSale, totals]);
+  }, [oracleSaleTypeNum, billParams?.monO, isCreditNoteSale, totals]);
 
   const isBillOfSupplyNoTax = useMemo(() => {
     const taxTotal = Math.abs(totals.sumC) + Math.abs(totals.sumS) + Math.abs(totals.sumI);
@@ -246,7 +372,10 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
   const dWeightHeader = String(rowFieldCI(first || {}, 'd_weight_header') || gWeightHeader).trim();
   const rateHeader = String(rowFieldCI(first || {}, 'g_rate_header') || 'In Qtl.').trim();
 
-  const amountInWords = useMemo(() => rupeesToWords(totals.billAmt || totals.sumAmt), [totals]);
+  const amountInWords = useMemo(
+    () => rupeesToWords(totals.netPayable != null ? totals.netPayable : totals.billAmt || totals.sumAmt || 0),
+    [totals]
+  );
 
   const qrSourceRow = useMemo(() => {
     if (!lines.length) return null;
@@ -286,7 +415,8 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
   }, [lines, header, first, docTitle, totals, qrDataUrl]);
 
   const compDisplayName = useMemo(() => {
-    const fromDet = rowFieldCI(header || {}, 'comp_name');
+    const h0 = header || {};
+    const fromDet = rowFieldCI(h0, 'g_compname') || rowFieldCI(h0, 'comp_name');
     const fromForm = String(companyName || '').trim();
     return (fromDet || fromForm || 'Company').trim();
   }, [header, companyName]);
@@ -300,18 +430,40 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
   }, [compDisplayName, isBillOfSupplyNoTax]);
 
   const pdfMeta = useMemo(
-    () => ({
-      companyName: compDisplayName,
-      apiBase,
-      printGrossDane: billParams?.printGrossDane,
-      printPacking: billParams?.printPacking,
-      invoiceNo: first
-        ? isCreditNoteSale
-          ? rowFieldCI(first, 'bill_no') || rowFieldCI(first, 'sale_inv_no') || 'bill'
-          : rowFieldCI(first, 'sale_inv_no') || rowFieldCI(first, 'bill_no') || 'bill'
-        : 'bill',
-    }),
-    [apiBase, billParams?.printGrossDane, billParams?.printPacking, compDisplayName, first, isCreditNoteSale]
+    () => {
+      const partyTel =
+        (first ? rowFieldCI(first, 'tel_no_o') : '') ||
+        (first ? rowFieldCI(first, 'tel_no') : '') ||
+        (first ? rowFieldCI(first, 'mobile') : '') ||
+        '';
+      const dispatchTel =
+        (first ? rowFieldCI(first, 'delv_tel_no_o') : '') ||
+        (first ? rowFieldCI(first, 'god_tel_no_1') : '') ||
+        (first ? rowFieldCI(first, 'god_tel_no_2') : '') ||
+        '';
+      const companyTel =
+        rowFieldAny(header || {}, ['comp_tel1', 'comptel1', 'tel1', 'phone1']) ||
+        rowFieldAny(header || {}, ['comp_tel2', 'comptel2', 'tel2', 'phone2']) ||
+        '';
+      return {
+        companyName: compDisplayName,
+        apiBase,
+        printGrossDane: billParams?.printGrossDane,
+        printPacking: billParams?.printPacking,
+        invoiceNo: first
+          ? isCreditNoteSale
+            ? rowFieldCI(first, 'bill_no') || rowFieldCI(first, 'sale_inv_no') || 'bill'
+            : rowFieldCI(first, 'sale_inv_no') || rowFieldCI(first, 'bill_no') || 'bill'
+          : 'bill',
+        /** WhatsApp share: prefer buyer phone; fallback dispatch/company phone. */
+        shareWhatsAppPhone: partyTel || dispatchTel || companyTel,
+        /** Force wa.me direct chat so contact picker is skipped. */
+        preferWhatsAppDirectToNumber: true,
+        partyTel,
+        dispatchTel,
+      };
+    },
+    [apiBase, billParams?.printGrossDane, billParams?.printPacking, compDisplayName, first, header, isCreditNoteSale]
   );
 
   const handleDownloadPdf = useCallback(() => {
@@ -334,6 +486,14 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
 
   const handleShareWhatsApp = useCallback(() => {
     if (!pdfData) return;
+    const waDigits = normalizeWhatsappDigits(pdfMeta?.shareWhatsAppPhone || '');
+    if (waDigits) {
+      const proceed = window.confirm(`Opening WhatsApp to +${waDigits}. Continue?`);
+      if (!proceed) return;
+    } else {
+      const proceed = window.confirm('No bill phone found. Open WhatsApp without a prefilled number?');
+      if (!proceed) return;
+    }
     const refNo = first
       ? isCreditNoteSale
         ? rowFieldCI(first, 'bill_no') || '—'
@@ -372,12 +532,15 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
   const tel2 = rowFieldAny(h, ['comp_tel2', 'comptel2', 'tel2', 'phone2']);
   const gstNo = rowFieldAny(h, ['gst_no', 'gstno', 'comp_gst', 'gstin']);
   const compPan = rowFieldAny(h, ['comp_pan', 'pan', 'company_pan']);
-  const iecNo = cleanPrintText(rowFieldAny(h, ['comp_tin', 'iec_no']));
-  const compFssaiNo = cleanPrintText(rowFieldAny(h, ['fssai_no']));
+  /** Company FSSAI: compdet.fssai_no preferred; fallback comp_tin / iec_no; strip stray leading punctuation. */
+  const companyFssai = stripLeadingRegistrationJunk(
+    rowFieldAny(h, ['fssai_no']) || rowFieldAny(h, ['comp_tin', 'iec_no'])
+  );
   const compLlpin = cleanPrintText(rowFieldAny(h, ['llpin']));
-  const compCin = cleanPrintText(rowFieldAny(h, ['cin_no']));
-  const compUdyam = cleanPrintText(rowFieldAny(h, ['udyam_reg_no']));
-  const email = rowFieldCI(h, 'email');
+  const compCin = cleanPrintText(rowFieldAny(h, ['cin_no', 'CIN_NO', 'G_CIN_NO']));
+  /** compdet.udyam_no (+ enriched G_UDYAM_NO): strip stray “-” prefix sometimes stored in Fox-era data */
+  const compUdyam = stripLeadingRegistrationJunk(rowFieldAny(h, ['udyam_no', 'G_UDYAM_NO', 'g_udyam_no', 'udyam_reg_no']));
+  const email = cleanPrintText(rowFieldAny(h, ['comp_email', 'G_EMAIL', 'g_email', 'email']));
   const website = cleanPrintText(rowFieldAny(h, ['website', 'web_site', 'comp_website', 'site', 'url']));
   const headingLines = [];
   if (compAdd1) headingLines.push(compAdd1);
@@ -392,17 +555,11 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
     .filter(Boolean)
     .join('    |    ');
   if (gstPanLine) headingLines.push(gstPanLine);
-  const iecFssaiLine = [
-    iecNo ? `IEC No.: ${iecNo}` : '',
-    compFssaiNo ? `FSSAI No.: ${compFssaiNo}` : '',
-  ]
-    .filter(Boolean)
-    .join('    |    ');
-  if (iecFssaiLine) headingLines.push(iecFssaiLine);
+  if (companyFssai) headingLines.push(`Fssai No.: ${companyFssai}`);
   if (compLlpin) headingLines.push(`LLPIN: ${compLlpin}`);
   const cinUdyamLine = [
     compCin ? `CIN: ${compCin}` : '',
-    compUdyam ? `UDAYM: ${compUdyam}` : '',
+    compUdyam ? `Udyam No.: ${compUdyam}` : '',
   ]
     .filter(Boolean)
     .join('    |    ');
@@ -413,11 +570,13 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
   const maxHeadingLines = 6;
   const keepFromMain = Math.max(0, maxHeadingLines - tailHeadingLines.length);
   const mainHeadingLines = [...headingLines.slice(0, keepFromMain), ...tailHeadingLines].slice(0, maxHeadingLines);
-  const bankAcNo = rowFieldAny(h, ['bank_ac_no', 'BANK_AC_NO']);
-  const bankAcNo1 = rowFieldAny(h, ['bank_ac_no1', 'BANK_AC_NO1']);
+  const bankAcNo = rowFieldAny(h, ['G_BANK_AC_NO', 'g_bank_ac_no', 'bank_ac_no', 'BANK_AC_NO']);
+  const bankAcNo1 = rowFieldAny(h, ['G_BANK_AC_NO2', 'g_bank_ac_no2', 'bank_ac_no2', 'BANK_AC_NO2', 'bank_ac_no1', 'BANK_AC_NO1']);
   const truckNo = first ? v(first, 'TRUCK_NO', 'truck_no') : '';
   const tpt = first ? v(first, 'TPT', 'tpt') : '';
   const grNo = first ? v(first, 'GR_NO', 'gr_no') : '';
+  const driver = first ? v(first, 'DRIVER', 'driver') : '';
+  const detail = first ? v(first, 'DETAIL', 'detail') : '';
   const saleLogoSrc = printImageSrc(
     rowFieldCI(first || {}, 'sale_logo') || rowFieldCI(header || {}, 'sale_logo'),
     apiBase
@@ -430,18 +589,26 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
     rowFieldCI(first || {}, 'signature_file') || rowFieldCI(header || {}, 'signature_file'),
     apiBase
   );
-  const godPrintInSale = first ? String(rowFieldCI(first, 'god_print_in_sale') || '').trim().toUpperCase() : '';
+  /** Dispatch From: merged from SALE_B_TYPE where SALE.B_TYPE = GOD_B_TYPE (Fox G), PLANT fallback, GODOWN last — not gated on defvalue god_print_in_sale */
   const dispatchAdd1 = first ? rowFieldCI(first, 'god_add1') : '';
   const dispatchAdd2 = first ? rowFieldCI(first, 'god_add2') : '';
   const dispatchTel1 = first ? rowFieldCI(first, 'god_tel_no_1') : '';
   const dispatchTel2 = first ? rowFieldCI(first, 'god_tel_no_2') : '';
   const dispatchFssai = first ? rowFieldCI(first, 'god_fssai_no') : '';
   const dispatchGst = first ? rowFieldCI(first, 'god_gst_no') : '';
+  const dispatchGodState = first ? rowFieldCI(first, 'god_state') : '';
   const terms = first
     ? ['cond1', 'cond2', 'cond3', 'cond4', 'cond5', 'cond6', 'cond7'].map((k) => rowFieldCI(first, k)).filter(Boolean)
     : [];
-  const showDispatchBlock =
-    godPrintInSale === 'Y' && !!(dispatchAdd1 || dispatchAdd2 || dispatchTel1 || dispatchTel2 || dispatchFssai || dispatchGst);
+  const showDispatchBlock = !!(
+    dispatchAdd1 ||
+    dispatchAdd2 ||
+    dispatchTel1 ||
+    dispatchTel2 ||
+    dispatchFssai ||
+    dispatchGst ||
+    dispatchGodState
+  );
   const formatTaxLabel = (name, perRaw) => {
     const per = Number(perRaw);
     if (!Number.isFinite(per) || Math.abs(per) < 0.0001) return name;
@@ -573,11 +740,19 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
                 ) : null}
               </div>
 
-              <div className="sale-bill-print-irn">
-                <div>IRN: {rowFieldCI(first, 'irn_no') || v(first, 'IRN_NO', 'irn_no') || '—'}</div>
-                <div>ACK: {rowFieldCI(first, 'ack_no') || v(first, 'ACK_NO', 'ack_no') || '—'}</div>
-                <div>E-Way: {rowFieldCI(first, 'eway_no') || v(first, 'EWAY_NO', 'eway_no') || '—'}</div>
-              </div>
+              {hasEinvoiceRow ? (
+                <div className="sale-bill-print-irn">
+                  {irnNoDisp ? (
+                    <div>IRN: {irnNoDisp}</div>
+                  ) : null}
+                  {ackNoDisp ? (
+                    <div>ACK: {ackNoDisp}</div>
+                  ) : null}
+                  {ewayNoDisp ? (
+                    <div>E-Way: {ewayNoDisp}</div>
+                  ) : null}
+                </div>
+              ) : null}
 
               <div className={`sale-bill-print-two-col${showDispatchBlock ? ' sale-bill-print-three-col' : ''}`}>
                 <div className="sale-bill-print-col">
@@ -585,7 +760,17 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
                   <div className="sale-bill-party-name">{v(first, 'NAME', 'name')}</div>
                   <div>{v(first, 'ADD1', 'add1')}</div>
                   <div>{v(first, 'ADD2', 'add2')}</div>
+                  <div>{v(first, 'ADD3', 'add3')}</div>
                   <div>{v(first, 'CITY', 'city')}</div>
+                  {v(first, 'TIN', 'tin') ? (
+                    <div>TIN: {v(first, 'TIN', 'tin')}</div>
+                  ) : null}
+                  {v(first, 'TEL_NO_O', 'tel_no_o') ? (
+                    <div>Tel: {v(first, 'TEL_NO_O', 'tel_no_o')}</div>
+                  ) : null}
+                  {v(first, 'BILL_COND', 'bill_cond') ? (
+                    <div className="sale-bill-print-bill-cond">{v(first, 'BILL_COND', 'bill_cond')}</div>
+                  ) : null}
                   <div>GST: {v(first, 'GST_NO', 'gst_no')}</div>
                   <div>PAN: {v(first, 'PAN', 'pan')}</div>
                 </div>
@@ -594,7 +779,22 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
                   <div className="sale-bill-party-name">{v(first, 'DELV_NAME', 'delv_name') || '—'}</div>
                   <div>{v(first, 'DELV_ADD1', 'delv_add1') || '—'}</div>
                   <div>{v(first, 'DELV_ADD2', 'delv_add2') || '—'}</div>
+                  <div>{v(first, 'DELV_ADD3', 'delv_add3') || ''}</div>
                   <div>{v(first, 'DELV_CITY', 'delv_city') || '—'}</div>
+                  {v(first, 'DELV_STATE', 'delv_state') ? (
+                    <div>
+                      {v(first, 'DELV_STATE_CODE', 'delv_state_code')
+                        ? `${v(first, 'DELV_STATE_CODE', 'delv_state_code')} — `
+                        : ''}
+                      {v(first, 'DELV_STATE', 'delv_state')}
+                    </div>
+                  ) : null}
+                  {v(first, 'DELV_TEL_NO_O', 'delv_tel_no_o') ? (
+                    <div>Tel: {v(first, 'DELV_TEL_NO_O', 'delv_tel_no_o')}</div>
+                  ) : null}
+                  {v(first, 'DELV_FSSAI_NO', 'delv_fssai_no') ? (
+                    <div>FSSAI: {v(first, 'DELV_FSSAI_NO', 'delv_fssai_no')}</div>
+                  ) : null}
                   <div>GST: {v(first, 'DELV_GST_NO', 'delv_gst_no') || '—'}</div>
                   <div>PAN: {v(first, 'DELV_PAN', 'delv_pan') || '—'}</div>
                 </div>
@@ -603,13 +803,14 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
                     <div className="sale-bill-print-col-h">Dispatch From</div>
                     {dispatchAdd1 ? <div>{dispatchAdd1}</div> : null}
                     {dispatchAdd2 ? <div>{dispatchAdd2}</div> : null}
+                    {dispatchGst ? <div>GST No.: {dispatchGst}</div> : null}
+                    {dispatchGodState ? <div>State: {dispatchGodState}</div> : null}
                     {dispatchTel1 || dispatchTel2 ? (
                       <div>
                         Tel: {[dispatchTel1, dispatchTel2].filter(Boolean).join(', ')}
                       </div>
                     ) : null}
-                    {dispatchFssai ? <div>FSSAI No.: {dispatchFssai}</div> : null}
-                    {dispatchGst ? <div>GST No.: {dispatchGst}</div> : null}
+                    {dispatchFssai ? <div>Fssai No.: {dispatchFssai}</div> : null}
                   </div>
                 ) : null}
               </div>
@@ -619,6 +820,7 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
                 {[
                   v(first, 'BK_NAME', 'bk_name'),
                   v(first, 'B_CODE', 'b_code') || v(first, 'BK_CODE', 'bk_code'),
+                  v(first, 'B_TEL_NO', 'b_tel_no') ? `Tel ${v(first, 'B_TEL_NO', 'b_tel_no')}` : '',
                 ]
                   .filter(Boolean)
                   .join(' — ') || '—'}
@@ -631,6 +833,7 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
                     <th>Particulars</th>
                     {printPacking ? <th style={{ width: 54, whiteSpace: 'nowrap' }}>Packing</th> : null}
                     <th style={{ width: 76, whiteSpace: 'nowrap' }}>Hsn Code</th>
+                    <th style={{ width: 72, whiteSpace: 'nowrap' }}>Unit</th>
                     <th className="num">Qty</th>
                     {printGWeight ? (
                       <th className="num">
@@ -675,11 +878,12 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
                       <td>{v(row, 'ITEM_NAME', 'item_name')}</td>
                       {printPacking ? <td>{String(v(row, 'PACKING', 'packing') || '').slice(0, 3)}</td> : null}
                       <td>{String(v(row, 'HSN_CODE', 'hsn_code') || '').slice(0, 8)}</td>
+                      <td>{saleBillStatusUnitLabel(v(row, 'STATUS', 'status'))}</td>
                       <td className="num">{fmtQty(row.QNTY ?? row.qnty)}</td>
                       {printGWeight ? <td className="num">{fmtQty(row.G_WEIGHT ?? row.g_weight)}</td> : null}
                       {printGWeight ? <td className="num">{fmtQty(row.D_WEIGHT ?? row.d_weight)}</td> : null}
                       <td className="num">{fmtQty(row.WEIGHT ?? row.weight)}</td>
-                      <td className="num">{fmtAmt(row.RATE ?? row.rate)}</td>
+                      <td className="num">{fmtAmt(effectiveSaleBillLineRate(row))}</td>
                       <td className="num">{fmtAmt(row.AMOUNT ?? row.amount)}</td>
                       {showDiscountColumn ? <td className="num">{fmtAmt(row.DIS_AMT ?? row.dis_amt)}</td> : null}
                       {!isBillOfSupplyNoTax ? <td className="num">{fmtAmt(row.TAXABLE ?? row.taxable)}</td> : null}
@@ -706,9 +910,24 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
                         <td>Total amount</td>
                         <td className="num">{fmtAmt(totals.sumAmt)}</td>
                       </tr>
+                      {Math.abs(totals.sumBk) > 0.0001 ? (
+                        <tr>
+                          <td>Less brokerage</td>
+                          <td className="num">{fmtAmt(totals.sumBk)}</td>
+                        </tr>
+                      ) : null}
+                      {Math.abs(totals.sumDami) > 0.0001 ? (
+                        <tr>
+                          <td>Dami</td>
+                          <td className="num">{fmtAmt(totals.sumDami)}</td>
+                        </tr>
+                      ) : null}
                       {Math.abs(totals.disAmt) > 0.0001 ? (
                         <tr>
-                          <td>Discount</td>
+                          <td>
+                            Discount
+                            {Math.abs(totals.disPerBill) > 0.0001 ? ` @ ${fmtAmt(totals.disPerBill)}%` : ''}
+                          </td>
                           <td className="num">{fmtAmt(totals.disAmt)}</td>
                         </tr>
                       ) : null}
@@ -742,6 +961,63 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
                           <td className="num">{fmtAmt(totals.freight)}</td>
                         </tr>
                       ) : null}
+                      {Math.abs(totals.labourBill) > 0.0001 ? (
+                        <tr>
+                          <td>Labour</td>
+                          <td className="num">{fmtAmt(totals.labourBill)}</td>
+                        </tr>
+                      ) : null}
+                      {Math.abs(totals.insuranceBill) > 0.0001 ? (
+                        <tr>
+                          <td>Insurance</td>
+                          <td className="num">{fmtAmt(totals.insuranceBill)}</td>
+                        </tr>
+                      ) : null}
+                      {Math.abs(totals.othExpBill) > 0.0001 ? (
+                        <tr>
+                          <td>{totals.othNameBill || 'Other expense'}</td>
+                          <td className="num">{fmtAmt(totals.othExpBill)}</td>
+                        </tr>
+                      ) : null}
+                      {Math.abs(totals.labAmtBill) > 0.0001 ? (
+                        <tr>
+                          <td>Lab amount</td>
+                          <td className="num">{fmtAmt(totals.labAmtBill)}</td>
+                        </tr>
+                      ) : null}
+                      {Math.abs(totals.bardAmtBill) > 0.0001 ? (
+                        <tr>
+                          <td>Bardana</td>
+                          <td className="num">{fmtAmt(totals.bardAmtBill)}</td>
+                        </tr>
+                      ) : null}
+                      {Math.abs(totals.fgtAmtBill) > 0.0001 ? (
+                        <tr>
+                          <td>Freight (FGT)</td>
+                          <td className="num">{fmtAmt(totals.fgtAmtBill)}</td>
+                        </tr>
+                      ) : null}
+                      {Math.abs(totals.insAmtBill) > 0.0001 ? (
+                        <tr>
+                          <td>Insurance (alloc.)</td>
+                          <td className="num">{fmtAmt(totals.insAmtBill)}</td>
+                        </tr>
+                      ) : null}
+                      {Math.abs(totals.othAmtBill) > 0.0001 ? (
+                        <tr>
+                          <td>Other charges</td>
+                          <td className="num">{fmtAmt(totals.othAmtBill)}</td>
+                        </tr>
+                      ) : null}
+                      {Math.abs(totals.tcsAmt) > 0.0001 ? (
+                        <tr>
+                          <td>
+                            TCS
+                            {Math.abs(totals.tcsPerBill) > 0.0001 ? ` @ ${fmtAmt(totals.tcsPerBill)}%` : ''}
+                          </td>
+                          <td className="num">{fmtAmt(totals.tcsAmt)}</td>
+                        </tr>
+                      ) : null}
                       {totals.expenseItems.map((item, idx) => (
                         <tr key={idx}>
                           <td>{item.label}</td>
@@ -754,6 +1030,34 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
                           <td className="num">{fmtAmt(totals.othExp5)}</td>
                         </tr>
                       ) : null}
+                      <tr>
+                        <td>
+                          <strong>Net amount</strong>
+                        </td>
+                        <td className="num">
+                          <strong>{fmtAmt(totals.billAmt)}</strong>
+                        </td>
+                      </tr>
+                      {Math.abs(totals.tdsAmt) > 0.0001 ? (
+                        <tr>
+                          <td>
+                            Less TDS
+                            {Math.abs(totals.tdsPerBill) > 0.0001 ? ` @ ${fmtAmt(totals.tdsPerBill)}%` : ''}
+                            {Math.abs(totals.tdsOnBill) > 0.0001 ? ` on ${fmtAmt(totals.tdsOnBill)}` : ''}
+                          </td>
+                          <td className="num">{fmtAmt(totals.tdsAmt)}</td>
+                        </tr>
+                      ) : null}
+                      {Math.abs(totals.tdsAmt) > 0.0001 ? (
+                        <tr>
+                          <td>
+                            <strong>Net amount payable</strong>
+                          </td>
+                          <td className="num">
+                            <strong>{fmtAmt(totals.netPayable)}</strong>
+                          </td>
+                        </tr>
+                      ) : null}
                     </tbody>
                   </table>
                   <div className="sale-bill-print-net-words-row">
@@ -762,10 +1066,10 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
                     </div>
                     <div className="sale-bill-print-net-amount">
                       <div>
-                        <strong>Net amount</strong>
+                        <strong>Net amount payable</strong>
                       </div>
                       <div className="num sale-bill-print-net-figure">
-                        <strong>{fmtAmt(totals.billAmt)}</strong>
+                        <strong>{fmtAmt(totals.netPayable)}</strong>
                       </div>
                     </div>
                   </div>
@@ -779,7 +1083,7 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
                 </div>
               ) : null}
 
-              {truckNo || tpt || grNo ? (
+              {truckNo || tpt || grNo || driver || detail ? (
                 <div className="sale-bill-print-transport">
                   {truckNo ? (
                     <span className="sale-bill-print-transport-item">
@@ -791,10 +1095,20 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
                       <strong>Tpt:</strong> {tpt}
                     </span>
                   ) : null}
+                  {driver ? (
+                    <span className="sale-bill-print-transport-item">
+                      <strong>Driver:</strong> {driver}
+                    </span>
+                  ) : null}
                   {grNo ? (
                     <span className="sale-bill-print-transport-item">
                       <strong>GR no.:</strong> {grNo}
                     </span>
+                  ) : null}
+                  {detail ? (
+                    <div className="sale-bill-print-transport-detail">
+                      <strong>Remarks:</strong> {detail}
+                    </div>
                   ) : null}
                 </div>
               ) : null}

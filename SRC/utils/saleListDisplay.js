@@ -120,7 +120,6 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
     let grandS = 0;
     let grandI = 0;
     let grandB = 0;
-    let grandDis = 0;
     let grandOth = 0;
     let bQ = 0;
     let bW = 0;
@@ -130,32 +129,36 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
     let bSgst = 0;
     let bIgst = 0;
     let bBill = 0;
-    let bDis = 0;
     let bOth = 0;
     let billType = '';
     let billNo = '';
     let billBType = '';
     let billDateLabel = '';
     let activeBillKey = '';
+    /** Bill total row only when the bill has more than one line (single-line bills stay clean). */
+    let linesInCurrentBill = 0;
     const flushBillGroup = () => {
       if (!showBillTotals || !activeBillKey) return;
-      displayRows.push({
-        kind: 'bill-total',
-        type: billType || '—',
-        billNo: billNo || '—',
-        bType: billBType || '—',
-        billDateLabel: billDateLabel || '—',
-        qnty: bQ,
-        weight: bW,
-        amount: bA,
-        taxable: bTax,
-        cgstAmt: bCgst,
-        sgstAmt: bSgst,
-        igstAmt: bIgst,
-        billAmt: bBill,
-        disAmt: bDis,
-        othExp5: bOth,
-      });
+      if (linesInCurrentBill > 1) {
+        displayRows.push({
+          kind: 'bill-total',
+          type: billType || '—',
+          billNo: billNo || '—',
+          bType: billBType || '—',
+          billDateLabel: billDateLabel || '—',
+          qnty: bQ,
+          weight: bW,
+          amount: bA,
+          taxable: bTax,
+          cgstAmt: bCgst,
+          sgstAmt: bSgst,
+          igstAmt: bIgst,
+          billAmt: bBill,
+          othExp5: bOth,
+        });
+      } else if (linesInCurrentBill === 1) {
+        displayRows.push({ kind: 'bill-gap' });
+      }
       bQ = 0;
       bW = 0;
       bA = 0;
@@ -164,9 +167,9 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
       bSgst = 0;
       bIgst = 0;
       bBill = 0;
-      bDis = 0;
       bOth = 0;
       activeBillKey = '';
+      linesInCurrentBill = 0;
     };
 
     for (let i = 0; i < raw.length; i += 1) {
@@ -183,6 +186,7 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
         }
       }
       displayRows.push({ kind: 'detail', row });
+      if (showBillTotals) linesInCurrentBill += 1;
       const q = saleListMeas(row, 'QNTY', 'qnty');
       const w = saleListMeas(row, 'WEIGHT', 'weight');
       const a = saleListMeas(row, 'AMOUNT', 'amount');
@@ -191,7 +195,6 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
       const sgst = saleListMeas(row, 'SGST_AMT', 'sgst_amt');
       const igst = saleListMeas(row, 'IGST_AMT', 'igst_amt');
       const b = saleListMeas(row, 'BILL_AMT', 'bill_amt');
-      const dis = n(row, 'DIS_AMT', 'dis_amt');
       const oth = n(row, 'OTH_EXP5', 'oth_exp5');
 
       grandQ += q;
@@ -202,7 +205,6 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
       grandS += sgst;
       grandI += igst;
       grandB += b;
-      grandDis += dis;
       grandOth += oth;
       if (showBillTotals) {
         bQ += q;
@@ -213,7 +215,6 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
         bSgst += sgst;
         bIgst += igst;
         bBill += b;
-        bDis += dis;
         bOth += oth;
       }
     }
@@ -229,7 +230,6 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
       sgstAmt: grandS,
       igstAmt: grandI,
       billAmt: grandB,
-      disAmt: grandDis,
       othExp5: grandOth,
     });
 
@@ -257,7 +257,6 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
   let grandS = 0;
   let grandI = 0;
   let grandB = 0;
-  let grandDis = 0;
   let grandOth = 0;
 
   for (const dk of sortedDays) {
@@ -274,32 +273,36 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
     let bSgst = 0;
     let bIgst = 0;
     let bBill = 0;
-    let bDis = 0;
     let bOth = 0;
     let billType = '';
     let billNo = '';
     let billBType = '';
     let billDateLabel = '';
     let hasBillGroup = false;
+    /** Bill total row only when the bill has more than one line on this day. */
+    let linesInCurrentBill = 0;
     const flushBillGroup = () => {
       if (!hasBillGroup) return;
-      displayRows.push({
-        kind: 'bill-total',
-        type: billType || '—',
-        billNo: billNo || '—',
-        bType: billBType || '—',
-        billDateLabel: billDateLabel || '—',
-        qnty: bQ,
-        weight: bW,
-        amount: bA,
-        taxable: bTax,
-        cgstAmt: bCgst,
-        sgstAmt: bSgst,
-        igstAmt: bIgst,
-        billAmt: bBill,
-        disAmt: bDis,
-        othExp5: bOth,
-      });
+      if (linesInCurrentBill > 1) {
+        displayRows.push({
+          kind: 'bill-total',
+          type: billType || '—',
+          billNo: billNo || '—',
+          bType: billBType || '—',
+          billDateLabel: billDateLabel || '—',
+          qnty: bQ,
+          weight: bW,
+          amount: bA,
+          taxable: bTax,
+          cgstAmt: bCgst,
+          sgstAmt: bSgst,
+          igstAmt: bIgst,
+          billAmt: bBill,
+          othExp5: bOth,
+        });
+      } else if (linesInCurrentBill === 1) {
+        displayRows.push({ kind: 'bill-gap' });
+      }
       bQ = 0;
       bW = 0;
       bA = 0;
@@ -308,9 +311,9 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
       bSgst = 0;
       bIgst = 0;
       bBill = 0;
-      bDis = 0;
       bOth = 0;
       hasBillGroup = false;
+      linesInCurrentBill = 0;
     };
     for (let i = 0; i < dayRows.length; i += 1) {
       const row = dayRows[i];
@@ -326,6 +329,7 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
       }
 
       displayRows.push({ kind: 'detail', row });
+      linesInCurrentBill += 1;
 
       const q = saleListMeas(row, 'QNTY', 'qnty');
       const w = saleListMeas(row, 'WEIGHT', 'weight');
@@ -335,7 +339,6 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
       const sgst = saleListMeas(row, 'SGST_AMT', 'sgst_amt');
       const igst = saleListMeas(row, 'IGST_AMT', 'igst_amt');
       const b = saleListMeas(row, 'BILL_AMT', 'bill_amt');
-      const dis = n(row, 'DIS_AMT', 'dis_amt');
       const oth = n(row, 'OTH_EXP5', 'oth_exp5');
 
       bQ += q;
@@ -346,7 +349,6 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
       bSgst += sgst;
       bIgst += igst;
       bBill += b;
-      bDis += dis;
       bOth += oth;
     }
     flushBillGroup();
@@ -359,7 +361,6 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
     let dSgst = 0;
     let dIgst = 0;
     let dB = 0;
-    let dDis = 0;
     let dOth = 0;
 
     for (const row of dayRows) {
@@ -371,7 +372,6 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
       const sgst = saleListMeas(row, 'SGST_AMT', 'sgst_amt');
       const igst = saleListMeas(row, 'IGST_AMT', 'igst_amt');
       const b = saleListMeas(row, 'BILL_AMT', 'bill_amt');
-      const dis = n(row, 'DIS_AMT', 'dis_amt');
       const oth = n(row, 'OTH_EXP5', 'oth_exp5');
       dQ += q;
       dW += w;
@@ -381,7 +381,6 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
       dSgst += sgst;
       dIgst += igst;
       dB += b;
-      dDis += dis;
       dOth += oth;
 
       const ic = itemCode(row) || '—';
@@ -402,7 +401,6 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
     grandS += dSgst;
     grandI += dIgst;
     grandB += dB;
-    grandDis += dDis;
     grandOth += dOth;
 
     displayRows.push({
@@ -416,7 +414,6 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
       sgstAmt: dSgst,
       igstAmt: dIgst,
       billAmt: dB,
-      disAmt: dDis,
       othExp5: dOth,
     });
   }
@@ -441,7 +438,6 @@ export function buildSaleListDisplayRows(data, sortMode = 'date') {
     sgstAmt: grandS,
     igstAmt: grandI,
     billAmt: grandB,
-    disAmt: grandDis,
     othExp5: grandOth,
   });
 

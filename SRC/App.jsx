@@ -10,7 +10,6 @@ import Slide6 from './slides/Slide6';
 import Slide7 from './slides/Slide7';
 import Slide8 from './slides/Slide8';
 import Slide9 from './slides/Slide9';
-import Slide10 from './slides/Slide10';
 import Slide11 from './slides/Slide11';
 import Slide12 from './slides/Slide12';
 import Slide13 from './slides/Slide13';
@@ -527,7 +526,6 @@ function App() {
     else if (reportType === 'broker-os') setCurrentSlide(7);
     else if (reportType === 'sale-list') setCurrentSlide(8);
     else if (reportType === 'stock-sum') setCurrentSlide(9);
-    else if (reportType === 'stock-lot') setCurrentSlide(10);
     else if (reportType === 'purchase-list') setCurrentSlide(11);
     else if (reportType === 'ageing') setCurrentSlide(12);
     else if (reportType === 'sale-bill-printing') setCurrentSlide(13);
@@ -602,7 +600,6 @@ function App() {
         { phrases: ['open broker wise outstanding', 'broker wise outstanding', 'open broker outstanding', 'broker outstanding'], reportType: 'broker-os', slideNo: 7, title: 'Broker Wise Outstanding' },
         { phrases: ['open sale bill printing', 'sale bill printing', 'open sale bill'], reportType: 'sale-bill-printing', slideNo: 13, title: 'Sale Bill Printing' },
         { phrases: ['open stock summary', 'stock summary', 'open stock sum', 'stock sum'], reportType: 'stock-sum', slideNo: 9, title: 'Stock Summary' },
-        { phrases: ['open stock lot wise', 'stock lot wise', 'open stock lot', 'stock lot'], reportType: 'stock-lot', slideNo: 10, title: 'Stock Lot Wise' },
         { phrases: ['open ageing report', 'ageing report', 'aging report', 'open aging report'], reportType: 'ageing', slideNo: 12, title: 'Ageing Report' },
         { phrases: ['open purchase list', 'purchase list'], reportType: 'purchase-list', slideNo: 11, title: 'Purchase List' },
         { phrases: ['open voucher list', 'voucher list'], reportType: 'voucher-list', slideNo: 14, title: 'Voucher List' },
@@ -891,9 +888,6 @@ function App() {
         )}
         {currentSlide === 9 && (
           <Slide9 apiBase={API_BASE} formData={formData} onPrev={() => setCurrentSlide(3)} onReset={handleReset} />
-        )}
-        {currentSlide === 10 && (
-          <Slide10 apiBase={API_BASE} formData={formData} onPrev={() => setCurrentSlide(3)} onReset={handleReset} />
         )}
         {currentSlide === 11 && (
           <Slide11 apiBase={API_BASE} formData={formData} onPrev={() => setCurrentSlide(3)} onReset={handleReset} />

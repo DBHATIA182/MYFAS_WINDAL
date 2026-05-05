@@ -11,6 +11,66 @@ const app = express();
 /** Default 5001; override when busy: PowerShell `$env:PORT=5002; node server.cjs` */
 const PORT = Number(process.env.PORT) || 5001;
 
+/**
+ * Oracle `callTimeout` for /api/sale-bill-print probes (ms). Set SALE_BILL_PRINT_QUERY_TIMEOUT_MS=0 to disable.
+ * Prevents a single bad plan from hanging the UI indefinitely (retries still apply on ORA-00904).
+ * Probing order: Nano tries each QR-column variant until one parses; skips the heavy Matrix when Oracle returns 0 rows (same filters as Matrix).
+ */
+function saleBillPrintCallTimeoutOpts() {
+  const raw = process.env.SALE_BILL_PRINT_QUERY_TIMEOUT_MS;
+  if (raw != null && String(raw).trim() === '0') return {};
+  /** Default 45s so several matrix retries stay under common browser 180s timeouts. */
+  const n = parseInt(String(raw != null && String(raw).trim() !== '' ? raw : '45000'), 10);
+  if (!Number.isFinite(n) || n < 1000) return {};
+  return { callTimeout: Math.min(n, 600000) };
+}
+
+function truthyEnv01(v) {
+  const f = String(v ?? '').trim().toLowerCase();
+  return f === '1' || f === 'true' || f === 'yes' || f === 'on';
+}
+
+/** Credit-note cross-ref on SALE (many schemas omit). Opt in: SALE_BILL_PRINT_SALE_SB_COLS=1 */
+function saleBillPrintSbRefundColumnsSql() {
+  if (truthyEnv01(process.env.SALE_BILL_PRINT_SALE_SB_COLS)) {
+    return `A.SB_NO,
+        A.SB_TYPE,
+        A.SB_DATE`;
+  }
+  return `CAST(NULL AS VARCHAR2(40)) AS SB_NO,
+        CAST(NULL AS VARCHAR2(40)) AS SB_TYPE,
+        CAST(NULL AS DATE) AS SB_DATE`;
+}
+
+/** Gross / Dane weights on SALE line (optional). Opt in: SALE_BILL_PRINT_SALE_GD_WEIGHT_COLS=1 */
+function saleBillPrintGdWeightColumnsSql() {
+  if (truthyEnv01(process.env.SALE_BILL_PRINT_SALE_GD_WEIGHT_COLS)) {
+    return `A.G_WEIGHT,
+        A.D_WEIGHT`;
+  }
+  return `CAST(NULL AS NUMBER) AS G_WEIGHT,
+        CAST(NULL AS NUMBER) AS D_WEIGHT`;
+}
+
+/** Line packing column on SALE (many schemas omit). Opt in: SALE_BILL_PRINT_SALE_PACKING_COL=1 */
+function saleBillPrintPackingColumnSql() {
+  if (truthyEnv01(process.env.SALE_BILL_PRINT_SALE_PACKING_COL)) {
+    return 'A.PACKING';
+  }
+  return 'CAST(NULL AS VARCHAR2(30)) AS PACKING';
+}
+
+/**
+ * WNDL / latest schemas: SALE.PLANT_CODE + PLANT master for dispatch block.
+ * Legacy: SALE.GOD_CODE (aliased AS PLANT_CODE so merge logic stays one-shaped). SALE_BILL_PRINT_LEGACY_SALE_GOD_CODE=1
+ */
+function saleBillPrintSalePlantCodeSql() {
+  if (truthyEnv01(process.env.SALE_BILL_PRINT_LEGACY_SALE_GOD_CODE)) {
+    return 'A.GOD_CODE AS PLANT_CODE';
+  }
+  return 'A.PLANT_CODE';
+}
+
 // Oracle paths: parent folder of this app (e.g. \windal\apptest → ..\oracle_bridge, TNS in parent \windal)
 const FAS_PARENT_ROOT = path.join(__dirname, '..');
 const CLIENT_PATH = path.join(FAS_PARENT_ROOT, 'oracle_bridge', 'instantclient_23_0');
@@ -727,6 +787,18 @@ function rowValueCI(row, logicalName) {
   return null;
 }
 
+/** True if an optional single-row SELECT has at least one non-blank column (skip all-null SALE_B_TYPE matches). */
+function oracleCaptionRowHasText(row) {
+  if (!row || typeof row !== 'object') return false;
+  for (const v of Object.values(row)) {
+    if (v == null || v === '') continue;
+    if (v instanceof Date) continue;
+    if (typeof v === 'object') continue;
+    if (String(v).trim() !== '') return true;
+  }
+  return false;
+}
+
 function isOptionalPrintSqlError(err) {
   const msg = String(err?.message || '');
   return (
@@ -735,6 +807,12 @@ function isOptionalPrintSqlError(err) {
     /table or view does not exist/i.test(msg) ||
     /invalid identifier/i.test(msg)
   );
+}
+
+/** Optional metadata probes are best-effort; keep logs quiet unless explicitly enabled. */
+function optionalPrintWarnEnabled() {
+  const v = String(process.env.OPTIONAL_PRINT_WARN ?? '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
 }
 
 async function runOptionalSingleRow(sql, binds, schemaAttempts = []) {
@@ -749,14 +827,107 @@ async function runOptionalSingleRow(sql, binds, schemaAttempts = []) {
       if (!isOptionalPrintSqlError(err)) throw err;
     }
   }
-  if (lastErr) {
+  if (lastErr && optionalPrintWarnEnabled()) {
     console.warn('⚠️ Optional print metadata query skipped:', lastErr.message);
   }
   return null;
 }
 
-async function runCompdetHeaderRow(comp_code, comp_uid) {
+/**
+ * Sale bill “dispatch / godown caption” merged into `/api/sale-bill-print` lines (Fox `god_add1`, … UI “Dispatch From”).
+ * Fox: SALE_B_TYPE G when NVL(TRIM(SALE.B_TYPE)) = GOD_B_TYPE — GOD_* + GOD_FSSAI_NO. Prefer G before PLANT probes.
+ * Optional PLANT by PLANT_CODE (FSSAI on PLANT is optional — project as CAST NULL when column absent).
+ * Last resort GODOWN.
+ */
+async function fetchSaleBillDispatchCaptionRow(comp_code, plant_code_raw, b_type_raw, comp_uid) {
+  const pc = plant_code_raw != null ? String(plant_code_raw).trim() : '';
+  const bt = b_type_raw != null ? String(b_type_raw).trim() : '';
+  const schemas = [comp_uid, null];
+  /** Oracle rejects extra bind keys (ORA-01036): each statement gets only its placeholders. */
+  const plantBinds = { comp_code, plant_code: pc || ' ' };
+  const saleBTypeBinds = { comp_code, b_type: bt || ' ' };
+
+  if (bt !== '') {
+    const saleBTypeCaptionSql = `
+      SELECT G.GOD_ADD1 AS god_add1, G.GOD_ADD2 AS god_add2, G.GOD_GST_NO AS god_gst_no, G.GOD_STATE AS god_state,
+             G.GOD_TEL_NO_1 AS god_tel_no_1, G.GOD_TEL_NO_2 AS god_tel_no_2, G.GOD_FSSAI_NO AS god_fssai_no
+      FROM SALE_B_TYPE G
+      WHERE G.COMP_CODE = :comp_code
+        AND NVL(TRIM(G.GOD_B_TYPE), ' ') = NVL(TRIM(:b_type), ' ')
+        AND ROWNUM = 1`;
+    const gRow = await runOptionalSingleRow(saleBTypeCaptionSql, saleBTypeBinds, schemas);
+    if (gRow != null && Object.keys(gRow).length > 0 && oracleCaptionRowHasText(gRow)) return gRow;
+  }
+
+  /** PLANT: avoid GOD_FSSAI_NO / PLANT_FSSAI_NO — many schemas only expose FSSAI on SALE_B_TYPE. */
+  if (pc !== '') {
+    const plantVariants = [
+      `SELECT god_add1, god_add2, god_gst_no, god_tel_no_1, god_tel_no_2,
+              CAST(NULL AS VARCHAR2(120)) AS god_fssai_no
+       FROM PLANT
+       WHERE comp_code = :comp_code
+         AND NVL(TRIM(plant_code), ' ') = NVL(TRIM(:plant_code), ' ')
+         AND ROWNUM = 1`,
+      `SELECT plant_add1 AS god_add1, plant_add2 AS god_add2, plant_gst_no AS god_gst_no,
+              plant_tel_no_1 AS god_tel_no_1, plant_tel_no_2 AS god_tel_no_2,
+              CAST(NULL AS VARCHAR2(120)) AS god_fssai_no
+       FROM PLANT
+       WHERE comp_code = :comp_code
+         AND NVL(TRIM(plant_code), ' ') = NVL(TRIM(:plant_code), ' ')
+         AND ROWNUM = 1`,
+      `SELECT add1 AS god_add1, add2 AS god_add2, gst_no AS god_gst_no,
+              tel_no_1 AS god_tel_no_1, tel_no_2 AS god_tel_no_2,
+              CAST(NULL AS VARCHAR2(120)) AS god_fssai_no
+       FROM PLANT
+       WHERE comp_code = :comp_code
+         AND NVL(TRIM(plant_code), ' ') = NVL(TRIM(:plant_code), ' ')
+         AND ROWNUM = 1`,
+    ];
+    for (const sql of plantVariants) {
+      const row = await runOptionalSingleRow(sql, plantBinds, schemas);
+      if (row != null && Object.keys(row).length > 0) return row;
+    }
+  }
+
+  const godBinds = { comp_code, b_type: bt || ' ', god_code: pc || ' ' };
+  const godownSql = `
+    SELECT god_add1, god_add2, god_gst_no, god_tel_no_1, god_tel_no_2, god_fssai_no
+    FROM godown
+    WHERE comp_code = :comp_code
+      AND NVL(TRIM(god_b_type), ' ') = NVL(TRIM(:b_type), ' ')
+      AND NVL(TRIM(god_code), ' ') = NVL(TRIM(:god_code), ' ')
+      AND ROWNUM = 1`;
+  return await runOptionalSingleRow(godownSql, godBinds, schemas);
+}
+
+/**
+ * COMPDET row: VFP uses COMP_CODE + COMP_YEAR; web also resolves by COMP_UID hub year.
+ * @param {string|undefined} comp_year_opt  Oracle COMP_YEAR (login year / G_COMPYEAR).
+ */
+async function runCompdetHeaderRow(comp_code, comp_uid, comp_year_opt) {
   const cu = String(comp_uid ?? '').trim();
+  const cyRaw =
+    comp_year_opt != null && String(comp_year_opt).trim() !== '' ? Number(String(comp_year_opt).trim()) : NaN;
+  const cyOk = Number.isFinite(cyRaw) && cyRaw > 0;
+
+  const sqlYearUid = `
+    SELECT * FROM (
+      SELECT *
+      FROM compdet
+      WHERE comp_code = :comp_code
+        AND NVL(comp_year, 0) = :comp_year
+        AND TRIM(TO_CHAR(comp_uid)) = :comp_uid
+      ORDER BY comp_uid DESC NULLS LAST
+    ) WHERE ROWNUM = 1`;
+  const sqlYearOnly = `
+    SELECT * FROM (
+      SELECT *
+      FROM compdet
+      WHERE comp_code = :comp_code
+        AND NVL(comp_year, 0) = :comp_year
+      ORDER BY comp_uid DESC NULLS LAST
+    ) WHERE ROWNUM = 1`;
+
   const sqlExact = `
     SELECT
       *
@@ -773,6 +944,24 @@ async function runCompdetHeaderRow(comp_code, comp_uid) {
     ) WHERE ROWNUM = 1`;
 
   const schemaAttempts = [comp_uid, null];
+
+  if (cyOk) {
+    for (const schema of schemaAttempts) {
+      try {
+        const rows = await runQuery(sqlYearUid, { comp_code, comp_year: cyRaw, comp_uid: cu }, schema);
+        if (rows?.[0]) return rows[0];
+      } catch (err) {
+        if (!isOptionalPrintSqlError(err)) throw err;
+      }
+      try {
+        const rows = await runQuery(sqlYearOnly, { comp_code, comp_year: cyRaw }, schema);
+        if (rows?.[0]) return rows[0];
+      } catch (err) {
+        if (!isOptionalPrintSqlError(err)) throw err;
+      }
+    }
+  }
+
   for (const schema of schemaAttempts) {
     try {
       const rows = await runQuery(sqlExact, { comp_code, comp_uid: cu }, schema);
@@ -858,6 +1047,59 @@ function parseDateOnly(raw) {
   const dt = new Date(s);
   if (Number.isNaN(dt.getTime())) return null;
   return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+}
+
+/** VFP: G_FIN_YEAR = yy(start year) || yy(end year) from COMP_S_DT / COMP_E_DT (e.g. 2526). */
+function computeGFinYearFromCompdetRow(row) {
+  if (!row || typeof row !== 'object') return '';
+  const sdt = parseDateOnly(rowValueCI(row, 'comp_s_dt'));
+  const edt = parseDateOnly(rowValueCI(row, 'comp_e_dt'));
+  if (!sdt || !edt) return '';
+  const y1 = sdt.getFullYear() % 100;
+  const y2 = edt.getFullYear() % 100;
+  return String(y1).padStart(2, '0') + String(y2).padStart(2, '0');
+}
+
+/** VFP globals from COMPDET row for sale bill (salepnt_gst_bos.frx). */
+function enrichCompdetSalePrintGlobals(row) {
+  if (!row || typeof row !== 'object') return;
+  const tv = (logical) => {
+    const v = rowValueCI(row, logical);
+    if (v == null || v === '') return '';
+    if (v instanceof Date) return '';
+    if (typeof v === 'object') return '';
+    return String(v).trim();
+  };
+  const sdt = parseDateOnly(rowValueCI(row, 'comp_s_dt'));
+  const edt = parseDateOnly(rowValueCI(row, 'comp_e_dt'));
+  row.G_FIN_YEAR = computeGFinYearFromCompdetRow(row);
+  if (sdt && !Number.isNaN(sdt.getTime())) {
+    row.G_SDATE = sdt.toISOString().slice(0, 10);
+  }
+  if (edt && !Number.isNaN(edt.getTime())) {
+    row.G_EDATE = edt.toISOString().slice(0, 10);
+  }
+  row.G_COMPNAME = tv('comp_name');
+  row.G_COMPADD1 = tv('comp_add1');
+  row.G_COMPADD2 = tv('comp_add2');
+  row.G_COMPTIN = tv('comp_tin');
+  row.G_COMPPAN = tv('comp_pan');
+  row.G_COMPTEL1 = tv('comp_tel1');
+  row.G_COMPTEL2 = tv('comp_tel2');
+  row.G_COMPTEL3 = tv('comp_tel3');
+  row.G_MOBILE = row.G_COMPTEL2 || tv('mobile');
+  row.G_EMAIL = tv('comp_email');
+  row.G_BANK_AC_NO = tv('bank_ac_no');
+  const mp = tv('marka_prn');
+  row.G_MARKA_PRN = mp || 'N';
+  row.G_CIN_NO = tv('cin_no');
+  row.G_COMP_GST_NO = tv('gst_no');
+  row.G_COMP_STATE = tv('state');
+  row.G_COMP_STATE_CODE = tv('state_code');
+  row.G_SIGNATURE_FILE = tv('signature_file');
+  row.G_MSME_NO = tv('msme_no');
+  row.G_BANK_AC_NO2 = tv('bank_ac_no2');
+  row.G_UDYAM_NO = tv('udyam_no');
 }
 
 function diffDays(endDate, startDate) {
@@ -1273,6 +1515,24 @@ async function hydrateImageFieldInRows(rows, logicalName) {
   }
 }
 
+/** DEFVALUE merges the same logo paths onto every SALE line; disk reads only need to run once per bill. */
+async function hydrateSaleBillPrintImagesOnce(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  const first = rows[0];
+  await hydrateImageFieldInRows([first], 'sale_logo');
+  await hydrateImageFieldInRows([first], 'sale_logo2');
+  await hydrateImageFieldInRows([first], 'signature_file');
+  const fields = ['sale_logo', 'sale_logo2', 'signature_file'];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    for (const logical of fields) {
+      const fk = getRowCiFieldName(first, logical);
+      const rk = getRowCiFieldName(r, logical);
+      if (fk && rk) r[rk] = first[fk];
+    }
+  }
+}
+
 app.get('/api/print-image', async (req, res) => {
   try {
     const rawPath = String(req.query.path || '').trim();
@@ -1286,8 +1546,56 @@ app.get('/api/print-image', async (req, res) => {
   }
 });
 
-/** dis/oth: 'both' | 'othQuoted' (only quoted round-off col) | 'none' */
-function buildSaleBillPrintSql(qrSelectFragment, disOthMode) {
+/**
+ * VFP: SALE.TYPE is numeric 1–9. Optional comma list (e.g. "3,1" for SL from ledger when DB uses 3 or 1).
+ */
+function parseSaleBillOracleTypeCandidates(oracleTypesRaw, typeStrRaw) {
+  const raw = String(oracleTypesRaw ?? '').trim();
+  if (raw) {
+    const arr = raw
+      .split(/[,; ]+/)
+      .map((x) => parseInt(String(x).trim(), 10))
+      .filter((n) => Number.isFinite(n) && n >= 1 && n <= 9);
+    if (arr.length) return [...new Set(arr)];
+  }
+  const t = String(typeStrRaw ?? '').trim();
+  const u = t.toUpperCase();
+  const n = parseInt(t, 10);
+  if (Number.isFinite(n) && n >= 1 && n <= 9) return [n];
+  switch (u) {
+    case 'CN':
+      return [8];
+    case 'SE':
+      return [6];
+    case 'CH':
+      return [2];
+    case 'RC':
+      return [9];
+    case 'SL':
+    case 'S':
+      // Retail (1) before tax invoice (3) — fewer wasted probes when oracle_types is omitted.
+      return [1, 3];
+    default:
+      return [];
+  }
+}
+
+function saleBillQrFragmentsForTypeNum(saleTypeNum, taxNonZero, signedColAttempts) {
+  const stn = Number(saleTypeNum);
+  const useQr = stn === 3 || stn === 6 || stn === 9;
+  if (!useQr) return ['CAST(NULL AS VARCHAR2(4000)) AS SIGNED_QR_CODE'];
+  return signedColAttempts.map(
+    (col) => `CASE WHEN ${taxNonZero} THEN ${col} ELSE CAST(NULL AS VARCHAR2(4000)) END AS SIGNED_QR_CODE`
+  );
+}
+
+/**
+ * Single-bill sale print SQL. VFP parity: A=SALE, B=party MASTER, C=broker MASTER (+), D=ITEMMAST, E=DELV MASTER (+),
+ * F_OTH = other-charge MASTER on ADD_CODE (+), W–Z only when selecting OTH_EXP names (disOthMode=both).
+ * Dispatch caption lines come from `/api/sale-bill-print` PLANT merge (GODOWN fallback for older DBs; Fox SALE_B_TYPE G parity).
+ * disOthMode: 'both' | 'othQuoted' | 'none'; typeMatch: 'numeric' | 'varchar'
+ */
+function buildSaleBillPrintSql(qrSelectFragment, disOthMode, typeMatch, extraSaleLineCols) {
   let disOthLines = '';
   if (disOthMode === 'both') {
     disOthLines = `A.DIS_AMT,
@@ -1309,17 +1617,61 @@ function buildSaleBillPrintSql(qrSelectFragment, disOthMode) {
     disOthLines = `A."oth_Exp5" AS OTH_EXP5,
         `;
   }
+  const typeClause =
+    typeMatch === 'numeric' ? `A.TYPE = :sale_type_num` : `UPPER(TRIM(A.TYPE)) = UPPER(TRIM(:type_char))`;
+
+  const extraCols =
+    extraSaleLineCols !== false ? `        A.V_DATE,\n        A.DAYS,\n        NVL(A.RATE_QW, 0) AS RATE_QW,\n` : '';
+
+  /**
+   * Optional: join MASTER for OTH_NAME via ADD_CODE (not all DBs benefit; extra join can worsen plans).
+   * Enable: SALE_BILL_PRINT_JOIN_OTH_MASTER=1
+   */
+  const joinOthMaster = truthyEnv01(process.env.SALE_BILL_PRINT_JOIN_OTH_MASTER);
+  const othNameJoinSnip = joinOthMaster
+    ? `
+      LEFT JOIN MASTER F_OTH ON A.COMP_CODE = F_OTH.COMP_CODE AND A.ADD_CODE = F_OTH.CODE`
+    : '';
+  const othNameSelect = joinOthMaster ? `F_OTH.NAME AS OTH_NAME` : `CAST(NULL AS VARCHAR2(500)) AS OTH_NAME`;
+
+  const extPartyCols = `
+        B.ADD3,
+        B.TIN,
+        B.TEL_NO_O,
+        B.STATE,
+        B.STATE_CODE,
+        B.FSSAI_NO,
+        B.BILL_COND,`;
+
+  const extDelvCols = `
+        E.ADD3 AS DELV_ADD3,
+        E.TEL_NO_O AS DELV_TEL_NO_O,
+        E.STATE AS DELV_STATE,
+        E.STATE_CODE AS DELV_STATE_CODE,
+        E.FSSAI_NO AS DELV_FSSAI_NO,`;
+
+  /** VFP only uses W–Z for OTH_CD* labels; joining them on every probe was unnecessary work for the optimizer. */
+  const masterOthCdJoinSnip =
+    disOthMode === 'both'
+      ? `
+      LEFT JOIN MASTER W ON A.COMP_CODE = W.COMP_CODE AND A.OTH_CD1 = W.CODE
+      LEFT JOIN MASTER X ON A.COMP_CODE = X.COMP_CODE AND A.OTH_CD2 = X.CODE
+      LEFT JOIN MASTER Y ON A.COMP_CODE = Y.COMP_CODE AND A.OTH_CD3 = Y.CODE
+      LEFT JOIN MASTER Z ON A.COMP_CODE = Z.COMP_CODE AND A.OTH_CD4 = Z.CODE`
+      : '';
+
   return `
       SELECT
         A.TYPE,
         A.BILL_DATE,
         A.BILL_NO,
         A.B_TYPE,
-        A.GOD_CODE,
+        ${saleBillPrintSalePlantCodeSql()},
         A.CODE,
         B.NAME,
         B.ADD1,
         B.ADD2,
+${extPartyCols}
         B.CITY,
         B.PAN,
         B.GST_NO,
@@ -1327,91 +1679,332 @@ function buildSaleBillPrintSql(qrSelectFragment, disOthMode) {
         E.NAME AS DELV_NAME,
         E.ADD1 AS DELV_ADD1,
         E.ADD2 AS DELV_ADD2,
+${extDelvCols}
         E.CITY AS DELV_CITY,
         E.GST_NO AS DELV_GST_NO,
         E.PAN AS DELV_PAN,
         A.B_CODE,
         C.NAME AS BK_NAME,
+        C.TEL_NO_O AS B_TEL_NO,
+        ${othNameSelect},
         A.TRN_NO,
         A.ITEM_CODE,
         D.ITEM_NAME,
         D.HSN_CODE,
-        A.PACKING,
+        D.UNIT_WGT,
+        D.UNIT,
+        D.BILL_PRINT_QW,
+        ${saleBillPrintPackingColumnSql()},
+        A.MARKA,
+        A.STATUS,
         A.QNTY,
-        A.G_WEIGHT,
-        A.D_WEIGHT,
+        ${saleBillPrintGdWeightColumnsSql()},
         A.WEIGHT,
-        A.RATE,
+${extraCols}        A.RATE,
         A.AMOUNT,
+        A.DAMI_PER,
+        A.DAMI,
+        A.BK_AMT,
         A.TAXABLE,
+        A.TAX_PER,
+        A.TAX_AMT,
+        A.TAX_TYPE,
+        A.TAX_FORM,
         A.CGST_PER,
         A.CGST_AMT,
         A.SGST_PER,
         A.SGST_AMT,
         A.IGST_PER,
         A.IGST_AMT,
+        A.DIS_PER,
+        A.DIS_AMT,
+        A.LP_AMT,
+        A.LAB_AMT,
+        A.BARD_AMT,
+        A.FGT_AMT,
+        A.INS_AMT,
+        A.OTH_AMT,
+        A.TCS_PER,
+        A.TCS_AMT,
         A.FREIGHT,
+        A.LABOUR,
+        A.INS,
+        A.OTH_EXP,
         A.BILL_AMT,
+        A.TDS_PER,
+        A.TDS_ON_AMT,
+        A.TDS_AMT,
+        A.PO_NO,
+        A.SO_NO,
+        A.RB_NO,
+        A.RB_DATE,
+        A.RB_TYPE,
         A.SALE_INV_NO,
-        A.SB_NO,
-        A.SB_TYPE,
-        A.SB_DATE,
+        ${saleBillPrintSbRefundColumnsSql()},
         A.IRN_NO,
         A.ACK_NO,
         A.EWAY_NO,
         A.TRUCK_NO,
         A.TPT,
         A.GR_NO,
+        A.DRIVER,
+        A.DETAIL,
+        A.POLICY_NO,
+        A.CONTAINER_NO,
+        A.SEAL_NO,
         ${disOthLines}${qrSelectFragment}
       FROM SALE A
       JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
       LEFT JOIN MASTER C ON A.COMP_CODE = C.COMP_CODE AND A.B_CODE = C.CODE
       JOIN ITEMMAST D ON A.COMP_CODE = D.COMP_CODE AND A.ITEM_CODE = D.ITEM_CODE
       LEFT JOIN MASTER E ON A.COMP_CODE = E.COMP_CODE AND A.DELV_CODE = E.CODE
-      LEFT JOIN MASTER W ON A.COMP_CODE = W.COMP_CODE AND A.OTH_CD1 = W.CODE
-      LEFT JOIN MASTER X ON A.COMP_CODE = X.COMP_CODE AND A.OTH_CD2 = X.CODE
-      LEFT JOIN MASTER Y ON A.COMP_CODE = Y.COMP_CODE AND A.OTH_CD3 = Y.CODE
-      LEFT JOIN MASTER Z ON A.COMP_CODE = Z.COMP_CODE AND A.OTH_CD4 = Z.CODE
+      ${othNameJoinSnip}${masterOthCdJoinSnip}
       WHERE A.COMP_CODE = :comp_code
-        AND A.TYPE = :type
+        AND ${typeClause}
         AND A.BILL_NO = :bill_no
         AND NVL(TRIM(A.B_TYPE), ' ') = NVL(TRIM(:b_type), ' ')
-        AND TRUNC(A.BILL_DATE) = TRUNC(TO_DATE(:bill_date, 'DD-MM-YYYY'))
+        AND A.BILL_DATE >= TO_DATE(:bill_date, 'DD-MM-YYYY')
+        AND A.BILL_DATE < TO_DATE(:bill_date, 'DD-MM-YYYY') + 1
+      ORDER BY A.BILL_DATE, A.BILL_NO, A.B_TYPE, A.TRN_NO`;
+}
+
+/** Fast probe path (matches former “Lean”: core joins only, no optional OTH-charge graphs). */
+function buildSaleBillPrintSqlNano(qrSelectFragment, typeMatch) {
+  const typeClause =
+    typeMatch === 'numeric' ? `A.TYPE = :sale_type_num` : `UPPER(TRIM(A.TYPE)) = UPPER(TRIM(:type_char))`;
+  return `
+      SELECT
+        A.TYPE,
+        A.BILL_DATE,
+        A.BILL_NO,
+        A.B_TYPE,
+        ${saleBillPrintSalePlantCodeSql()},
+        A.CODE,
+        B.NAME,
+        B.ADD1,
+        B.ADD2,
+        B.ADD3,
+        B.TIN,
+        B.TEL_NO_O,
+        B.STATE,
+        B.STATE_CODE,
+        B.FSSAI_NO,
+        B.BILL_COND,
+        B.CITY,
+        B.PAN,
+        B.GST_NO,
+        A.DELV_CODE,
+        E.NAME AS DELV_NAME,
+        E.ADD1 AS DELV_ADD1,
+        E.ADD2 AS DELV_ADD2,
+        E.ADD3 AS DELV_ADD3,
+        E.TEL_NO_O AS DELV_TEL_NO_O,
+        E.STATE AS DELV_STATE,
+        E.STATE_CODE AS DELV_STATE_CODE,
+        E.FSSAI_NO AS DELV_FSSAI_NO,
+        E.CITY AS DELV_CITY,
+        E.GST_NO AS DELV_GST_NO,
+        E.PAN AS DELV_PAN,
+        A.B_CODE,
+        C.NAME AS BK_NAME,
+        C.TEL_NO_O AS B_TEL_NO,
+        CAST(NULL AS VARCHAR2(500)) AS OTH_NAME,
+        A.TRN_NO,
+        A.ITEM_CODE,
+        D.ITEM_NAME,
+        D.HSN_CODE,
+        D.UNIT_WGT,
+        D.UNIT,
+        D.BILL_PRINT_QW,
+        ${saleBillPrintPackingColumnSql()},
+        A.MARKA,
+        A.STATUS,
+        A.QNTY,
+        ${saleBillPrintGdWeightColumnsSql()},
+        A.WEIGHT,
+        A.RATE,
+        A.AMOUNT,
+        A.DAMI_PER,
+        A.DAMI,
+        A.BK_AMT,
+        A.TAXABLE,
+        A.TAX_PER,
+        A.TAX_AMT,
+        A.TAX_TYPE,
+        A.TAX_FORM,
+        A.CGST_PER,
+        A.CGST_AMT,
+        A.SGST_PER,
+        A.SGST_AMT,
+        A.IGST_PER,
+        A.IGST_AMT,
+        A.DIS_PER,
+        A.DIS_AMT,
+        A.LP_AMT,
+        A.LAB_AMT,
+        A.BARD_AMT,
+        A.FGT_AMT,
+        A.INS_AMT,
+        A.OTH_AMT,
+        A.TCS_PER,
+        A.TCS_AMT,
+        A.FREIGHT,
+        A.LABOUR,
+        A.INS,
+        A.OTH_EXP,
+        A.BILL_AMT,
+        A.TDS_PER,
+        A.TDS_ON_AMT,
+        A.TDS_AMT,
+        A.PO_NO,
+        A.SO_NO,
+        A.RB_NO,
+        A.RB_DATE,
+        A.RB_TYPE,
+        A.SALE_INV_NO,
+        ${saleBillPrintSbRefundColumnsSql()},
+        A.IRN_NO,
+        A.ACK_NO,
+        A.EWAY_NO,
+        A.TRUCK_NO,
+        A.TPT,
+        A.GR_NO,
+        A.DRIVER,
+        A.DETAIL,
+        A.POLICY_NO,
+        A.CONTAINER_NO,
+        A.SEAL_NO,
+        ${qrSelectFragment}
+      FROM SALE A
+      JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
+      LEFT JOIN MASTER C ON A.COMP_CODE = C.COMP_CODE AND A.B_CODE = C.CODE
+      JOIN ITEMMAST D ON A.COMP_CODE = D.COMP_CODE AND A.ITEM_CODE = D.ITEM_CODE
+      LEFT JOIN MASTER E ON A.COMP_CODE = E.COMP_CODE AND A.DELV_CODE = E.CODE
+      WHERE A.COMP_CODE = :comp_code
+        AND ${typeClause}
+        AND A.BILL_NO = :bill_no
+        AND NVL(TRIM(A.B_TYPE), ' ') = NVL(TRIM(:b_type), ' ')
+        AND A.BILL_DATE >= TO_DATE(:bill_date, 'DD-MM-YYYY')
+        AND A.BILL_DATE < TO_DATE(:bill_date, 'DD-MM-YYYY') + 1
       ORDER BY A.BILL_DATE, A.BILL_NO, A.B_TYPE, A.TRN_NO`;
 }
 
 async function runSaleBillPrintRows(binds, comp_uid) {
-  const typ = String(binds.type || '').trim().toUpperCase();
-  /** Only SL/SE may carry e-invoice QR; CN etc. must not reference missing columns. QR only when line has GST. */
   const taxNonZero = '(NVL(A.CGST_AMT,0)+NVL(A.SGST_AMT,0)+NVL(A.IGST_AMT,0)) <> 0';
+  /** Prefer unquoted identifier first — fewer probes when schema matches. */
   const signedColAttempts = [
-    'A."signed_Qr_code"',
+    'A.SIGNED_QR_CODE',
+    'A."SIGNED_QR_CODE"',
     'A."signed_QR_code"',
     'A."signed_qr_code"',
-    'A."SIGNED_QR_CODE"',
-    'A.SIGNED_QR_CODE',
+    'A."signed_Qr_code"',
   ];
-  const qrFragments =
-    typ === 'SL' || typ === 'SE'
+  /**
+   * Legacy Fox-era columns: quoted `oth_Exp5`, OTH_CD1–4, etc. Most Oracle SALE tables omit them — probing
+   * throws ORA-00904 and pollutes lastErr. Default: `none` only.
+   * SALE_BILL_PRINT_DIS_OTH_OTHQUOTED=1 → try `A."oth_Exp5" AS OTH_EXP5`
+   * SALE_BILL_PRINT_DIS_OTH_BOTH=1 → also try OTH_CD* + OTH_EXP* + W–Z joins
+   */
+  const disOthProbeQuoted = truthyEnv01(process.env.SALE_BILL_PRINT_DIS_OTH_OTHQUOTED);
+  const disOthProbeBoth = truthyEnv01(process.env.SALE_BILL_PRINT_DIS_OTH_BOTH);
+  const disOthModes = ['none'];
+  if (disOthProbeQuoted) disOthModes.push('othQuoted');
+  if (disOthProbeBoth) disOthModes.push('both');
+  const fullMatrixProbe = truthyEnv01(process.env.SALE_BILL_PRINT_FULL_MATRIX);
+  const baseBinds = {
+    comp_code: binds.comp_code,
+    bill_no: String(binds.bill_no || '').trim(),
+    b_type: binds.b_type != null ? String(binds.b_type).trim() : ' ',
+    bill_date: binds.bill_date,
+  };
+  const candidates = parseSaleBillOracleTypeCandidates(binds.oracle_types, binds.type);
+  const typ = String(binds.type || '').trim().toUpperCase();
+  const varcharType = typ && /^[A-Z]{1,4}$/.test(typ) ? typ : '';
+
+  function qrFragmentsVarchar(typUpper) {
+    return typUpper === 'SL' || typUpper === 'SE'
       ? signedColAttempts.map(
           (col) => `CASE WHEN ${taxNonZero} THEN ${col} ELSE CAST(NULL AS VARCHAR2(4000)) END AS SIGNED_QR_CODE`
         )
       : ['CAST(NULL AS VARCHAR2(4000)) AS SIGNED_QR_CODE'];
-  const disOthModes = ['both', 'othQuoted', 'none'];
+  }
+
   let lastErr;
-  for (const dom of disOthModes) {
-    for (const frag of qrFragments) {
+  async function tryNano(typeMatch, queryBinds, qrFragments) {
+    const timeoutOpts = saleBillPrintCallTimeoutOpts();
+    const frags =
+      Array.isArray(qrFragments) && qrFragments.length > 0
+        ? qrFragments
+        : ['CAST(NULL AS VARCHAR2(4000)) AS SIGNED_QR_CODE'];
+    for (const frag of frags) {
       try {
-        const sql = buildSaleBillPrintSql(frag, dom);
-        return await runQuery(sql, binds, comp_uid, { suppressDbErrorLog: true });
+        const sql = buildSaleBillPrintSqlNano(frag, typeMatch);
+        const rows = await runQuery(sql, queryBinds, comp_uid, {
+          suppressDbErrorLog: true,
+          ...timeoutOpts,
+        });
+        if (Array.isArray(rows) && rows.length > 0) return rows;
       } catch (e) {
         lastErr = e;
         const msg = String(e.message || '');
         if (!msg.includes('00904') && !/invalid identifier/i.test(msg)) throw e;
       }
     }
+    return null;
   }
-  throw lastErr;
+
+  /** All variants share the same WHERE; first successful empty result means no bill — do not rescan. */
+  async function runMatrix(typeMatch, queryBinds, qrFragments) {
+    const timeoutOpts = saleBillPrintCallTimeoutOpts();
+    const extraColOpts = fullMatrixProbe ? [false, true] : [false];
+    const fragList =
+      Array.isArray(qrFragments) && qrFragments.length > 0
+        ? qrFragments
+        : ['CAST(NULL AS VARCHAR2(4000)) AS SIGNED_QR_CODE'];
+    probeVariants: for (const extraSaleLineCols of extraColOpts) {
+      for (const dom of disOthModes) {
+        for (const frag of fragList) {
+          try {
+            const sql = buildSaleBillPrintSql(frag, dom, typeMatch, extraSaleLineCols);
+            const rows = await runQuery(sql, queryBinds, comp_uid, {
+              suppressDbErrorLog: true,
+              ...timeoutOpts,
+            });
+            if (Array.isArray(rows) && rows.length > 0) return rows;
+            break probeVariants;
+          } catch (e) {
+            lastErr = e;
+            const msg = String(e.message || '');
+            if (!msg.includes('00904') && !/invalid identifier/i.test(msg)) throw e;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  for (const stn of candidates) {
+    const qrFrags = saleBillQrFragmentsForTypeNum(stn, taxNonZero, signedColAttempts);
+    const numBinds = { ...baseBinds, sale_type_num: stn };
+    let rows = await tryNano('numeric', numBinds, qrFrags);
+    if (rows) return rows;
+    rows = await runMatrix('numeric', numBinds, qrFrags);
+    if (rows) return rows;
+  }
+
+  if (varcharType) {
+    const vFrags = qrFragmentsVarchar(varcharType);
+    const vchBinds = { ...baseBinds, type_char: varcharType };
+    let rows = await tryNano('varchar', vchBinds, vFrags);
+    if (rows) return rows;
+    rows = await runMatrix('varchar', vchBinds, vFrags);
+    if (rows) return rows;
+  }
+
+  if (lastErr) throw lastErr;
+  throw new Error(
+    'Sale bill print: no rows for this bill. Pass oracle_types (1–9) or a letter type (SL/SE/CN/…). Numeric SALE.TYPE must match.'
+  );
 }
 
 /** oracledb 6 may return BLOB/CLOB as Lob; read to string/base64 before JSON. Thin mode may not pass instanceof Lob. */
@@ -2613,6 +3206,52 @@ function saleListBillNoRangeClause(sbRaw, ebRaw) {
   return { sql: '', binds: {} };
 }
 
+/** VFP REVCHG: restrict to reverse-charge sale (TYPE 9) or exclude it. */
+function saleBillPrintingRevchgClause(revchgRaw) {
+  const r = String(revchgRaw ?? '').trim().toUpperCase();
+  if (r === 'Y') return { sql: ' AND NVL(A.TYPE, 0) = 9 ', binds: {} };
+  if (r === 'N') return { sql: ' AND NVL(A.TYPE, 0) <> 9 ', binds: {} };
+  return { sql: '', binds: {} };
+}
+
+/**
+ * Sale bill printing list: optional numeric ptype (1–9); else legacy letter bucket (SL→1+3, …);
+ * empty → all types 1–9. Assumes SALE.TYPE is NUMBER (VFP SALETYPE).
+ */
+function saleBillPrintingTypeWhereSql(ptypeRaw, typeStrRaw) {
+  const pTrim = String(ptypeRaw ?? '').trim();
+  const n = parseInt(pTrim, 10);
+  if (Number.isFinite(n) && n >= 1 && n <= 9) {
+    return { sql: ' AND A.TYPE = :sale_bp_ptype ', binds: { sale_bp_ptype: n } };
+  }
+  const u = String(typeStrRaw ?? '').trim().toUpperCase();
+  if (!u) {
+    return { sql: ' AND A.TYPE BETWEEN 1 AND 9 ', binds: {} };
+  }
+  const map = {
+    SL: [1, 3],
+    S: [1, 3],
+    SE: [6],
+    CN: [8],
+    CH: [2],
+    RC: [9],
+  };
+  const nums = map[u];
+  if (nums && nums.length) {
+    const keys = nums.map((_, i) => `sale_bp_n${i}`);
+    const ph = keys.map((k) => `:${k}`).join(', ');
+    const binds = {};
+    keys.forEach((k, i) => {
+      binds[k] = nums[i];
+    });
+    return { sql: ` AND A.TYPE IN (${ph}) `, binds };
+  }
+  return {
+    sql: ` AND UPPER(TRIM(A.TYPE)) = UPPER(TRIM(:sale_bp_vc)) `,
+    binds: { sale_bp_vc: u },
+  };
+}
+
 /** Sale list — parties; date range: same pattern as SQL*Plus (SALE A, MASTER B, BILL_DATE, join on CODE). */
 app.get('/api/salelist-parties', async (req, res) => {
   try {
@@ -2880,20 +3519,40 @@ app.get('/api/sale-list', async (req, res) => {
 });
 
 /**
- * Sale Bill Printing list (header-level rows) for one TYPE: SL / SE / CN.
- * Optional filters: bill_no, b_type, bill_date, mcode (party code).
+ * Sale bill printing list — VFP-style: date range, bill no range, SALETYPE (ptype 1–9 or mixed),
+ * BTYPE, party (mcode), broker (b_code), REVCHG (Y/N). Optional legacy `type` SL/SE/CN when ptype omitted.
  */
 app.get('/api/sale-bill-printing-list', async (req, res) => {
   try {
-    const { comp_code, comp_uid, type, bill_no, b_type, bill_date, mcode } = req.query;
-    const t = String(type ?? '').trim().toUpperCase();
-    if (!['SL', 'SE', 'CN'].includes(t)) {
-      return res.status(400).json({ error: "type is required and must be one of 'SL', 'SE', 'CN'." });
+    const {
+      comp_code,
+      comp_uid,
+      ptype,
+      type,
+      s_date,
+      e_date,
+      sb_no,
+      eb_no,
+      b_type,
+      b_code,
+      bk_code,
+      mcode,
+      revchg,
+    } = req.query;
+    if (!comp_code || comp_uid == null || String(comp_uid).trim() === '') {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required.' });
     }
-    const bn = bill_no != null ? String(bill_no).trim() : '';
+    if (!s_date || !e_date) {
+      return res.status(400).json({ error: 's_date and e_date are required (starting and ending bill dates).' });
+    }
+
+    const brokerRaw = b_code != null && String(b_code).trim() !== '' ? b_code : bk_code;
     const bt = b_type != null ? String(b_type).trim() : '';
-    const bd = bill_date != null ? String(bill_date).trim() : '';
+    const { sql: typeSql, binds: typeBinds } = saleBillPrintingTypeWhereSql(ptype, type);
+    const { sql: billNoSql, binds: billNoBinds } = saleListBillNoRangeClause(sb_no, eb_no);
     const mBind = parseMasterCodeForSql(mcode);
+    const bBind = parseMasterCodeForSql(brokerRaw);
+    const rev = saleBillPrintingRevchgClause(revchg);
 
     const sql = `
       SELECT
@@ -2909,11 +3568,13 @@ app.get('/api/sale-bill-printing-list', async (req, res) => {
       FROM SALE A
       JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
       WHERE A.COMP_CODE = :comp_code
-        AND UPPER(TRIM(A.TYPE)) = :type
-        ${bn ? 'AND TRIM(TO_CHAR(A.BILL_NO)) = TRIM(:bill_no)' : ''}
+        ${typeSql}
+        ${rev.sql}
+        ${SALE_LIST_DATE_FILTER_SQL}
+        ${billNoSql}
         ${bt ? 'AND NVL(TRIM(A.B_TYPE), \' \') = NVL(TRIM(:b_type), \' \')' : ''}
-        ${bd ? "AND TRUNC(A.BILL_DATE) = TRUNC(TO_DATE(:bill_date, 'DD-MM-YYYY'))" : ''}
         ${mBind !== undefined ? 'AND A.CODE = :mcode' : ''}
+        ${bBind !== undefined ? 'AND A.B_CODE = :bk_code' : ''}
       GROUP BY
         A.TYPE,
         A.BILL_DATE,
@@ -2924,11 +3585,17 @@ app.get('/api/sale-bill-printing-list', async (req, res) => {
         B.CITY
       ORDER BY TRUNC(A.BILL_DATE) DESC, A.BILL_NO DESC, A.B_TYPE, A.CODE`;
 
-    const binds = { comp_code, type: t };
-    if (bn) binds.bill_no = bn;
+    const binds = {
+      comp_code,
+      s_date: String(s_date).trim(),
+      e_date: String(e_date).trim(),
+      ...billNoBinds,
+      ...typeBinds,
+      ...rev.binds,
+    };
     if (bt) binds.b_type = bt;
-    if (bd) binds.bill_date = bd;
     if (mBind !== undefined) binds.mcode = mBind;
+    if (bBind !== undefined) binds.bk_code = bBind;
 
     const rows = await runQuery(sql, binds, comp_uid);
     res.json(rows || []);
@@ -2992,9 +3659,10 @@ app.get('/api/sale-bill', async (req, res) => {
  *  Match comp_uid with TO_CHAR so string/number binds from the client both work. */
 app.get('/api/compdet-print-header', async (req, res) => {
   try {
-    const { comp_code, comp_uid } = req.query;
-    const one = await runCompdetHeaderRow(comp_code, comp_uid);
+    const { comp_code, comp_uid, comp_year } = req.query;
+    const one = await runCompdetHeaderRow(comp_code, comp_uid, comp_year);
     if (one) {
+      enrichCompdetSalePrintGlobals(one);
       await drainOracleLobsInRows([one]);
       normalizeRowBuffers(one);
       await hydrateImageFieldInRows([one], 'sale_logo');
@@ -3041,22 +3709,32 @@ app.get('/api/compdet-ledger-header', async (req, res) => {
 
 /** Full sale bill lines for tax invoice / bill of supply print */
 app.get('/api/sale-bill-print', async (req, res) => {
+  const sbpT0 = Date.now();
   try {
-    const { comp_code, comp_uid, type, bill_no, b_type, bill_date } = req.query;
+    const { comp_code, comp_uid, type, bill_no, b_type, bill_date, oracle_types, fin_year, comp_year } = req.query;
     const bt = b_type != null ? String(b_type).trim() : '';
+    let finYear = fin_year != null ? String(fin_year).trim() : '';
+    const ot = oracle_types != null ? String(oracle_types).trim() : '';
     const rows = await runSaleBillPrintRows(
       {
         comp_code,
-        type: String(type).trim(),
+        type: type != null ? String(type).trim() : '',
+        oracle_types: ot,
         bill_no: String(bill_no).trim(),
         b_type: bt || ' ',
         bill_date,
       },
       comp_uid
     );
+    if (!finYear && comp_code && comp_uid != null && String(comp_uid).trim() !== '') {
+      const cd = await runCompdetHeaderRow(comp_code, comp_uid, comp_year);
+      finYear = computeGFinYearFromCompdetRow(cd);
+    }
     const first = rows[0] ?? null;
     const rowBType = first ? rowValueCI(first, 'b_type') : null;
-    const rowGodCode = first ? rowValueCI(first, 'god_code') : null;
+    const rowPlantCode = first ? rowValueCI(first, 'plant_code') : null;
+    const hasPlantKey = rowPlantCode != null && String(rowPlantCode).trim() !== '';
+    const hasBTypeKey = rowBType != null && String(rowBType).trim() !== '';
 
     const saleCondQueries = [
       `SELECT cond1, cond2, cond3, cond4, cond5, cond6, cond7
@@ -3068,13 +3746,6 @@ app.get('/api/sale-bill-print', async (req, res) => {
        WHERE comp_code = :comp_code
          AND ROWNUM = 1`,
     ];
-    const godownSql = `
-      SELECT god_add1, god_add2, god_gst_no, god_tel_no_1, god_tel_no_2, god_fssai_no
-      FROM godown
-      WHERE comp_code = :comp_code
-        AND NVL(TRIM(god_b_type), ' ') = NVL(TRIM(:b_type), ' ')
-        AND NVL(TRIM(god_code), ' ') = NVL(TRIM(:god_code), ' ')
-        AND ROWNUM = 1`;
     const defValueSql = `
       SELECT god_print_in_sale, sale_logo, sale_logo2, signature_file, g_weight AS print_g_weight, wgt_k_q, g_weight_header, d_weight_header, g_rate_header
       FROM defvalue
@@ -3089,25 +3760,20 @@ app.get('/api/sale-bill-print', async (req, res) => {
       return null;
     })();
 
-    const [saleCondRow, godownRow, defValueRow] = await Promise.all([
+    const captionPromise =
+      first != null && (hasPlantKey || hasBTypeKey)
+        ? fetchSaleBillDispatchCaptionRow(comp_code, rowPlantCode, rowBType, comp_uid)
+        : Promise.resolve(null);
+
+    const [saleCondRow, captionRow, defValueRow] = await Promise.all([
       saleCondPromise,
-      rowBType != null && rowGodCode != null
-        ? runOptionalSingleRow(
-            godownSql,
-            {
-              comp_code,
-              b_type: String(rowBType).trim() || ' ',
-              god_code: String(rowGodCode).trim() || ' ',
-            },
-            [comp_uid, null]
-          )
-        : Promise.resolve(null),
+      captionPromise,
       runOptionalSingleRow(defValueSql, { comp_code }, [comp_uid, null]),
     ]);
 
     const extra = {
       ...(saleCondRow || {}),
-      ...(godownRow || {}),
+      ...(captionRow || {}),
       ...(defValueRow || {}),
     };
     if (Object.keys(extra).length > 0) {
@@ -3119,67 +3785,222 @@ app.get('/api/sale-bill-print', async (req, res) => {
       for (const r of rows) stripSalePrintImageFields(r);
     }
 
+    for (const r of rows) {
+      const rq = parseFloat(rowValueCI(r, 'rate_qw'));
+      const rr = parseFloat(rowValueCI(r, 'rate'));
+      const rqOk = Number.isFinite(rq) && Math.abs(rq) > 0.000001;
+      r.DISPLAY_RATE = rqOk ? rq : Number.isFinite(rr) ? rr : 0;
+      if (finYear) {
+        const inv = rowValueCI(r, 'sale_inv_no');
+        if (inv == null || String(inv).trim() === '') {
+          const bty = rowValueCI(r, 'b_type');
+          const bn = rowValueCI(r, 'bill_no');
+          if (bn != null && String(bn).trim() !== '') {
+            const bts = bty != null ? String(bty).trim() : '';
+            r.SALE_INV_NO = `${bts}/${finYear}/${String(bn).trim()}`;
+          }
+        }
+      }
+    }
+
     await drainOracleLobsInRows(rows);
     for (const r of rows) {
       normalizeRowBuffers(r);
       normalizeSignedQrColumn(r);
     }
-    await hydrateImageFieldInRows(rows, 'sale_logo');
-    await hydrateImageFieldInRows(rows, 'sale_logo2');
-    await hydrateImageFieldInRows(rows, 'signature_file');
+    await hydrateSaleBillPrintImagesOnce(rows);
+    console.log(
+      `[sale-bill-print] ${String(comp_code)} bill_no=${String(bill_no)} date=${String(bill_date || '')} oracle_types=${ot || '-'} ${Date.now() - sbpT0}ms lines=${rows.length}`
+    );
     res.json(rows);
   } catch (err) {
-    console.error('❌ Sale bill print error:', err.message);
+    console.error(
+      `❌ Sale bill print error (${Date.now() - sbpT0}ms comp=${String(req.query?.comp_code)} bill=${String(req.query?.bill_no)}):`,
+      err.message
+    );
     res.status(500).json({ error: err.message });
   }
 });
 
-/** Stock summary by item (LOTSTOCK + ITEMMAST + MASTER) */
+/** StockSum lookups */
+app.get('/api/stock-sum-items', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    let rows = await runQuery(
+      `SELECT ITEM_NAME, ITEM_CODE, CAT_CODE, R_F
+       FROM ITEMMAST
+       WHERE COMP_CODE = :comp_code
+       ORDER BY ITEM_NAME`,
+      { comp_code },
+      comp_uid
+    );
+    if ((!rows || rows.length === 0) && comp_uid != null && String(comp_uid).trim() !== '') {
+      rows = await runQuery(
+        `SELECT ITEM_NAME, ITEM_CODE, CAT_CODE, R_F
+         FROM ITEMMAST
+         WHERE COMP_CODE = :comp_code
+         ORDER BY ITEM_NAME`,
+        { comp_code },
+        null
+      );
+    }
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ StockSum items error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/stock-sum-plants', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    let rows = await runQuery(
+      `SELECT PLANT_NAME, PLANT_CODE
+       FROM PLANT
+       WHERE COMP_CODE = :comp_code
+       ORDER BY PLANT_NAME`,
+      { comp_code },
+      comp_uid
+    );
+    if ((!rows || rows.length === 0) && comp_uid != null && String(comp_uid).trim() !== '') {
+      rows = await runQuery(
+        `SELECT PLANT_NAME, PLANT_CODE
+         FROM PLANT
+         WHERE COMP_CODE = :comp_code
+         ORDER BY PLANT_NAME`,
+        { comp_code },
+        null
+      );
+    }
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ StockSum plants error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** New StockSum report (STOCK + ITEMMAST + CAT) */
 app.get('/api/stock-sum', async (req, res) => {
   try {
-    const { comp_code, comp_uid, e_date, god_code } = req.query;
-    const gc = god_code != null ? String(god_code).trim() : '';
-    const godAll = gc === '' ? 1 : 0;
+    const { comp_code, comp_uid, s_date, e_date, item_code, plant_code, cat_code, r_f } = req.query;
+    const binds = {
+      comp_code,
+      s_date,
+      e_date,
+      item_code: String(item_code ?? '').trim(),
+      plant_code: String(plant_code ?? '').trim(),
+      cat_code: String(cat_code ?? '').trim(),
+      r_f: String(r_f ?? '').trim().toUpperCase(),
+    };
     const sql = `
       SELECT
+        C.MAIN_CAT,
+        B.CAT_CODE,
         A.ITEM_CODE,
         B.ITEM_NAME,
-        MAX(C.SCHEDULE) AS SCHEDULE,
-        NVL(B.CAT_CODE, '') AS CAT_CODE,
-        SUM(CASE WHEN A.E_TYPE = 'R' THEN NVL(A.QNTY, 0) ELSE 0 END) AS R_QNTY,
-        SUM(CASE WHEN NVL(A.E_TYPE, ' ') <> 'R' THEN NVL(A.QNTY, 0) ELSE 0 END) AS S_QNTY,
-        SUM(CASE WHEN A.E_TYPE = 'R' THEN NVL(A.WEIGHT, 0) ELSE 0 END) AS R_WEIGHT,
-        SUM(CASE WHEN NVL(A.E_TYPE, ' ') <> 'R' THEN NVL(A.WEIGHT, 0) ELSE 0 END) AS S_WEIGHT,
-        SUM(CASE
-              WHEN A.STATUS = 'B' AND A.E_TYPE = 'R' THEN NVL(A.QNTY, 0)
-              WHEN A.STATUS = 'B' AND NVL(A.E_TYPE, ' ') <> 'R' THEN NVL(A.QNTY, 0) * -1
-              ELSE 0
-            END) AS BAGS,
-        SUM(CASE
-              WHEN A.STATUS = 'K' AND A.E_TYPE = 'R' THEN NVL(A.QNTY, 0)
-              WHEN A.STATUS = 'K' AND NVL(A.E_TYPE, ' ') <> 'R' THEN NVL(A.QNTY, 0) * -1
-              ELSE 0
-            END) AS KATTA,
-        SUM(CASE
-              WHEN A.STATUS = 'H' AND A.E_TYPE = 'R' THEN NVL(A.QNTY, 0)
-              WHEN A.STATUS = 'H' AND NVL(A.E_TYPE, ' ') <> 'R' THEN NVL(A.QNTY, 0) * -1
-              ELSE 0
-            END) AS HKATTA,
-        SUM(CASE WHEN A.E_TYPE = 'R' THEN NVL(A.WEIGHT, 0) ELSE NVL(A.WEIGHT, 0) * -1 END) AS WEIGHT,
-        SUM(CASE WHEN A.E_TYPE = 'R' THEN NVL(A.G_WEIGHT, 0) ELSE NVL(A.G_WEIGHT, 0) * -1 END) AS G_WEIGHT
-      FROM LOTSTOCK A
+        A.PLANT_CODE,
+        B.R_F,
+        SUM(CASE WHEN TRUNC(A.VR_DATE) < TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) THEN NVL(A.R_WEIGHT,0) - NVL(A.I_WEIGHT,0) ELSE 0 END) AS OP_BALANCE,
+        SUM(CASE WHEN TRUNC(A.VR_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY')) AND A.TYPE <> 'JR' AND A.TYPE <> 'PR' AND A.TYPE <> 'W' AND A.TYPE <> 'R' AND NVL(A.R_WEIGHT,0) <> 0 THEN NVL(A.R_WEIGHT,0) ELSE 0 END) AS PUR_WT,
+        SUM(CASE WHEN TRUNC(A.VR_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY')) AND A.TYPE = 'PR' AND NVL(A.R_WEIGHT,0) <> 0 THEN NVL(A.R_WEIGHT,0) ELSE 0 END) AS PROD_WT,
+        SUM(CASE WHEN TRUNC(A.VR_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY')) AND (A.TYPE = 'JR' OR A.TYPE = 'RR') AND NVL(A.R_WEIGHT,0) <> 0 THEN NVL(A.R_WEIGHT,0) ELSE 0 END) AS JB_WT,
+        SUM(CASE WHEN TRUNC(A.VR_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY')) AND (A.TYPE = 'JI' OR A.TYPE = 'RI') THEN NVL(A.I_WEIGHT,0) ELSE 0 END) AS JI_WT,
+        SUM(CASE WHEN TRUNC(A.VR_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY')) AND A.TYPE = 'PR' AND NVL(A.I_WEIGHT,0) <> 0 THEN NVL(A.I_WEIGHT,0) ELSE 0 END) AS MILLING_WT,
+        SUM(CASE WHEN TRUNC(A.VR_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY')) AND A.TYPE <> 'PR' AND A.TYPE <> 'PI' AND A.TYPE <> 'JR' AND A.TYPE <> 'JI' AND A.TYPE <> 'RR' AND A.TYPE <> 'RI' AND NVL(A.I_WEIGHT,0) <> 0 THEN NVL(A.I_WEIGHT,0) ELSE 0 END) AS SALE_WT,
+        SUM(CASE WHEN TRUNC(A.VR_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY')) AND A.TYPE = 'W' AND NVL(A.R_WEIGHT,0) <> 0 THEN NVL(A.R_WEIGHT,0) ELSE 0 END) AS CNOTE_WT,
+        SUM(CASE WHEN TRUNC(A.VR_DATE) <= TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY')) THEN NVL(A.R_WEIGHT,0) - NVL(A.I_WEIGHT,0) ELSE 0 END) AS CL_WT
+      FROM STOCK A
       JOIN ITEMMAST B ON A.COMP_CODE = B.COMP_CODE AND A.ITEM_CODE = B.ITEM_CODE
-      JOIN MASTER C ON A.COMP_CODE = C.COMP_CODE AND A.SUP_CODE = C.CODE
+      LEFT JOIN CAT C ON B.COMP_CODE = C.COMP_CODE AND B.CAT_CODE = C.CAT_CODE
       WHERE A.COMP_CODE = :comp_code
-        AND A.VR_DATE <= TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))
-        AND (:god_all = 1 OR NVL(A.GOD_CODE, '') = :god_code)
-      GROUP BY A.ITEM_CODE, B.ITEM_NAME, B.CAT_CODE
-      ORDER BY A.ITEM_CODE`;
-    const binds = { comp_code, e_date, god_all: godAll, god_code: gc };
-    const rows = await runQuery(sql, binds, comp_uid);
+        AND TRUNC(A.VR_DATE) <= TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))
+        AND A.ITEM_CODE = NVL(NULLIF(:item_code, ''), A.ITEM_CODE)
+        AND NVL(A.PLANT_CODE, '') = NVL(NULLIF(:plant_code, ''), NVL(A.PLANT_CODE, ''))
+        AND NVL(B.CAT_CODE, '') = NVL(NULLIF(:cat_code, ''), NVL(B.CAT_CODE, ''))
+        AND UPPER(NVL(B.R_F, '')) = NVL(NULLIF(:r_f, ''), UPPER(NVL(B.R_F, '')))
+      GROUP BY C.MAIN_CAT, B.CAT_CODE, A.ITEM_CODE, B.ITEM_NAME, A.PLANT_CODE, B.R_F
+      ORDER BY C.MAIN_CAT, B.CAT_CODE, A.ITEM_CODE`;
+    const schemaAttempts =
+      comp_uid != null && String(comp_uid).trim() !== '' ? [String(comp_uid).trim(), null] : [null];
+    let rows = [];
+    let usedSchema = null;
+    for (const sch of schemaAttempts) {
+      const got = await runQuery(sql, binds, sch);
+      if (Array.isArray(got) && got.length > 0) {
+        rows = got;
+        usedSchema = sch;
+        break;
+      }
+      if (rows.length === 0) rows = Array.isArray(got) ? got : [];
+    }
+    console.log(
+      `[stock-sum] comp=${String(comp_code)} s=${String(s_date)} e=${String(e_date)} item=${binds.item_code || '-'} plant=${binds.plant_code || '-'} cat=${binds.cat_code || '-'} rf=${binds.r_f || '-'} rows=${rows.length} schema=${usedSchema == null ? 'hub' : usedSchema}`
+    );
     res.json(rows || []);
   } catch (err) {
     console.error('❌ Stock sum error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Stock ledger drill-down for StockSum row click */
+app.get('/api/stock-sum-ledger', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, item_code, plant_code } = req.query;
+    const binds = {
+      comp_code,
+      s_date,
+      e_date,
+      item_code: String(item_code ?? '').trim(),
+      plant_code: String(plant_code ?? '').trim(),
+    };
+    const sql = `
+      SELECT
+        C.MAIN_CAT,
+        B.CAT_CODE,
+        A.ITEM_CODE,
+        B.ITEM_NAME,
+        A.PLANT_CODE,
+        B.R_F,
+        A.VR_DATE,
+        A.VR_NO,
+        A.TYPE,
+        A.B_TYPE,
+        NVL(A.R_WEIGHT, 0) AS R_WEIGHT,
+        NVL(A.I_WEIGHT, 0) AS I_WEIGHT,
+        CASE WHEN A.TYPE <> 'JR' AND A.TYPE <> 'PR' AND A.TYPE <> 'W' AND A.TYPE <> 'R' AND NVL(A.R_WEIGHT,0) <> 0 THEN NVL(A.R_WEIGHT,0) ELSE 0 END AS PUR_WT,
+        CASE WHEN A.TYPE = 'PR' AND NVL(A.R_WEIGHT,0) <> 0 THEN NVL(A.R_WEIGHT,0) ELSE 0 END AS PROD_WT,
+        CASE WHEN (A.TYPE = 'JR' OR A.TYPE = 'RR') AND NVL(A.R_WEIGHT,0) <> 0 THEN NVL(A.R_WEIGHT,0) ELSE 0 END AS JB_WT,
+        CASE WHEN (A.TYPE = 'JI' OR A.TYPE = 'RI') THEN NVL(A.I_WEIGHT,0) ELSE 0 END AS JI_WT,
+        CASE WHEN A.TYPE = 'PR' AND NVL(A.I_WEIGHT,0) <> 0 THEN NVL(A.I_WEIGHT,0) ELSE 0 END AS MILLING_WT,
+        CASE WHEN A.TYPE <> 'PR' AND A.TYPE <> 'PI' AND A.TYPE <> 'JR' AND A.TYPE <> 'JI' AND A.TYPE <> 'RR' AND A.TYPE <> 'RI' AND NVL(A.I_WEIGHT,0) <> 0 THEN NVL(A.I_WEIGHT,0) ELSE 0 END AS SALE_WT,
+        CASE WHEN A.TYPE = 'W' AND NVL(A.R_WEIGHT,0) <> 0 THEN NVL(A.R_WEIGHT,0) ELSE 0 END AS CNOTE_WT,
+        SUM(NVL(A.R_WEIGHT,0) - NVL(A.I_WEIGHT,0)) OVER (
+          ORDER BY A.VR_DATE, A.VR_NO, A.TYPE, NVL(A.B_TYPE, ' ')
+          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS CL_BAL
+      FROM STOCK A
+      JOIN ITEMMAST B ON A.COMP_CODE = B.COMP_CODE AND A.ITEM_CODE = B.ITEM_CODE
+      LEFT JOIN CAT C ON B.COMP_CODE = C.COMP_CODE AND B.CAT_CODE = C.CAT_CODE
+      WHERE A.COMP_CODE = :comp_code
+        AND TRUNC(A.VR_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))
+        AND A.ITEM_CODE = NVL(NULLIF(:item_code, ''), A.ITEM_CODE)
+        AND NVL(A.PLANT_CODE, '') = NVL(NULLIF(:plant_code, ''), NVL(A.PLANT_CODE, ''))
+      ORDER BY C.MAIN_CAT, B.CAT_CODE, A.ITEM_CODE, A.VR_DATE, A.VR_NO`;
+    const schemaAttempts =
+      comp_uid != null && String(comp_uid).trim() !== '' ? [String(comp_uid).trim(), null] : [null];
+    let rows = [];
+    for (const sch of schemaAttempts) {
+      const got = await runQuery(sql, binds, sch);
+      if (Array.isArray(got) && got.length > 0) {
+        rows = got;
+        break;
+      }
+      if (rows.length === 0) rows = Array.isArray(got) ? got : [];
+    }
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ Stock sum ledger error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

@@ -267,11 +267,19 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
       alert('Cannot open bill: missing type, bill no, or date.');
       return;
     }
+    const oracleExact =
+      typeof typRaw === 'number'
+        ? typRaw
+        : Number.isFinite(num) && num >= 1 && num <= 9
+          ? num
+          : null;
     setBillPrintParams({
       type: printType,
+      oracleTypeNum: oracleExact ?? undefined,
       billNo: String(billNo).trim(),
       bType: String(bType).trim(),
       oracleDt,
+      compYear: String(compYear ?? '').trim(),
       label: `Sale bill — ${printType} (${typRaw}) / ${billNo} / ${toDisplayDate(ymd)}`,
     });
     setBillPrintOpen(true);

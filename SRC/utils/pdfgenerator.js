@@ -3,7 +3,8 @@ import { formatLedgerDateDisplay } from './dateFormat';
 import { buildBrokerOsDisplayRows, brokerOsBCodeOf, brokerOsCrFirstFromSchedule } from './brokerOsDisplay';
 import { buildSaleListDisplayRows, saleListMeas, isSaleListCn } from './saleListDisplay';
 import { rupeesToWords } from './rupeesInWords';
-import { rowFieldCI, rowFieldAny } from './rowFieldCI';
+import { saleBillStatusUnitLabel } from './saleBillDocTitle';
+import { rowFieldCI, rowFieldAny, saleBillEinvoiceText, stripLeadingRegistrationJunk } from './rowFieldCI';
 import { ageingCurBalDisplay } from './ageingDisplay';
 
 function safeFilenamePart(name) {
@@ -218,6 +219,18 @@ const PDF_REPORT_STYLES = `
         table.table-report tbody tr.sale-list-pdf-cn td:first-child {
           font-weight: 800;
           color: #c2410c;
+        }
+        table.table-report tbody tr.sale-list-pdf-bill-gap td {
+          height: 2px;
+          padding: 5px 0 !important;
+          border: none !important;
+          border-top: 2px solid #64748b !important;
+          background: #fff !important;
+          font-size: 0;
+          line-height: 0;
+        }
+        table.table-report tbody tr.sale-list-pdf-bill-total td {
+          border-bottom: 2px solid #64748b !important;
         }
         table.table-report td.amount {
           text-align: right;
@@ -1314,12 +1327,12 @@ function buildSaleListReportHtml(data, metadata) {
   const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
 
   const { displayRows } = buildSaleListDisplayRows(data);
-  const C = 18;
+  const C = 17;
 
   let body = '';
   displayRows.forEach((item) => {
     if (item.kind === 'day-header') {
-      body += `<tr class="sale-list-pdf-banner"><td colspan="${C}"><strong>Day — ${escHtml(item.dateLabel)}</strong></td></tr>`;
+      body += `<tr class="sale-list-pdf-banner"><td colspan="${C}"><strong>Day–${escHtml(item.dateLabel)}</strong></td></tr>`;
       return;
     }
     if (item.kind === 'day-total') {
@@ -1332,10 +1345,29 @@ function buildSaleListReportHtml(data, metadata) {
             <td class="amount"><strong>${formatAmtPdf(item.cgstAmt)}</strong></td>
             <td class="amount"><strong>${formatAmtPdf(item.sgstAmt)}</strong></td>
             <td class="amount"><strong>${formatAmtPdf(item.igstAmt)}</strong></td>
-            <td class="amount"><strong>${formatAmtPdf(item.billAmt)}</strong></td>
-            <td class="amount"><strong>${formatAmtPdf(item.disAmt)}</strong></td>
             <td class="amount"><strong>${formatAmtPdf(item.othExp5)}</strong></td>
+            <td class="amount"><strong>${formatAmtPdf(item.billAmt)}</strong></td>
           </tr>`;
+      return;
+    }
+    if (item.kind === 'bill-total') {
+      const billCap = escHtml(`${item.type} / ${item.billDateLabel} / ${item.billNo} / ${item.bType}`);
+      body += `<tr class="sale-list-pdf-subtotal sale-list-pdf-bill-total">
+            <td colspan="8" title="Bill total — ${billCap}"><strong>Bill total</strong></td>
+            <td class="amount"><strong>${formatAmtPdf(item.qnty)}</strong></td>
+            <td class="amount"><strong>${formatAmtPdf(item.weight)}</strong></td>
+            <td class="amount"><strong>${formatAmtPdf(item.amount)}</strong></td>
+            <td class="amount"><strong>${formatAmtPdf(item.taxable)}</strong></td>
+            <td class="amount"><strong>${formatAmtPdf(item.cgstAmt)}</strong></td>
+            <td class="amount"><strong>${formatAmtPdf(item.sgstAmt)}</strong></td>
+            <td class="amount"><strong>${formatAmtPdf(item.igstAmt)}</strong></td>
+            <td class="amount"><strong>${formatAmtPdf(item.othExp5)}</strong></td>
+            <td class="amount"><strong>${formatAmtPdf(item.billAmt)}</strong></td>
+          </tr>`;
+      return;
+    }
+    if (item.kind === 'bill-gap') {
+      body += `<tr class="sale-list-pdf-bill-gap"><td colspan="${C}"></td></tr>`;
       return;
     }
     if (item.kind === 'section-label') {
@@ -1349,7 +1381,7 @@ function buildSaleListReportHtml(data, metadata) {
             <th class="amount">Qty</th>
             <th class="amount">Weight</th>
             <th class="amount">Amount</th>
-            <td colspan="13"></td>
+            <td colspan="12"></td>
           </tr>`;
       return;
     }
@@ -1360,7 +1392,7 @@ function buildSaleListReportHtml(data, metadata) {
             <td class="amount">${formatAmtPdf(item.qnty)}</td>
             <td class="amount">${formatAmtPdf(item.weight)}</td>
             <td class="amount">${formatAmtPdf(item.amount)}</td>
-            <td colspan="13">—</td>
+            <td colspan="12">—</td>
           </tr>`;
       return;
     }
@@ -1374,9 +1406,8 @@ function buildSaleListReportHtml(data, metadata) {
             <td class="amount"><strong>${formatAmtPdf(item.cgstAmt)}</strong></td>
             <td class="amount"><strong>${formatAmtPdf(item.sgstAmt)}</strong></td>
             <td class="amount"><strong>${formatAmtPdf(item.igstAmt)}</strong></td>
-            <td class="amount"><strong>${formatAmtPdf(item.billAmt)}</strong></td>
-            <td class="amount"><strong>${formatAmtPdf(item.disAmt)}</strong></td>
             <td class="amount"><strong>${formatAmtPdf(item.othExp5)}</strong></td>
+            <td class="amount"><strong>${formatAmtPdf(item.billAmt)}</strong></td>
           </tr>`;
       return;
     }
@@ -1401,9 +1432,8 @@ function buildSaleListReportHtml(data, metadata) {
               <td class="amount">${formatAmtPdf(saleListMeas(row, 'CGST_AMT', 'cgst_amt'))}</td>
               <td class="amount">${formatAmtPdf(saleListMeas(row, 'SGST_AMT', 'sgst_amt'))}</td>
               <td class="amount">${formatAmtPdf(saleListMeas(row, 'IGST_AMT', 'igst_amt'))}</td>
-              <td class="amount">${formatAmtPdf(saleListMeas(row, 'BILL_AMT', 'bill_amt'))}</td>
-              <td class="amount">${formatAmtPdf(row.DIS_AMT ?? row.dis_amt)}</td>
               <td class="amount">${formatAmtPdf(row.OTH_EXP5 ?? row.oth_exp5)}</td>
+              <td class="amount">${formatAmtPdf(saleListMeas(row, 'BILL_AMT', 'bill_amt'))}</td>
             </tr>`;
   });
 
@@ -1440,14 +1470,13 @@ function buildSaleListReportHtml(data, metadata) {
             <th class="amount">CGST</th>
             <th class="amount">SGST</th>
             <th class="amount">IGST</th>
-            <th class="amount">Bill amt</th>
-            <th class="amount">Dis amt</th>
             <th class="amount">Round off</th>
+            <th class="amount">Bill amt</th>
           </tr>
         </thead>
         <tbody>${body}</tbody>
       </table>
-      <div class="report-foot">Item-wise summary: columns Item code, Item name, Qty, Weight, Amount (full period). Final row is grand total. Bill amount on lines may repeat per bill.</div>
+      <div class="report-foot">Item-wise summary: columns Item code, Item name, Qty, Weight, Amount (full period). Final row is grand total. Bill subtotals appear only when a bill has more than one line; single-line bills have a spacer row before the next bill. Bill amount on lines may repeat per bill.</div>
     </div>
   `;
 }
@@ -1477,6 +1506,10 @@ const SALE_BILL_PDF_STYLES = `
   .sb-pdf-inv-item strong { font-weight: 800; }
   .sb-pdf-inv-rule { border: none; border-top: 2px solid #1e3a5f; margin: 3px 0 6px; }
   .sb-pdf-irn { font-size: 7.5px; color: #334155; margin-bottom: 8px; word-break: break-all; }
+  .sb-pdf-party-grid { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 8px; border: 1px solid #94a3b8; }
+  .sb-pdf-party-grid td { width: 50%; padding: 6px 8px; vertical-align: top; border-right: 1px solid #cbd5e1; }
+  .sb-pdf-party-grid td:last-child { border-right: none; }
+  .sb-pdf-party-grid.sb-pdf-party-grid--three td { width: 33.33%; }
   .sb-pdf-two { display: table; width: 100%; border: 1px solid #94a3b8; margin-bottom: 8px; }
   .sb-pdf-two > div { display: table-cell; width: 50%; padding: 6px 8px; vertical-align: top; border-right: 1px solid #cbd5e1; }
   .sb-pdf-two.sb-pdf-three > div { width: 33.33%; }
@@ -1496,7 +1529,8 @@ const SALE_BILL_PDF_STYLES = `
   .sb-pdf.sb-pdf-bos .sb-pdf-net-words-row { font-size: 8.5px; }
   .sb-pdf-words-inline { flex: 1; min-width: 0; }
   .sb-pdf-net-amount { flex-shrink: 0; text-align: right; }
-  .sb-pdf-sum-row { display: grid; grid-template-columns: 1fr 220px; width: 100%; align-items: start; gap: 8px; }
+  .sb-pdf-sum-row { display: flex; justify-content: flex-end; width: 100%; align-items: flex-start; gap: 8px; }
+  .sb-pdf-sum-row.sb-pdf-sum-row--with-qr { display: grid; grid-template-columns: 132px 220px; justify-content: end; }
   .sb-pdf-sum-main { width: 220px; }
   .sb-pdf-sum-main table.sb-pdf-sum { width: 100%; margin-left: 0; }
   .sb-pdf-sum-main .sb-pdf-net-words-row { width: 100%; margin-left: 0; }
@@ -1520,6 +1554,19 @@ const SALE_BILL_PDF_STYLES = `
   .sb-pdf-auth { margin-top: 4px; color: #475569; }
   .sb-pdf-party-name { font-weight: 700; }
 `;
+
+/** VFP parity: DISPLAY_RATE server-side else RATE_QW when ≠ 0, else RATE. */
+function pdfEffectiveSaleBillRate(row) {
+  if (!row || typeof row !== 'object') return 0;
+  const drRaw = row.DISPLAY_RATE ?? row.display_rate;
+  if (drRaw != null && drRaw !== '') {
+    const p = parseFloat(drRaw);
+    if (!Number.isNaN(p)) return p;
+  }
+  const rq = parseFloat(row.RATE_QW ?? row.rate_qw ?? 0) || 0;
+  if (Math.abs(rq) > 0.000001) return rq;
+  return parseFloat(row.RATE ?? row.rate ?? 0) || 0;
+}
 
 /** Sale bill / tax invoice PDF (portrait) */
 function buildSaleBillReportHtml(data, metadata) {
@@ -1619,23 +1666,35 @@ function buildSaleBillReportHtml(data, metadata) {
               <td>${escHtml(sbCell(row, 'ITEM_NAME', 'item_name'))}</td>
               ${printPackingPdf ? `<td>${escHtml(String(sbCell(row, 'PACKING', 'packing') || '').slice(0, 3))}</td>` : ''}
               <td>${escHtml(String(sbCell(row, 'HSN_CODE', 'hsn_code') || '').slice(0, 8))}</td>
+              <td style="white-space:nowrap;">${escHtml(saleBillStatusUnitLabel(row.STATUS ?? row.status))}</td>
               <td class="num">${formatQtyPdf(row.QNTY ?? row.qnty)}</td>
               ${printGWeightPdf ? `<td class="num">${formatQtyPdf(row.G_WEIGHT ?? row.g_weight)}</td>` : ''}
               ${printGWeightPdf ? `<td class="num">${formatQtyPdf(row.D_WEIGHT ?? row.d_weight)}</td>` : ''}
               <td class="num">${formatQtyPdf(row.WEIGHT ?? row.weight)}</td>
-              <td class="num">${formatAmtPdf(row.RATE ?? row.rate)}</td>
+              <td class="num">${formatAmtPdf(pdfEffectiveSaleBillRate(row))}</td>
               <td class="num">${formatAmtPdf(row.AMOUNT ?? row.amount)}</td>
               ${discountCell}${taxCellsAfterDisc}
             </tr>`;
   });
 
-  const words = escHtml(rupeesToWords(t.billAmt || t.sumAmt || 0));
-  const brokerLine =
+  const netPayPdf =
+    typeof t.netPayable === 'number' ? t.netPayable : Number(t.billAmt != null ? t.billAmt : t.sumAmt || 0);
+  const words = escHtml(rupeesToWords(netPayPdf || 0));
+  let brokerLine =
     [rowFieldCI(f, 'bk_name'), rowFieldCI(f, 'b_code') || rowFieldCI(f, 'bk_code')]
       .filter(Boolean)
       .join(' — ') || '—';
-  const bankAcNo = rowFieldAny(h, ['bank_ac_no', 'BANK_AC_NO']);
-  const bankAcNo1 = rowFieldAny(h, ['bank_ac_no1', 'BANK_AC_NO1']);
+  const bkTelPdf = rowFieldCI(f, 'b_tel_no');
+  if (bkTelPdf) brokerLine += (brokerLine === '—' ? '' : ' — ') + `Tel ${bkTelPdf}`;
+  const bankAcNo = rowFieldAny(h, ['G_BANK_AC_NO', 'g_bank_ac_no', 'bank_ac_no', 'BANK_AC_NO']);
+  const bankAcNo1 = rowFieldAny(h, [
+    'G_BANK_AC_NO2',
+    'g_bank_ac_no2',
+    'bank_ac_no2',
+    'BANK_AC_NO2',
+    'bank_ac_no1',
+    'BANK_AC_NO1',
+  ]);
   const bankHtml =
     bankAcNo || bankAcNo1
       ? `<div class="sb-pdf-bank">${bankAcNo ? `<div>${escHtml(bankAcNo)}</div>` : ''}${
@@ -1645,31 +1704,38 @@ function buildSaleBillReportHtml(data, metadata) {
   const truckNo = rowFieldCI(f, 'truck_no');
   const tptVal = rowFieldCI(f, 'tpt');
   const grNoVal = rowFieldCI(f, 'gr_no');
+  const driverVal = rowFieldCI(f, 'driver');
+  const detailVal = rowFieldCI(f, 'detail');
   const transportHtml =
-    truckNo || tptVal || grNoVal
+    truckNo || tptVal || grNoVal || driverVal || detailVal
       ? `<div class="sb-pdf-transport">${
           truckNo ? `<span><strong>Truck no.:</strong> ${escHtml(truckNo)}</span>` : ''
         }${tptVal ? `<span><strong>Tpt:</strong> ${escHtml(tptVal)}</span>` : ''}${
-          grNoVal ? `<span><strong>GR no.:</strong> ${escHtml(grNoVal)}</span>` : ''
+          driverVal ? `<span><strong>Driver:</strong> ${escHtml(driverVal)}</span>` : ''
+        }${grNoVal ? `<span><strong>GR no.:</strong> ${escHtml(grNoVal)}</span>` : ''}${
+          detailVal ? `<div><strong>Remarks:</strong> ${escHtml(detailVal)}</div>` : ''
         }</div>`
       : '';
-  const printDispatch = String(rowFieldCI(f, 'god_print_in_sale') || '').trim().toUpperCase() === 'Y';
   const godAdd1 = rowFieldCI(f, 'god_add1');
   const godAdd2 = rowFieldCI(f, 'god_add2');
+  const godGst = rowFieldCI(f, 'god_gst_no');
+  const godState = rowFieldCI(f, 'god_state');
   const godTel1 = rowFieldCI(f, 'god_tel_no_1');
   const godTel2 = rowFieldCI(f, 'god_tel_no_2');
   const godFssai = rowFieldCI(f, 'god_fssai_no');
-  const godGst = rowFieldCI(f, 'god_gst_no');
+  const hasDispatchPdf = !!(godAdd1 || godAdd2 || godGst || godState || godTel1 || godTel2 || godFssai);
+  const partyColWidth = hasDispatchPdf ? '33.33%' : '50%';
   const dispatchColHtml =
-    printDispatch && (godAdd1 || godAdd2 || godTel1 || godTel2 || godFssai || godGst)
-      ? `<div>
+    hasDispatchPdf
+      ? `<td style="width:${partyColWidth}; vertical-align:top; padding:6px 8px; border-right:none;">
           <div class="sb-pdf-h">Dispatch From</div>
           ${godAdd1 ? `<div>${escHtml(godAdd1)}</div>` : ''}
           ${godAdd2 ? `<div>${escHtml(godAdd2)}</div>` : ''}
-          ${godTel1 || godTel2 ? `<div>Tel: ${escHtml([godTel1, godTel2].filter(Boolean).join(', '))}</div>` : ''}
-          ${godFssai ? `<div>FSSAI No.: ${escHtml(godFssai)}</div>` : ''}
           ${godGst ? `<div>GST No.: ${escHtml(godGst)}</div>` : ''}
-        </div>`
+          ${godState ? `<div>State: ${escHtml(godState)}</div>` : ''}
+          ${godTel1 || godTel2 ? `<div>Tel: ${escHtml([godTel1, godTel2].filter(Boolean).join(', '))}</div>` : ''}
+          ${godFssai ? `<div>Fssai No.: ${escHtml(godFssai)}</div>` : ''}
+        </td>`
       : '';
   const terms = ['cond1', 'cond2', 'cond3', 'cond4', 'cond5', 'cond6', 'cond7']
     .map((k) => rowFieldCI(f, k))
@@ -1681,12 +1747,13 @@ function buildSaleBillReportHtml(data, metadata) {
           ${terms.map((term) => `<div>${escHtml(term)}</div>`).join('')}
         </div>`
       : '';
-  const iecNo = cleanPrintText(rowFieldAny(h, ['comp_tin', 'iec_no']));
-  const fssaiNo = cleanPrintText(rowFieldAny(h, ['fssai_no']));
+  const companyFssaiHeading = stripLeadingRegistrationJunk(
+    rowFieldAny(h, ['fssai_no']) || rowFieldAny(h, ['comp_tin', 'iec_no'])
+  );
   const llpin = cleanPrintText(rowFieldAny(h, ['llpin']));
-  const cinNo = cleanPrintText(rowFieldAny(h, ['cin_no']));
-  const udyamRegNo = cleanPrintText(rowFieldAny(h, ['udyam_reg_no']));
-  const emailVal = cleanPrintText(rowFieldCI(h, 'email'));
+  const cinNo = cleanPrintText(rowFieldAny(h, ['cin_no', 'G_CIN_NO', 'g_cin_no']));
+  const udyamRegNo = stripLeadingRegistrationJunk(rowFieldAny(h, ['udyam_no', 'G_UDYAM_NO', 'g_udyam_no', 'udyam_reg_no']));
+  const emailVal = cleanPrintText(rowFieldAny(h, ['comp_email', 'G_EMAIL', 'g_email', 'email']));
   const websiteVal = cleanPrintText(rowFieldAny(h, ['website', 'web_site', 'comp_website', 'site', 'url']));
   const compAdd1 = cleanPrintText(rowFieldAny(h, ['comp_add1', 'compadd1', 'address1']));
   const compAdd2 = cleanPrintText(rowFieldAny(h, ['comp_add2', 'compadd2', 'address2']));
@@ -1705,12 +1772,9 @@ function buildSaleBillReportHtml(data, metadata) {
     .filter(Boolean)
     .join('    |    ');
   if (gstPanLine) headingLines.push(gstPanLine);
-  const iecFssaiLine = [iecNo ? `IEC No.: ${iecNo}` : '', fssaiNo ? `FSSAI No.: ${fssaiNo}` : '']
-    .filter(Boolean)
-    .join('    |    ');
-  if (iecFssaiLine) headingLines.push(iecFssaiLine);
+  if (companyFssaiHeading) headingLines.push(`Fssai No.: ${companyFssaiHeading}`);
   if (llpin) headingLines.push(`LLPIN: ${llpin}`);
-  const cinUdyamLine = [cinNo ? `CIN: ${cinNo}` : '', udyamRegNo ? `UDAYM: ${udyamRegNo}` : '']
+  const cinUdyamLine = [cinNo ? `CIN: ${cinNo}` : '', udyamRegNo ? `Udyam No.: ${udyamRegNo}` : '']
     .filter(Boolean)
     .join('    |    ');
   if (cinUdyamLine) headingLines.push(cinUdyamLine);
@@ -1720,12 +1784,20 @@ function buildSaleBillReportHtml(data, metadata) {
   const maxHeadingLines = 6;
   const keepFromMain = Math.max(0, maxHeadingLines - tailHeadingLines.length);
   const mainHeadingLines = [...headingLines.slice(0, keepFromMain), ...tailHeadingLines].slice(0, maxHeadingLines);
-  const totalsLeftQrHtml = qrHtml
-    ? `<div class="sb-pdf-total-side sb-pdf-total-side-left">${qrHtml}</div>`
-    : '<div class="sb-pdf-total-side sb-pdf-total-side-left sb-pdf-total-side--empty"></div>';
+  const totalsLeftQrHtml = qrHtml ? `<div class="sb-pdf-total-side sb-pdf-total-side-left">${qrHtml}</div>` : '';
+  const totalsRowClass = qrHtml ? 'sb-pdf-sum-row sb-pdf-sum-row--with-qr' : 'sb-pdf-sum-row';
   const topRightLogo2Html = logo2Safe
     ? `<div class="sb-pdf-top-right"><div class="sb-pdf-logo2"><img src="${logo2Safe}" alt="" /></div></div>`
     : '<div class="sb-pdf-top-right sb-pdf-top-right--empty"></div>';
+
+  const irnPdfTxt = saleBillEinvoiceText(f, ['IRN_NO', 'irn_no']);
+  const ackPdfTxt = saleBillEinvoiceText(f, ['ACK_NO', 'ack_no']);
+  const ewayPdfTxt = saleBillEinvoiceText(f, ['EWAY_NO', 'eway_no']);
+  const irnPdfParts = [];
+  if (irnPdfTxt) irnPdfParts.push(`<div>IRN: ${escHtml(irnPdfTxt)}</div>`);
+  if (ackPdfTxt) irnPdfParts.push(`<div>ACK: ${escHtml(ackPdfTxt)}</div>`);
+  if (ewayPdfTxt) irnPdfParts.push(`<div>E-Way: ${escHtml(ewayPdfTxt)}</div>`);
+  const irnPdfBlockHtml = irnPdfParts.length ? `<div class="sb-pdf-irn">${irnPdfParts.join('')}</div>` : '';
 
   return `
     <div class="report-doc sb-pdf${isBillOfSupplyNoTax ? ' sb-pdf-bos' : ''}">
@@ -1757,33 +1829,39 @@ function buildSaleBillReportHtml(data, metadata) {
       </div>`
       }
       <hr class="sb-pdf-inv-rule" />
-      <div class="sb-pdf-irn">
-        <div>IRN: ${escHtml(rowFieldCI(f, 'irn_no') || '—')}</div>
-        <div>ACK: ${escHtml(rowFieldCI(f, 'ack_no') || '—')}</div>
-        <div>E-Way: ${escHtml(rowFieldCI(f, 'eway_no') || '—')}</div>
-      </div>
+      ${irnPdfBlockHtml}
 
-      <div class="sb-pdf-two ${dispatchColHtml ? 'sb-pdf-three' : ''}">
-        <div>
+      <table class="sb-pdf-party-grid ${dispatchColHtml ? 'sb-pdf-party-grid--three' : ''}" style="width:100%; border-collapse:collapse; table-layout:fixed; margin-bottom:8px; border:1px solid #94a3b8;">
+        <tr>
+        <td style="width:${partyColWidth}; vertical-align:top; padding:6px 8px; border-right:1px solid #cbd5e1;">
           <div class="sb-pdf-h">Buyer (billed to)</div>
           <div class="sb-pdf-party-name">${fv('name')}</div>
           <div>${fv('add1')}</div>
           <div>${fv('add2')}</div>
+          <div>${fv('add3')}</div>
           <div>${fv('city')}</div>
+          ${fv('tin') ? `<div>TIN: ${fv('tin')}</div>` : ''}
+          ${fv('tel_no_o') ? `<div>Tel: ${fv('tel_no_o')}</div>` : ''}
+          ${fv('bill_cond') ? `<div>${fv('bill_cond')}</div>` : ''}
           <div>GST: ${fv('gst_no') || '—'}</div>
           <div>PAN: ${fv('pan') || '—'}</div>
-        </div>
-        <div>
+        </td>
+        <td style="width:${partyColWidth}; vertical-align:top; padding:6px 8px; border-right:${dispatchColHtml ? '1px solid #cbd5e1' : 'none'};">
           <div class="sb-pdf-h">Shipped to</div>
           <div class="sb-pdf-party-name">${fv('delv_name') || '—'}</div>
           <div>${fv('delv_add1') || '—'}</div>
           <div>${fv('delv_add2') || '—'}</div>
+          <div>${fv('delv_add3') || ''}</div>
           <div>${fv('delv_city') || '—'}</div>
+          ${fv('delv_state_code') || fv('delv_state') ? `<div>${fv('delv_state_code')}${fv('delv_state') ? ` — ${fv('delv_state')}` : ''}</div>` : ''}
+          ${fv('delv_tel_no_o') ? `<div>Tel: ${fv('delv_tel_no_o')}</div>` : ''}
+          ${fv('delv_fssai_no') ? `<div>FSSAI: ${fv('delv_fssai_no')}</div>` : ''}
           <div>GST: ${fv('delv_gst_no') || '—'}</div>
           <div>PAN: ${fv('delv_pan') || '—'}</div>
-        </div>
+        </td>
         ${dispatchColHtml}
-      </div>
+        </tr>
+      </table>
 
       <div class="sb-pdf-broker"><strong>Broker:</strong> ${escHtml(brokerLine)}</div>
 
@@ -1794,6 +1872,7 @@ function buildSaleBillReportHtml(data, metadata) {
             <th>Particulars</th>
             ${printPackingPdf ? '<th style="width:54px; white-space:nowrap;">Packing</th>' : ''}
             <th style="width:76px; white-space:nowrap;">Hsn Code</th>
+            <th style="width:58px; white-space:nowrap;">Unit</th>
             <th class="num">Qty</th>
             ${printGWeightPdf ? `<th class="num">G.Wt<br><small>${gWeightHeaderPdf}</small></th>` : ''}
             ${printGWeightPdf ? `<th class="num">Dane<br><small>${dWeightHeaderPdf}</small></th>` : ''}
@@ -1811,13 +1890,15 @@ function buildSaleBillReportHtml(data, metadata) {
         <tbody>${bodyRows}</tbody>
       </table>
 
-      <div class="sb-pdf-sum-row">
+      <div class="${totalsRowClass}">
         ${totalsLeftQrHtml}
         <div class="sb-pdf-sum-main">
           <table class="sb-pdf-sum">
             <tbody>
               <tr><td>Total amount</td><td class="num">${formatAmtPdf(t.sumAmt)}</td></tr>
-              ${Math.abs(Number(t.disAmt || 0)) > 0.0001 ? `<tr><td>Discount</td><td class="num">${formatAmtPdf(t.disAmt)}</td></tr>` : ''}
+              ${Math.abs(Number(t.sumBk || 0)) > 0.0001 ? `<tr><td>Less brokerage</td><td class="num">${formatAmtPdf(t.sumBk)}</td></tr>` : ''}
+              ${Math.abs(Number(t.sumDami || 0)) > 0.0001 ? `<tr><td>Dami</td><td class="num">${formatAmtPdf(t.sumDami)}</td></tr>` : ''}
+              ${Math.abs(Number(t.disAmt || 0)) > 0.0001 ? `<tr><td>Discount${Math.abs(Number(t.disPerBill || 0)) > 0.0001 ? ` @ ${formatAmtPdf(t.disPerBill)}%` : ''}</td><td class="num">${formatAmtPdf(t.disAmt)}</td></tr>` : ''}
               ${
                 !isBillOfSupplyNoTax
                   ? `${Math.abs(Number(t.sumTax || 0)) > 0.0001 ? `<tr><td>Total taxable</td><td class="num">${formatAmtPdf(t.sumTax)}</td></tr>` : ''}
@@ -1827,6 +1908,15 @@ function buildSaleBillReportHtml(data, metadata) {
                   : ''
               }
               ${Math.abs(Number(t.freight || 0)) > 0.0001 ? `<tr><td>Freight</td><td class="num">${formatAmtPdf(t.freight)}</td></tr>` : ''}
+              ${Math.abs(Number(t.labourBill || 0)) > 0.0001 ? `<tr><td>Labour</td><td class="num">${formatAmtPdf(t.labourBill)}</td></tr>` : ''}
+              ${Math.abs(Number(t.insuranceBill || 0)) > 0.0001 ? `<tr><td>Insurance</td><td class="num">${formatAmtPdf(t.insuranceBill)}</td></tr>` : ''}
+              ${Math.abs(Number(t.othExpBill || 0)) > 0.0001 ? `<tr><td>${escHtml(t.othNameBill || 'Other expense')}</td><td class="num">${formatAmtPdf(t.othExpBill)}</td></tr>` : ''}
+              ${Math.abs(Number(t.labAmtBill || 0)) > 0.0001 ? `<tr><td>Lab amount</td><td class="num">${formatAmtPdf(t.labAmtBill)}</td></tr>` : ''}
+              ${Math.abs(Number(t.bardAmtBill || 0)) > 0.0001 ? `<tr><td>Bardana</td><td class="num">${formatAmtPdf(t.bardAmtBill)}</td></tr>` : ''}
+              ${Math.abs(Number(t.fgtAmtBill || 0)) > 0.0001 ? `<tr><td>Freight (FGT)</td><td class="num">${formatAmtPdf(t.fgtAmtBill)}</td></tr>` : ''}
+              ${Math.abs(Number(t.insAmtBill || 0)) > 0.0001 ? `<tr><td>Insurance (alloc.)</td><td class="num">${formatAmtPdf(t.insAmtBill)}</td></tr>` : ''}
+              ${Math.abs(Number(t.othAmtBill || 0)) > 0.0001 ? `<tr><td>Other charges</td><td class="num">${formatAmtPdf(t.othAmtBill)}</td></tr>` : ''}
+              ${Math.abs(Number(t.tcsAmt || 0)) > 0.0001 ? `<tr><td>TCS${Math.abs(Number(t.tcsPerBill || 0)) > 0.0001 ? ` @ ${formatAmtPdf(t.tcsPerBill)}%` : ''}</td><td class="num">${formatAmtPdf(t.tcsAmt)}</td></tr>` : ''}
               ${(Array.isArray(t.expenseItems) ? t.expenseItems : [])
                 .map(
                   (item) =>
@@ -1834,13 +1924,16 @@ function buildSaleBillReportHtml(data, metadata) {
                 )
                 .join('')}
               ${Math.abs(Number(t.othExp5 || 0)) > 0.0001 ? `<tr><td>Round off</td><td class="num">${formatAmtPdf(t.othExp5)}</td></tr>` : ''}
+              <tr><td><strong>Net amount</strong></td><td class="num"><strong>${formatAmtPdf(t.billAmt)}</strong></td></tr>
+              ${Math.abs(Number(t.tdsAmt || 0)) > 0.0001 ? `<tr><td>Less TDS${Math.abs(Number(t.tdsPerBill || 0)) > 0.0001 ? ` @ ${formatAmtPdf(t.tdsPerBill)}%` : ''}${Math.abs(Number(t.tdsOnBill || 0)) > 0.0001 ? ` on ${formatAmtPdf(t.tdsOnBill)}` : ''}</td><td class="num">${formatAmtPdf(t.tdsAmt)}</td></tr>` : ''}
+              ${Math.abs(Number(t.tdsAmt || 0)) > 0.0001 ? `<tr><td><strong>Net amount payable</strong></td><td class="num"><strong>${formatAmtPdf(t.netPayable)}</strong></td></tr>` : ''}
             </tbody>
           </table>
           <div class="sb-pdf-net-words-row">
             <div class="sb-pdf-words-inline"><strong>Rs in words:</strong> ${words}</div>
             <div class="sb-pdf-net-amount">
-              <div><strong>Net amount</strong></div>
-              <div class="num"><strong>${formatAmtPdf(t.billAmt)}</strong></div>
+              <div><strong>Net amount payable</strong></div>
+              <div class="num"><strong>${formatAmtPdf(t.netPayable != null ? t.netPayable : t.billAmt)}</strong></div>
             </div>
           </div>
         </div>
@@ -1874,63 +1967,69 @@ function formatStockPdf(n, frac = 2) {
   return v.toLocaleString('en-IN', { minimumFractionDigits: frac, maximumFractionDigits: frac });
 }
 
-/** Item-wise stock summary (LOTSTOCK) */
+/** Item-wise stock summary (STOCK) */
 function buildStockSumReportHtml(data, metadata) {
   const rows = Array.isArray(data?.rows) ? data.rows : [];
   const company = escHtml(metadata.companyName || '');
+  const startDt = escHtml(metadata.startDate || '');
   const endDt = escHtml(metadata.endDate || '');
-  const god = escHtml(metadata.godLabel ?? '');
+  const itemLabel = escHtml(metadata.itemLabel ?? 'All');
+  const plantLabel = escHtml(metadata.plantLabel ?? 'All');
+  const catLabel = escHtml(metadata.catLabel ?? 'All');
+  const rfLabel = escHtml(metadata.rfLabel ?? 'All');
   const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
 
-  let tRq = 0;
-  let tSq = 0;
-  let tRw = 0;
-  let tSw = 0;
-  let tBags = 0;
-  let tKatta = 0;
-  let tHkatta = 0;
-  let tWt = 0;
-  let tGw = 0;
+  let tPur = 0;
+  let tOp = 0;
+  let tProd = 0;
+  let tJb = 0;
+  let tJi = 0;
+  let tMill = 0;
+  let tSale = 0;
+  let tCnote = 0;
+  let tCl = 0;
 
   let body = '';
   rows.forEach((r) => {
-    tRq += stockNum(r, 'R_QNTY', 'r_qnty');
-    tSq += stockNum(r, 'S_QNTY', 's_qnty');
-    tRw += stockNum(r, 'R_WEIGHT', 'r_weight');
-    tSw += stockNum(r, 'S_WEIGHT', 's_weight');
-    tBags += stockNum(r, 'BAGS', 'bags');
-    tKatta += stockNum(r, 'KATTA', 'katta');
-    tHkatta += stockNum(r, 'HKATTA', 'hkatta');
-    tWt += stockNum(r, 'WEIGHT', 'weight');
-    tGw += stockNum(r, 'G_WEIGHT', 'g_weight');
+    tOp += stockNum(r, 'OP_BALANCE', 'op_balance');
+    tPur += stockNum(r, 'PUR_WT', 'pur_wt');
+    tProd += stockNum(r, 'PROD_WT', 'prod_wt');
+    tJb += stockNum(r, 'JB_WT', 'jb_wt');
+    tJi += stockNum(r, 'JI_WT', 'ji_wt');
+    tMill += stockNum(r, 'MILLING_WT', 'milling_wt');
+    tSale += stockNum(r, 'SALE_WT', 'sale_wt');
+    tCnote += stockNum(r, 'CNOTE_WT', 'cnote_wt');
+    tCl += stockNum(r, 'CL_WT', 'cl_wt');
     body += `<tr>
+      <td>${escHtml(r.MAIN_CAT ?? r.main_cat ?? '')}</td>
+      <td>${escHtml(r.CAT_CODE ?? r.cat_code ?? '')}</td>
       <td>${escHtml(r.ITEM_CODE ?? r.item_code ?? '')}</td>
       <td class="col-name">${escHtml(r.ITEM_NAME ?? r.item_name ?? '')}</td>
-      <td>${escHtml(r.SCHEDULE ?? r.schedule ?? '')}</td>
-      <td>${escHtml(r.CAT_CODE ?? r.cat_code ?? '')}</td>
-      <td class="amount">${formatStockPdf(stockNum(r, 'R_QNTY', 'r_qnty'), 3)}</td>
-      <td class="amount">${formatStockPdf(stockNum(r, 'S_QNTY', 's_qnty'), 3)}</td>
-      <td class="amount">${formatStockPdf(stockNum(r, 'R_WEIGHT', 'r_weight'))}</td>
-      <td class="amount">${formatStockPdf(stockNum(r, 'S_WEIGHT', 's_weight'))}</td>
-      <td class="amount">${formatStockPdf(stockNum(r, 'BAGS', 'bags'), 3)}</td>
-      <td class="amount">${formatStockPdf(stockNum(r, 'KATTA', 'katta'), 3)}</td>
-      <td class="amount">${formatStockPdf(stockNum(r, 'HKATTA', 'hkatta'), 3)}</td>
-      <td class="amount">${formatStockPdf(stockNum(r, 'WEIGHT', 'weight'))}</td>
-      <td class="amount">${formatStockPdf(stockNum(r, 'G_WEIGHT', 'g_weight'))}</td>
+      <td>${escHtml(r.PLANT_CODE ?? r.plant_code ?? '')}</td>
+      <td>${escHtml(r.R_F ?? r.r_f ?? '')}</td>
+      <td class="amount">${formatStockPdf(stockNum(r, 'OP_BALANCE', 'op_balance'))}</td>
+      <td class="amount">${formatStockPdf(stockNum(r, 'PUR_WT', 'pur_wt'))}</td>
+      <td class="amount">${formatStockPdf(stockNum(r, 'PROD_WT', 'prod_wt'))}</td>
+      <td class="amount">${formatStockPdf(stockNum(r, 'JB_WT', 'jb_wt'))}</td>
+      <td class="amount">${formatStockPdf(stockNum(r, 'JI_WT', 'ji_wt'))}</td>
+      <td class="amount">${formatStockPdf(stockNum(r, 'MILLING_WT', 'milling_wt'))}</td>
+      <td class="amount">${formatStockPdf(stockNum(r, 'SALE_WT', 'sale_wt'))}</td>
+      <td class="amount">${formatStockPdf(stockNum(r, 'CNOTE_WT', 'cnote_wt'))}</td>
+      <td class="amount">${formatStockPdf(stockNum(r, 'CL_WT', 'cl_wt'))}</td>
     </tr>`;
   });
 
   const grandRow = `<tr class="report-grand-total">
-    <td colspan="4" class="lbl-total">Grand total (${rows.length} items)</td>
-    <td class="amount">${formatStockPdf(tRq, 3)}</td>
-    <td class="amount">${formatStockPdf(tSq, 3)}</td>
-    <td class="amount">${formatStockPdf(tRw)}</td>
-    <td class="amount">${formatStockPdf(tSw)}</td>
-    <td class="amount">${formatStockPdf(tBags, 3)}</td>
-    <td class="amount">${formatStockPdf(tKatta, 3)}</td>
-    <td class="amount">${formatStockPdf(tHkatta, 3)}</td>
-    <td class="amount">${formatStockPdf(tWt)}</td>
-    <td class="amount">${formatStockPdf(tGw)}</td>
+    <td colspan="6" class="lbl-total">Grand total (${rows.length} rows)</td>
+    <td class="amount">${formatStockPdf(tOp)}</td>
+    <td class="amount">${formatStockPdf(tPur)}</td>
+    <td class="amount">${formatStockPdf(tProd)}</td>
+    <td class="amount">${formatStockPdf(tJb)}</td>
+    <td class="amount">${formatStockPdf(tJi)}</td>
+    <td class="amount">${formatStockPdf(tMill)}</td>
+    <td class="amount">${formatStockPdf(tSale)}</td>
+    <td class="amount">${formatStockPdf(tCnote)}</td>
+    <td class="amount">${formatStockPdf(tCl)}</td>
   </tr>`;
 
   return `
@@ -1938,34 +2037,37 @@ function buildStockSumReportHtml(data, metadata) {
       <style>${PDF_REPORT_STYLES}</style>
       <div class="report-topbar">
         <div class="kicker">INVENTORY</div>
-        <h1>Stock sum (by item)</h1>
+        <h1>Stock sum</h1>
         <div class="company">${company}</div>
         <div class="report-period">
-          As on <strong>${endDt}</strong> · Godown: <strong>${god}</strong><br />
+          Date <strong>${startDt}</strong> – <strong>${endDt}</strong> · Item: <strong>${itemLabel}</strong><br />
+          Plant: <strong>${plantLabel}</strong> · Cat: <strong>${catLabel}</strong> · R/F: <strong>${rfLabel}</strong><br />
           Generated: ${generated}
         </div>
       </div>
       <table class="table-report">
         <thead>
           <tr>
+            <th>Main cat</th>
+            <th>Cat</th>
             <th>Item</th>
             <th>Name</th>
-            <th>Sch</th>
-            <th>Cat</th>
-            <th class="amount">R qty</th>
-            <th class="amount">S qty</th>
-            <th class="amount">R wt</th>
-            <th class="amount">S wt</th>
-            <th class="amount">Bags</th>
-            <th class="amount">Katta</th>
-            <th class="amount">H katta</th>
-            <th class="amount">Net wt</th>
-            <th class="amount">G wt</th>
+            <th>Plant</th>
+            <th>R/F</th>
+            <th class="amount">Op bal</th>
+            <th class="amount">Pur wt</th>
+            <th class="amount">Prod wt</th>
+            <th class="amount">JB wt</th>
+            <th class="amount">JI wt</th>
+            <th class="amount">Milling wt</th>
+            <th class="amount">Sale wt</th>
+            <th class="amount">CNote wt</th>
+            <th class="amount">CL wt</th>
           </tr>
         </thead>
         <tbody>${body}${grandRow}</tbody>
       </table>
-      <div class="report-foot">R = receipt, S = issue / sale side. Net wt and G wt are signed totals from LOTSTOCK.</div>
+      <div class="report-foot">StockSum summary from STOCK table with item/plant/category filters.</div>
     </div>
   `;
 }
@@ -2067,6 +2169,100 @@ function buildStockSumDetailReportHtml(data, metadata) {
         <tbody>${body}${raw.length ? grandRow : ''}</tbody>
       </table>
       <div class="report-foot">Running balance = cumulative (R − S) per row for qty, weight, and gross weight.</div>
+    </div>
+  `;
+}
+
+/** StockSum ledger (row-wise stock movement) */
+function buildStockSumLedgerReportHtml(data, metadata) {
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  const company = escHtml(metadata.companyName || '');
+  const sdt = escHtml(metadata.startDate || '');
+  const edt = escHtml(metadata.endDate || '');
+  const itemCode = escHtml(metadata.itemCode || '');
+  const itemName = escHtml(metadata.itemName || '');
+  const plantCode = escHtml(metadata.plantCode || '');
+  const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
+
+  let tPur = 0;
+  let tProd = 0;
+  let tJb = 0;
+  let tJi = 0;
+  let tMill = 0;
+  let tSale = 0;
+  let tCnote = 0;
+  let tCl = 0;
+  const body = rows
+    .map((r) => {
+      tPur += stockNum(r, 'PUR_WT', 'pur_wt');
+      tProd += stockNum(r, 'PROD_WT', 'prod_wt');
+      tJb += stockNum(r, 'JB_WT', 'jb_wt');
+      tJi += stockNum(r, 'JI_WT', 'ji_wt');
+      tMill += stockNum(r, 'MILLING_WT', 'milling_wt');
+      tSale += stockNum(r, 'SALE_WT', 'sale_wt');
+      tCnote += stockNum(r, 'CNOTE_WT', 'cnote_wt');
+      tCl = stockNum(r, 'CL_BAL', 'cl_bal');
+      return `<tr>
+        <td>${escHtml(formatLedgerDateDisplay(r.VR_DATE ?? r.vr_date))}</td>
+        <td>${escHtml(r.VR_NO ?? r.vr_no ?? '')}</td>
+        <td>${escHtml(r.TYPE ?? r.type ?? '')}</td>
+        <td>${escHtml(r.B_TYPE ?? r.b_type ?? '')}</td>
+        <td class="amount">${formatStockPdf(stockNum(r, 'PUR_WT', 'pur_wt'))}</td>
+        <td class="amount">${formatStockPdf(stockNum(r, 'PROD_WT', 'prod_wt'))}</td>
+        <td class="amount">${formatStockPdf(stockNum(r, 'JB_WT', 'jb_wt'))}</td>
+        <td class="amount">${formatStockPdf(stockNum(r, 'JI_WT', 'ji_wt'))}</td>
+        <td class="amount">${formatStockPdf(stockNum(r, 'MILLING_WT', 'milling_wt'))}</td>
+        <td class="amount">${formatStockPdf(stockNum(r, 'SALE_WT', 'sale_wt'))}</td>
+        <td class="amount">${formatStockPdf(stockNum(r, 'CNOTE_WT', 'cnote_wt'))}</td>
+        <td class="amount">${formatStockPdf(stockNum(r, 'CL_BAL', 'cl_bal'))}</td>
+      </tr>`;
+    })
+    .join('');
+
+  return `
+    <div class="report-doc">
+      <style>${PDF_REPORT_STYLES}</style>
+      <div class="report-topbar">
+        <div class="kicker">INVENTORY</div>
+        <h1>Stock ledger</h1>
+        <div class="company">${company}</div>
+        <div class="report-period">
+          Date <strong>${sdt}</strong> – <strong>${edt}</strong> · Item <strong>${itemCode}</strong> ${itemName}<br />
+          Plant <strong>${plantCode || 'All'}</strong> · Generated: ${generated}
+        </div>
+      </div>
+      <table class="table-report stock-sum-ledger-pdf">
+        <thead>
+          <tr>
+            <th>Vr date</th>
+            <th>Vr no</th>
+            <th>Type</th>
+            <th>B type</th>
+            <th class="amount">Pur wt</th>
+            <th class="amount">Prod wt</th>
+            <th class="amount">JB wt</th>
+            <th class="amount">JI wt</th>
+            <th class="amount">Milling wt</th>
+            <th class="amount">Sale wt</th>
+            <th class="amount">CNote wt</th>
+            <th class="amount">CL bal</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${body}
+          <tr class="report-grand-total">
+            <td colspan="4" class="lbl-total">Grand total</td>
+            <td class="amount">${formatStockPdf(tPur)}</td>
+            <td class="amount">${formatStockPdf(tProd)}</td>
+            <td class="amount">${formatStockPdf(tJb)}</td>
+            <td class="amount">${formatStockPdf(tJi)}</td>
+            <td class="amount">${formatStockPdf(tMill)}</td>
+            <td class="amount">${formatStockPdf(tSale)}</td>
+            <td class="amount">${formatStockPdf(tCnote)}</td>
+            <td class="amount">${formatStockPdf(tCl)}</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   `;
 }
@@ -2841,6 +3037,7 @@ export function buildReportHtml(reportType, data, metadata) {
   if (reportType === 'sale-bill') return buildSaleBillReportHtml(data, metadata);
   if (reportType === 'stock-sum') return buildStockSumReportHtml(data, metadata);
   if (reportType === 'stock-sum-detail') return buildStockSumDetailReportHtml(data, metadata);
+  if (reportType === 'stock-sum-ledger') return buildStockSumLedgerReportHtml(data, metadata);
   if (reportType === 'stock-lot') return buildStockLotReportHtml(data, metadata);
   if (reportType === 'purchase-list') return buildPurchaseListReportHtml(data, metadata);
   if (reportType === 'purchase-bill') return buildPurchaseBillReportHtml(data, metadata);
@@ -3048,6 +3245,7 @@ export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText
 
   const waDigits = pickWhatsAppDigitsFromMetadata(metadata);
   const hasTargetPhone = waDigits.length >= 10;
+  const preferDirectNumber = !!metadata?.preferWhatsAppDirectToNumber;
   const phoneHint = hasTargetPhone
     ? `Send to +${waDigits}\nOpen chat: https://wa.me/${waDigits}\n\n`
     : '';
@@ -3056,6 +3254,17 @@ export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText
     ? `\n\nPDF saved as: ${filename}\nTap Attach (paperclip), choose this PDF from Downloads, then send.`
     : `\n\nPDF saved as: ${filename}\nIn WhatsApp, tap Attach (paperclip) and select this file from your Downloads folder.`;
   const body = text + attachHint;
+
+  /**
+   * Direct-number mode: open target chat via wa.me so WhatsApp does not ask for contact selection first.
+   * Attachment still cannot be auto-inserted by URL; save PDF locally and user attaches in that chat.
+   */
+  if (hasTargetPhone && preferDirectNumber) {
+    downloadBlob(blob, filename);
+    const url = buildWhatsAppWebUrl(waDigits, body);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
 
   let canShareFiles = false;
   try {

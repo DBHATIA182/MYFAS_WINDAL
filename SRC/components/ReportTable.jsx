@@ -6,6 +6,21 @@ import { ageingCurBalDisplay } from '../utils/ageingDisplay';
 
 const LEDGER_SALE_VR_TYPES = new Set(['SL', 'SE', 'CN']);
 
+/** <colgroup> px widths (no InvDate column — date is on the Day banner row only) */
+const SALE_LIST_COL_WIDTHS_PX = [
+  18, 32, 12, 44, 208, 96, 124, 118, 50, 168, 42, 56, 146, 20,
+  /* Qty, Wt, Rate, Amount, Taxable, CGST, SGST, IGST, Round off, Bill amt */
+  78, 108, 78, 132, 92, 76, 76, 76, 58, 100,
+];
+
+const SALE_LIST_TABLE_WIDTH_PX = SALE_LIST_COL_WIDTHS_PX.reduce((s, w) => s + w, 0);
+
+/** Locks lead columns via CSS vars (--sl-col-1 … 5) + exact table width (fixed layout). */
+const SALE_LIST_TABLE_STYLE = {
+  width: `${SALE_LIST_TABLE_WIDTH_PX}px`,
+  ...Object.fromEntries(SALE_LIST_COL_WIDTHS_PX.slice(0, 5).map((w, i) => [`--sl-col-${i + 1}`, `${w}px`])),
+};
+
 function formatBillLedgerPartyCaption(name, code, city, tel) {
   const n = String(name || '').trim();
   const c = String(code || '').trim();
@@ -979,8 +994,9 @@ export default function ReportTable({
       <div className="table-responsive table-responsive--sale-list" ref={saleListGridScrollRef}>
         {onSaleBillClick ? (
           <p className="sale-list-hint">
-            Use the <strong>horizontal scrollbar</strong> in this grid (or Shift+mouse wheel) to see all columns. Bill-wise
-            and day-wise totals are shown; click a detail row to open full sale bill.
+            Use the <strong>horizontal scrollbar</strong> in this grid (or Shift+mouse wheel) to see all columns.             A <strong>Bill total</strong> appears only when that bill has more than one line; single-line bills get a
+            spacer row with the same horizontal rule. Every bill ends with a full-width line under it. Day totals always
+            show. Click a detail row to open the full sale bill.
           </p>
         ) : null}
         <div className="sale-list-scroll-sync sale-list-scroll-sync--top" ref={saleListTopScrollRef}>
@@ -994,14 +1010,23 @@ export default function ReportTable({
           ]
             .filter(Boolean)
             .join(' ')}
+          style={SALE_LIST_TABLE_STYLE}
         >
+          <colgroup>
+            {SALE_LIST_COL_WIDTHS_PX.map((w, idx) => (
+              <col key={`slc-${idx}`} style={{ width: `${w}px` }} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
               <th scope="col">Tp</th>
-              <th scope="col">InvDate</th>
-              <th scope="col">InvNo</th>
+              <th scope="col" title="Invoice number">
+                InvNo
+              </th>
               <th scope="col">Bt</th>
-              <th scope="col">Party</th>
+              <th scope="col" title="Party code">
+                Party
+              </th>
               <th scope="col">Name</th>
               <th scope="col">City</th>
               <th scope="col">PAN</th>
@@ -1011,8 +1036,7 @@ export default function ReportTable({
               <th scope="col">Trn</th>
               <th scope="col">Item</th>
               <th scope="col">Item name</th>
-              <th scope="col">Lot</th>
-              <th scope="col">Status</th>
+              <th scope="col">BKH</th>
               <th className="text-right" scope="col">
                 Qty
               </th>
@@ -1038,13 +1062,10 @@ export default function ReportTable({
                 IGST
               </th>
               <th className="text-right" scope="col">
-                Bill amt
-              </th>
-              <th className="text-right" scope="col">
-                Dis amt
-              </th>
-              <th className="text-right" scope="col">
                 Round off
+              </th>
+              <th className="text-right" scope="col">
+                Bill amt
               </th>
             </tr>
           </thead>
@@ -1053,17 +1074,18 @@ export default function ReportTable({
               if (item.kind === 'day-header') {
                 return (
                   <tr key={`dh-${i}`} className="sale-list-day-banner">
-                    <td colSpan={27}>
-                      <strong>Day — {item.dateLabel}</strong>
+                    <td colSpan={24}>
+                      <strong>Day–{item.dateLabel}</strong>
                     </td>
                   </tr>
                 );
               }
               if (item.kind === 'day-total') {
+                const dayTotalCaption = `Day total — ${item.dateLabel}`;
                 return (
                   <tr key={`dt-${i}`} className="sale-list-day-total">
-                    <td colSpan={16}>
-                      <strong>Day total</strong> — {item.dateLabel}
+                    <td colSpan={14} className="sale-list-subtotal-label" title={dayTotalCaption}>
+                      <strong>Day total</strong>
                     </td>
                     <td className="text-right">{fmtAlways(item.qnty)}</td>
                     <td className="text-right">{fmtAlways(item.weight)}</td>
@@ -1073,17 +1095,24 @@ export default function ReportTable({
                     <td className="text-right">{fmtAlways(item.cgstAmt)}</td>
                     <td className="text-right">{fmtAlways(item.sgstAmt)}</td>
                     <td className="text-right">{fmtAlways(item.igstAmt)}</td>
-                    <td className="text-right">{fmtAlways(item.billAmt)}</td>
-                    <td className="text-right">{fmtAlways(item.disAmt)}</td>
                     <td className="text-right">{fmtAlways(item.othExp5)}</td>
+                    <td className="text-right">{fmtAlways(item.billAmt)}</td>
+                  </tr>
+                );
+              }
+              if (item.kind === 'bill-gap') {
+                return (
+                  <tr key={`bg-${i}`} className="sale-list-bill-gap" aria-hidden="true">
+                    <td colSpan={24} />
                   </tr>
                 );
               }
               if (item.kind === 'bill-total') {
+                const billTotalCaption = `Bill total — ${item.type} / ${item.billDateLabel} / ${item.billNo} / ${item.bType}`;
                 return (
                   <tr key={`bt-${i}`} className="sale-list-bill-total">
-                    <td colSpan={16}>
-                      <strong>Bill total</strong> — {item.type} / {item.billDateLabel} / {item.billNo} / {item.bType}
+                    <td colSpan={14} className="sale-list-subtotal-label" title={billTotalCaption}>
+                      <strong>Bill total</strong>
                     </td>
                     <td className="text-right">{fmtAlways(item.qnty)}</td>
                     <td className="text-right">{fmtAlways(item.weight)}</td>
@@ -1093,16 +1122,15 @@ export default function ReportTable({
                     <td className="text-right">{fmtAlways(item.cgstAmt)}</td>
                     <td className="text-right">{fmtAlways(item.sgstAmt)}</td>
                     <td className="text-right">{fmtAlways(item.igstAmt)}</td>
-                    <td className="text-right">{fmtAlways(item.billAmt)}</td>
-                    <td className="text-right">{fmtAlways(item.disAmt)}</td>
                     <td className="text-right">{fmtAlways(item.othExp5)}</td>
+                    <td className="text-right">{fmtAlways(item.billAmt)}</td>
                   </tr>
                 );
               }
               if (item.kind === 'section-label') {
                 return (
                   <tr key={`sl-${i}`} className="sale-list-section-label">
-                    <td colSpan={27}>
+                    <td colSpan={24}>
                       <strong>{item.label}</strong>
                     </td>
                   </tr>
@@ -1111,36 +1139,54 @@ export default function ReportTable({
               if (item.kind === 'item-col-head') {
                 return (
                   <tr key={`ich-${i}`} className="sale-list-item-col-head sale-list-item-summary-head">
-                    <th scope="col" className="bill-code">
-                      Item code
+                    <th
+                      colSpan={14}
+                      scope="colgroup"
+                      className="sale-list-item-summary-lead"
+                      title="Item code · Item name"
+                    >
+                      <div className="sale-list-item-sum-lead-inner">
+                        <span className="sale-list-item-sum-h-code">Code</span>
+                        <span className="sale-list-item-sum-h-name">Name</span>
+                      </div>
                     </th>
-                    <th scope="col" className="ledger-detail">
-                      Item name
-                    </th>
-                    <th scope="col" className="text-right">
+                    <th scope="col" className="text-right sale-list-item-sum-measure-head">
                       Qty
                     </th>
-                    <th scope="col" className="text-right">
-                      Weight
+                    <th scope="col" className="text-right sale-list-item-sum-measure-head">
+                      Wt
                     </th>
-                    <th scope="col" className="text-right">
+                    <th scope="col" className="sale-list-item-summary-rate-head" title="Rate (not in item totals)">
+                      —
+                    </th>
+                    <th scope="col" className="text-right sale-list-item-sum-measure-head">
                       Amount
                     </th>
-                    <td colSpan={22} className="sale-list-item-summary-filler sale-list-item-summary-filler--trail" />
+                    <td colSpan={6} className="sale-list-item-summary-filler sale-list-item-summary-filler--trail" />
                   </tr>
                 );
               }
               if (item.kind === 'grand-item') {
+                const codeShown = item.code && item.code !== '—' ? item.code : '—';
                 return (
                   <tr key={`gi-${i}-${item.code}`} className="sale-list-grand-item sale-list-item-summary-row">
-                    <td className="bill-code">{item.code && item.code !== '—' ? item.code : '—'}</td>
-                    <td className="ledger-detail">
-                      <strong>{item.name}</strong>
+                    <td colSpan={14} className="sale-list-item-summary-lead">
+                      <div className="sale-list-item-sum-lead-inner">
+                        <span className="sale-list-item-sum-code bill-code" title={String(codeShown).trim() || undefined}>
+                          {codeShown}
+                        </span>
+                        <span className="sale-list-item-sum-name ledger-detail" title={String(item.name ?? '').trim() || undefined}>
+                          <strong>{item.name}</strong>
+                        </span>
+                      </div>
                     </td>
-                    <td className="text-right">{fmtAlways(item.qnty)}</td>
-                    <td className="text-right">{fmtAlways(item.weight)}</td>
-                    <td className="text-right">{fmtAlways(item.amount)}</td>
-                    <td colSpan={22} className="sale-list-item-summary-filler sale-list-item-summary-filler--trail">
+                    <td className="text-right sale-list-item-sum-measure">{fmtAlways(item.qnty)}</td>
+                    <td className="text-right sale-list-item-sum-measure">{fmtAlways(item.weight)}</td>
+                    <td className="sale-list-item-summary-rate-pad sale-list-item-sum-rate-dash" title="Rate (not summed)">
+                      —
+                    </td>
+                    <td className="text-right sale-list-item-sum-measure">{fmtAlways(item.amount)}</td>
+                    <td colSpan={6} className="sale-list-item-summary-filler sale-list-item-summary-filler--trail">
                       —
                     </td>
                   </tr>
@@ -1149,7 +1195,7 @@ export default function ReportTable({
               if (item.kind === 'grand-total') {
                 return (
                   <tr key={`gt-${i}`} className="sale-list-grand-total">
-                    <td colSpan={16}>
+                    <td colSpan={14}>
                       <strong>Grand total</strong>
                     </td>
                     <td className="text-right">{fmtAlways(item.qnty)}</td>
@@ -1160,17 +1206,18 @@ export default function ReportTable({
                     <td className="text-right">{fmtAlways(item.cgstAmt)}</td>
                     <td className="text-right">{fmtAlways(item.sgstAmt)}</td>
                     <td className="text-right">{fmtAlways(item.igstAmt)}</td>
-                    <td className="text-right">{fmtAlways(item.billAmt)}</td>
-                    <td className="text-right">{fmtAlways(item.disAmt)}</td>
                     <td className="text-right">{fmtAlways(item.othExp5)}</td>
+                    <td className="text-right">{fmtAlways(item.billAmt)}</td>
                   </tr>
                 );
               }
               const row = item.row;
-              const billDt = row.BILL_DATE ?? row.bill_date;
-              const saleType = String(row.TYPE ?? row.type ?? '').trim().toUpperCase();
               const isCreditNote = isSaleListCn(row);
-              const rowClass = [clickable && 'sale-list-row-clickable', isCreditNote && 'sale-list-row-cn']
+              const rowClass = [
+                'sale-list-line',
+                clickable && 'sale-list-row-clickable',
+                isCreditNote && 'sale-list-row-cn',
+              ]
                 .filter(Boolean)
                 .join(' ');
               return (
@@ -1192,22 +1239,43 @@ export default function ReportTable({
                   role={clickable ? 'button' : undefined}
                 >
                   <td>{row.TYPE ?? row.type ?? '—'}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{formatLedgerDateDisplay(billDt)}</td>
                   <td>{row.BILL_NO ?? row.bill_no ?? '—'}</td>
                   <td>{row.B_TYPE ?? row.b_type ?? '—'}</td>
-                  <td className="bill-code">{row.CODE ?? row.code ?? '—'}</td>
+                  <td className="bill-code" title={String(row.CODE ?? row.code ?? '').trim() || undefined}>
+                    {row.CODE ?? row.code ?? '—'}
+                  </td>
                   <td className="ledger-detail">{row.NAME ?? row.name ?? '—'}</td>
-                  <td>{row.CITY ?? row.city ?? '—'}</td>
-                  <td>{row.PAN ?? row.pan ?? '—'}</td>
+                  <td title={String(row.CITY ?? row.city ?? '').trim() || undefined}>
+                    {row.CITY ?? row.city ?? '—'}
+                  </td>
+                  <td title={String(row.PAN ?? row.pan ?? '').trim() || undefined}>
+                    {row.PAN ?? row.pan ?? '—'}
+                  </td>
                   <td>{row.GST_NO ?? row.gst_no ?? '—'}</td>
-                  <td className="bill-code">{row.B_CODE ?? row.b_code ?? row.BK_CODE ?? row.bk_code ?? '—'}</td>
+                  <td
+                    className="bill-code"
+                    title={String(row.B_CODE ?? row.b_code ?? row.BK_CODE ?? row.bk_code ?? '').trim() || undefined}
+                  >
+                    {row.B_CODE ?? row.b_code ?? row.BK_CODE ?? row.bk_code ?? '—'}
+                  </td>
                   <td className="ledger-detail" title={row.BK_NAME ?? row.bk_name ?? ''}>
                     {clampText(row.BK_NAME ?? row.bk_name ?? '—', 25)}
                   </td>
-                  <td>{row.TRN_NO ?? row.trn_no ?? '—'}</td>
-                  <td className="bill-code">{row.ITEM_CODE ?? row.item_code ?? '—'}</td>
-                  <td className="ledger-detail">{row.ITEM_NAME ?? row.item_name ?? '—'}</td>
-                  <td>{row.LOT ?? row.lot ?? '—'}</td>
+                  <td title={String(row.TRN_NO ?? row.trn_no ?? '').trim() || undefined}>
+                    {row.TRN_NO ?? row.trn_no ?? '—'}
+                  </td>
+                  <td
+                    className="bill-code"
+                    title={String(row.ITEM_CODE ?? row.item_code ?? '').trim() || undefined}
+                  >
+                    {row.ITEM_CODE ?? row.item_code ?? '—'}
+                  </td>
+                  <td
+                    className="ledger-detail"
+                    title={String(row.ITEM_NAME ?? row.item_name ?? '').trim() || undefined}
+                  >
+                    {row.ITEM_NAME ?? row.item_name ?? '—'}
+                  </td>
                   <td>{row.STATUS ?? row.status ?? '—'}</td>
                   <td className="text-right">{fmt(saleListMeas(row, 'QNTY', 'qnty'))}</td>
                   <td className="text-right">{fmt(saleListMeas(row, 'WEIGHT', 'weight'))}</td>
@@ -1217,9 +1285,8 @@ export default function ReportTable({
                   <td className="text-right">{fmt(saleListMeas(row, 'CGST_AMT', 'cgst_amt'))}</td>
                   <td className="text-right">{fmt(saleListMeas(row, 'SGST_AMT', 'sgst_amt'))}</td>
                   <td className="text-right">{fmt(saleListMeas(row, 'IGST_AMT', 'igst_amt'))}</td>
-                  <td className="text-right">{fmt(saleListMeas(row, 'BILL_AMT', 'bill_amt'))}</td>
-                  <td className="text-right">{fmt(row.DIS_AMT ?? row.dis_amt)}</td>
                   <td className="text-right">{fmt(row.OTH_EXP5 ?? row.oth_exp5)}</td>
+                  <td className="text-right">{fmt(saleListMeas(row, 'BILL_AMT', 'bill_amt'))}</td>
                 </tr>
               );
             })}

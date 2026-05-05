@@ -12,7 +12,7 @@ echo [%date% %time%] Starting API ^+ Vite ^+ tunnel...>> logs\autostart-stack.lo
 
 start "FAS-API" /MIN cmd /c "node server.cjs >> logs\server.log 2>&1"
 timeout /t 2 /nobreak >nul
-start "FAS-Web" /MIN cmd /c "npm.cmd run dev -- --host 0.0.0.0 --port 5174 >> logs\frontend.log 2>&1"
+start "FAS-Web" /MIN cmd /c "set WINDAL_TUNNEL_DEV=1&& npm.cmd run dev -- --host 0.0.0.0 --port 5174 >> logs\frontend.log 2>&1"
 timeout /t 2 /nobreak >nul
 start "FAS-Tunnel" /MIN cmd /c "cloudflared tunnel --config config.yml run >> logs\tunnel.log 2>&1"
 

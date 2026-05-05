@@ -13,7 +13,6 @@ export default function Slide3({ onPrev, onNext, formData }) {
     'sale-bill-printing',
     'sale-list',
     'stock-sum',
-    'stock-lot',
     'ageing',
     'purchase-list',
     'voucher-list',
@@ -241,24 +240,7 @@ export default function Slide3({ onPrev, onNext, formData }) {
           />
           <label>
             <h3>Stock sum</h3>
-            <p>LOTSTOCK item-wise totals by ending date and godown — click an item for lot detail and running balance</p>
-          </label>
-        </div>
-
-        <div
-          className={`report-option ${reportType === 'stock-lot' ? 'selected' : ''}`}
-          onClick={() => setReportType('stock-lot')}
-        >
-          <input
-            type="radio"
-            name="reportType"
-            value="stock-lot"
-            checked={reportType === 'stock-lot'}
-            onChange={(e) => setReportType(e.target.value)}
-          />
-          <label>
-            <h3>Stock lot</h3>
-            <p>LOTSTOCK lot-wise position with filters (godown/item/supplier/bikri/lot/cost) and Complete/Outstanding view</p>
+            <p>Stock movement summary with item totals and grand total</p>
           </label>
         </div>
 

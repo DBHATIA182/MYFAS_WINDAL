@@ -13,7 +13,7 @@ echo [%date% %time%] Launching API, frontend, tunnel...>> logs\all-services.log
 
 start "FAS-API" /MIN /D "%~dp0" cmd /c "npm.cmd run server >> logs\server.log 2>&1"
 timeout /t 2 /nobreak >nul
-start "FAS-Frontend" /MIN /D "%~dp0" cmd /c "npm.cmd run dev -- --host 0.0.0.0 --port 5174 >> logs\frontend.log 2>&1"
+start "FAS-Frontend" /MIN /D "%~dp0" cmd /c "set WINDAL_TUNNEL_DEV=1&& npm.cmd run dev -- --host 0.0.0.0 --port 5174 >> logs\frontend.log 2>&1"
 timeout /t 2 /nobreak >nul
 start "FAS-Tunnel" /MIN /D "%~dp0" cmd /c "cloudflared tunnel --config config.yml run >> logs\tunnel.log 2>&1"
 

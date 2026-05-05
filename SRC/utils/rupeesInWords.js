@@ -68,3 +68,11 @@ export function rupeesToWords(amount) {
   s += ' Only';
   return s;
 }
+
+/** VFP TPRG-style fixed width (150 chars, space-padded) for report overlays. */
+export function rupeesToWordsTpRgPad150(amount) {
+  const s = rupeesToWords(amount);
+  if (!s) return ''.padEnd(150, ' ');
+  const pad = Math.max(0, 150 - s.length);
+  return s + ' '.repeat(pad);
+}
