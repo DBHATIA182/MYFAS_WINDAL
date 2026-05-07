@@ -116,7 +116,17 @@ function normalizeWhatsappDigits(raw) {
   return d;
 }
 
-export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, compUid, billParams, companyName = '' }) {
+export default function SaleBillPrintModal({
+  open,
+  onClose,
+  apiBase,
+  compCode,
+  compUid,
+  billParams,
+  companyName = '',
+  /** When other stacked UI (e.g. stock ledger panel) is open, raise above it. */
+  backdropZIndex,
+}) {
   const [header, setHeader] = useState(null);
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -163,6 +173,7 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
       b_type: billParams.bType,
       bill_date: billParams.oracleDt,
     };
+    if (billParams.relaxBillDate) printReq.relax_bill_date = '1';
     const ots = String(billParams.oracleTypesCsv ?? '').trim();
     if (ots) printReq.oracle_types = ots;
     else if (billParams.oracleTypeNum != null && String(billParams.oracleTypeNum).trim() !== '')
@@ -620,7 +631,12 @@ export default function SaleBillPrintModal({ open, onClose, apiBase, compCode, c
   const igstLabel = formatTaxLabel('IGST', first?.IGST_PER ?? first?.igst_per);
 
   return (
-    <div className="sale-bill-modal-backdrop sale-bill-print-backdrop" role="presentation" onClick={onClose}>
+    <div
+      className="sale-bill-modal-backdrop sale-bill-print-backdrop"
+      role="presentation"
+      onClick={onClose}
+      style={backdropZIndex != null ? { zIndex: backdropZIndex } : undefined}
+    >
       <div
         className="sale-bill-modal sale-bill-print-modal"
         role="dialog"

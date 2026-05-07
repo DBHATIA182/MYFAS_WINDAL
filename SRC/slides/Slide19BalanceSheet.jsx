@@ -28,7 +28,7 @@ function fmtAmtAbs(v) {
   return n ? fmt(n) : '';
 }
 
-const SCREEN = { BS: 'bs', ACCOUNTS: 'accounts', LEDGER: 'ledger', VOUCHER: 'voucher' };
+const SCREEN = { FORM: 'form', BS: 'bs', ACCOUNTS: 'accounts', LEDGER: 'ledger', VOUCHER: 'voucher' };
 
 export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, onReset }) {
   const compCode = formData.comp_code ?? formData.COMP_CODE;
@@ -37,18 +37,10 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
   const compYear = formData.comp_year ?? formData.COMP_YEAR ?? '';
 
   const [edt, setEdt] = useState('');
-  const [schedule, setSchedule] = useState('12.10');
-  const [code, setCode] = useState('');
-  const [mcb, setMcb] = useState('C');
-  const [mwyn, setMwyn] = useState('N');
-  const [catCodeYn, setCatCodeYn] = useState('N');
-  const [mShortPick, setMShortPick] = useState('N');
-  const [mfyn, setMfyn] = useState('A');
-  const [accountOptions, setAccountOptions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [bsData, setBsData] = useState(null);
-  const [screen, setScreen] = useState(SCREEN.BS);
+  const [screen, setScreen] = useState(SCREEN.FORM);
   const [scheduleAccounts, setScheduleAccounts] = useState([]);
   const [scheduleTitle, setScheduleTitle] = useState('');
   const [ledgerRows, setLedgerRows] = useState([]);
@@ -92,53 +84,13 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
     };
   }, [apiBase, compCode, compUid]);
 
-  const normalizeSchedule = (raw) => {
-    const txt = String(raw ?? '').replace(/[^\d.]/g, '');
-    if (!txt) return '';
-    const parts = txt.split('.');
-    const intPart = (parts[0] || '').slice(0, 2);
-    const decPartRaw = parts.length > 1 ? parts.slice(1).join('') : '';
-    if (decPartRaw.length === 0) return intPart;
-    return `${intPart}.${decPartRaw.slice(0, 2)}`;
-  };
-
   useEffect(() => {
     const e = toInputDateString(formData.comp_e_dt ?? formData.COMP_E_DT);
     if (e) setEdt(e);
   }, [formData.comp_e_dt, formData.COMP_E_DT]);
 
-  useEffect(() => {
-    const scheduleNorm = normalizeSchedule(schedule);
-    if (!compCode || !compUid || !/^\d{1,2}\.\d{2}$/.test(scheduleNorm)) {
-      setAccountOptions([]);
-      return;
-    }
-    let ignore = false;
-    axios
-      .get(`${apiBase}/api/trading-ac-accounts`, {
-        params: { comp_code: compCode, comp_uid: compUid, schedule: scheduleNorm },
-        withCredentials: true,
-        timeout: 60000,
-      })
-      .then(({ data }) => {
-        if (ignore) return;
-        setAccountOptions(Array.isArray(data?.rows) ? data.rows : []);
-      })
-      .catch(() => {
-        if (!ignore) setAccountOptions([]);
-      });
-    return () => {
-      ignore = true;
-    };
-  }, [apiBase, compCode, compUid, schedule]);
-
   const runReport = async (e) => {
     e.preventDefault();
-    const scheduleNorm = normalizeSchedule(schedule);
-    if (!/^\d{1,2}\.\d{2}$/.test(scheduleNorm)) {
-      alert('Trading schedule must be in 99.99 format (e.g. 12.10).');
-      return;
-    }
     const edtOracle = toOracleDate(edt);
     if (!edtOracle) {
       alert('Please select as-on date.');
@@ -152,14 +104,14 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
         params: {
           comp_code: compCode,
           comp_uid: compUid,
-          schedule: scheduleNorm,
-          code,
+          schedule: '12.10',
+          code: '',
           edt: edtOracle,
-          mcb,
-          mwyn,
-          cat_code_yn: catCodeYn,
-          m_short_pick: mShortPick,
-          mfyn,
+          mcb: 'C',
+          mwyn: 'N',
+          cat_code_yn: 'N',
+          m_short_pick: 'N',
+          mfyn: 'A',
           manual_confirmed: 'Y',
         },
         withCredentials: true,
@@ -186,7 +138,7 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
         timeout: 120000,
       });
       setBsData(bData);
-      setScreen('bs');
+      setScreen(SCREEN.BS);
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'Failed to run Balance Sheet');
     } finally {
@@ -569,7 +521,7 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
     );
   }
 
-  if (bsData?.ok) {
+  if (screen === SCREEN.BS && bsData?.ok) {
     const rawRows = Array.isArray(bsData.rows) ? bsData.rows : [];
     const left = rawRows
       .map((r) => ({
@@ -607,7 +559,7 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
         <div className="report-toolbar">
           <h2>Balance Sheet</h2>
           <div className="toolbar-actions">
-            <button type="button" className="btn btn-toolbar-back" onClick={() => setBsData(null)}>
+            <button type="button" className="btn btn-toolbar-back" onClick={() => { setBsData(null); setScreen(SCREEN.FORM); }}>
               ← Back
             </button>
             <button type="button" className="btn btn-export" onClick={() => downloadPdf().catch((e) => alert(e?.message || String(e)))}>
@@ -700,7 +652,7 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
     );
   }
 
-  return (
+  if (screen === SCREEN.FORM) return (
     <div className="slide slide-report slide-19">
       <h2>Balance Sheet</h2>
       <p className="company-info">
@@ -718,76 +670,9 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
           </button>
         </div>
         <div className="form-group trading-form-row">
-          <label>Trading schedule</label>
-          <span className="trading-form-colon">:</span>
-          <input
-            className="form-input"
-            value={schedule}
-            onChange={(e) => setSchedule(normalizeSchedule(e.target.value))}
-            onBlur={() => {
-              const n = normalizeSchedule(schedule);
-              if (/^\d{1,2}$/.test(n)) setSchedule(`${n}.00`);
-            }}
-            placeholder="12.10"
-            maxLength={5}
-          />
-        </div>
-        <div className="form-group trading-form-row">
-          <label>Specific Trading A/c</label>
-          <span className="trading-form-colon">:</span>
-          <select className="form-input" value={code} onChange={(e) => setCode(String(e.target.value || '').trim())}>
-            <option value="">All</option>
-            {accountOptions.map((r) => (
-              <option key={String(r.CODE || '').trim()} value={String(r.CODE || '').trim()}>
-                {String(r.NAME || '').trim()} [{String(r.CODE || '').trim()}]
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-group trading-form-row">
           <label>As on (ending date)</label>
           <span className="trading-form-colon">:</span>
           <input type="date" className="form-input" value={edt} onChange={(e) => setEdt(e.target.value)} required />
-        </div>
-        <div className="form-group trading-form-row">
-          <label>(C)halan/(B)ikri Wgt</label>
-          <span className="trading-form-colon">:</span>
-          <select className="form-input" value={mcb} onChange={(e) => setMcb(String(e.target.value || 'C').toUpperCase())}>
-            <option value="C">C</option>
-            <option value="B">B</option>
-          </select>
-        </div>
-        <div className="form-group trading-form-row">
-          <label>Milling Wgt (Y/N)</label>
-          <span className="trading-form-colon">:</span>
-          <select className="form-input" value={mwyn} onChange={(e) => setMwyn(String(e.target.value || 'N').toUpperCase())}>
-            <option value="Y">Y</option>
-            <option value="N">N</option>
-          </select>
-        </div>
-        <div className="form-group trading-form-row">
-          <label>Cat.Wise (Y/N)</label>
-          <span className="trading-form-colon">:</span>
-          <select className="form-input" value={catCodeYn} onChange={(e) => setCatCodeYn(String(e.target.value || 'N').toUpperCase())}>
-            <option value="Y">Y</option>
-            <option value="N">N</option>
-          </select>
-        </div>
-        <div className="form-group trading-form-row">
-          <label>Pick Shortage Y/N</label>
-          <span className="trading-form-colon">:</span>
-          <select className="form-input" value={mShortPick} onChange={(e) => setMShortPick(String(e.target.value || 'N').toUpperCase())}>
-            <option value="Y">Y</option>
-            <option value="N">N</option>
-          </select>
-        </div>
-        <div className="form-group trading-form-row">
-          <label>Cl.Stock Manual/Auto</label>
-          <span className="trading-form-colon">:</span>
-          <select className="form-input" value={mfyn} onChange={(e) => setMfyn(String(e.target.value || 'A').toUpperCase())}>
-            <option value="A">A</option>
-            <option value="M">M</option>
-          </select>
         </div>
         <div className="button-group">
           <button type="button" className="btn btn-secondary" onClick={onPrev}>
@@ -800,4 +685,5 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
       </form>
     </div>
   );
+  return null;
 }

@@ -1,2 +1,3 @@
 netstat -ano | findstr :5001
 taskkill /IM node.exe /F
+taskkill /pid 123456 /f

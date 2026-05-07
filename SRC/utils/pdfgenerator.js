@@ -2267,6 +2267,124 @@ function buildStockSumLedgerReportHtml(data, metadata) {
   `;
 }
 
+/** Production / jobwork lines opened from Stock ledger row (slide 9). */
+function buildStockLedgerEntryDetailReportHtml(data, metadata) {
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  const kind = String(metadata.entryKind || data?.entryKind || 'prod').toLowerCase();
+  const title = escHtml(metadata.title || 'Ledger detail');
+  const company = escHtml(metadata.companyName || '');
+  const itemCode = escHtml(metadata.itemCode || '');
+  const plantCode = escHtml(metadata.plantCode || '');
+  const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
+
+  if (kind === 'jobwork') {
+    const body = rows
+      .map(
+        (r) => `<tr>
+        <td>${escHtml(r.TYPE ?? r.type ?? '')}</td>
+        <td>${escHtml(formatLedgerDateDisplay(r.R_DATE ?? r.r_date))}</td>
+        <td>${escHtml(r.R_NO ?? r.r_no ?? '')}</td>
+        <td>${escHtml(r.B_TYPE ?? r.b_type ?? '')}</td>
+        <td>${escHtml(r.TRN_NO ?? r.trn_no ?? '')}</td>
+        <td>${escHtml(r.ITEM_CODE ?? r.item_code ?? '')}</td>
+        <td>${escHtml(r.ITEM_NAME ?? r.item_name ?? '')}</td>
+        <td>${escHtml(r.STATUS ?? r.status ?? '')}</td>
+        <td class="amount">${formatStockPdf(stockNum(r, 'QNTY', 'qnty'), 3)}</td>
+        <td class="amount">${formatStockPdf(stockNum(r, 'WEIGHT', 'weight'))}</td>
+        <td class="amount">${formatStockPdf(stockNum(r, 'RATE', 'rate'))}</td>
+        <td class="amount">${formatStockPdf(stockNum(r, 'AMOUNT', 'amount'))}</td>
+      </tr>`
+      )
+      .join('');
+    return `
+    <div class="report-doc">
+      <style>${PDF_REPORT_STYLES}</style>
+      <div class="report-topbar">
+        <div class="kicker">INVENTORY</div>
+        <h1>${title}</h1>
+        <div class="company">${company}</div>
+        <div class="report-period">Item <strong>${itemCode}</strong> · Plant <strong>${plantCode || 'All'}</strong> · Generated ${generated}</div>
+      </div>
+      <table class="table-report stock-sum-ledger-pdf">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>R date</th>
+            <th>R no</th>
+            <th>B type</th>
+            <th>Trn</th>
+            <th>Item</th>
+            <th>Name</th>
+            <th>Status</th>
+            <th class="amount">Qty</th>
+            <th class="amount">Weight</th>
+            <th class="amount">Rate</th>
+            <th class="amount">Amt</th>
+          </tr>
+        </thead>
+        <tbody>${body || `<tr><td colspan="12">(No rows)</td></tr>`}</tbody>
+      </table>
+    </div>
+  `;
+  }
+
+  const body = rows
+    .map(
+      (r) => `<tr>
+      <td>${escHtml(formatLedgerDateDisplay(r.S_DATE ?? r.s_date))}</td>
+      <td>${escHtml(r.S_NO ?? r.s_no ?? '')}</td>
+      <td>${escHtml(r.TRN_NO ?? r.trn_no ?? '')}</td>
+      <td>${escHtml(r.PLANT_CODE ?? r.plant_code ?? '')}</td>
+      <td>${escHtml(r.ITEM ?? r.item ?? '')}</td>
+      <td>${escHtml(r.ITEM_NAME_IN ?? r.item_name_in ?? '')}</td>
+      <td class="amount">${formatStockPdf(stockNum(r, 'M_QNTY', 'm_qnty'), 3)}</td>
+      <td>${escHtml(r.M_STATUS ?? r.m_status ?? '')}</td>
+      <td class="amount">${formatStockPdf(stockNum(r, 'M_WEIGHT', 'm_weight'))}</td>
+      <td>${escHtml(r.ITEM_CODE ?? r.item_code ?? '')}</td>
+      <td>${escHtml(r.ITEM_NAME_CODE ?? r.item_name_code ?? '')}</td>
+      <td class="amount">${formatStockPdf(stockNum(r, 'PROD_PER', 'prod_per'), 3)}</td>
+      <td class="amount">${formatStockPdf(stockNum(r, 'PROD_QNTY', 'prod_qnty'), 3)}</td>
+      <td class="amount">${formatStockPdf(stockNum(r, 'PROD_WEIGHT', 'prod_weight'))}</td>
+      <td class="amount">${formatStockPdf(stockNum(r, 'SHORT', 'short'))}</td>
+    </tr>`
+    )
+    .join('');
+
+  return `
+    <div class="report-doc">
+      <style>${PDF_REPORT_STYLES}</style>
+      <div class="report-topbar">
+        <div class="kicker">INVENTORY</div>
+        <h1>${title}</h1>
+        <div class="company">${company}</div>
+        <div class="report-period">Item <strong>${itemCode}</strong> · Plant <strong>${plantCode || 'All'}</strong> · Generated ${generated}</div>
+      </div>
+      <table class="table-report stock-sum-ledger-pdf">
+        <thead>
+          <tr>
+            <th>S date</th>
+            <th>S no</th>
+            <th>Trn</th>
+            <th>Plant</th>
+            <th>Item</th>
+            <th>Name in</th>
+            <th class="amount">M qnty</th>
+            <th>M stat</th>
+            <th class="amount">M wt</th>
+            <th>Out code</th>
+            <th>Out nm</th>
+            <th class="amount">Prod %</th>
+            <th class="amount">PQ</th>
+            <th class="amount">PW</th>
+            <th class="amount">Short</th>
+          </tr>
+        </thead>
+        <tbody>${body || `<tr><td colspan="15">(No rows)</td></tr>`}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 /** Stock lot summary with optional filters */
 function buildStockLotReportHtml(data, metadata) {
   const rows = Array.isArray(data?.rows) ? data.rows : [];
@@ -2878,11 +2996,25 @@ function buildTradingAccountReportHtml(data, metadata) {
     const titleText = escHtml(String(r.NAME || r.CODE || '').trim());
     const lTotal = (Number(r.OAMT) || 0) + (Number(r.PAMT) || 0) + (Number(r.GPROFIT) || 0);
     const rTotal = (Number(r.SAMT) || 0) + (Number(r.CAMT) || 0) + (Number(r.GLOSS) || 0);
+    const showOpening = (Number(r.OWGT) || 0) !== 0;
+    const showPurchase = (Number(r.PWGT) || 0) !== 0;
+    const showSales = (Number(r.SWGT) || 0) !== 0;
+    const showShort = (Number(r.SHORT) || 0) !== 0;
     body.push(`<tr class="trading-title"><td colspan="8">${titleText}</td></tr>`);
-    body.push(`<tr><td>OPENING</td><td class="num">${qty(r.OWGT)}</td><td class="num">${fmt(r.OAMT)}</td><td class="num"></td><td>SALES</td><td class="num">${qty(r.SWGT)}</td><td class="num">${fmt(r.SAMT)}</td><td class="num"></td></tr>`);
-    body.push(`<tr><td>PURCHASE</td><td class="num">${qty(r.PWGT)}</td><td class="num">${fmt(r.PAMT)}</td><td class="num"></td><td>SHORT/ACCESS</td><td class="num">${qty(r.SHORT)}</td><td class="num"></td><td class="num"></td></tr>`);
+    if (showOpening || showSales) {
+      body.push(
+        `<tr><td>${showOpening ? 'OPENING' : ''}</td><td class="num">${showOpening ? qty(r.OWGT) : ''}</td><td class="num">${showOpening ? fmt(r.OAMT) : ''}</td><td class="num"></td><td>${showSales ? 'SALES' : ''}</td><td class="num">${showSales ? qty(r.SWGT) : ''}</td><td class="num">${showSales ? fmt(r.SAMT) : ''}</td><td class="num"></td></tr>`
+      );
+    }
+    if (showPurchase || showShort) {
+      body.push(
+        `<tr><td>${showPurchase ? 'PURCHASE' : ''}</td><td class="num">${showPurchase ? qty(r.PWGT) : ''}</td><td class="num">${showPurchase ? fmt(r.PAMT) : ''}</td><td class="num"></td><td>${showShort ? 'SHORT/ACCESS' : ''}</td><td class="num">${showShort ? qty(r.SHORT) : ''}</td><td class="num"></td><td class="num"></td></tr>`
+      );
+    }
     body.push(`<tr><td>G.PROFIT</td><td class="num"></td><td class="num">${fmt(r.GPROFIT)}</td><td class="num"></td><td>CLOSING</td><td class="num">${qty(r.CWGT)}</td><td class="num">${fmt(r.CAMT)}</td><td class="num"></td></tr>`);
-    body.push(`<tr><td></td><td class="num"></td><td class="num"></td><td class="num"></td><td>G.LOSS</td><td class="num"></td><td class="num">${fmt(r.GLOSS)}</td><td class="num"></td></tr>`);
+    if ((Number(r.GLOSS) || 0) !== 0) {
+      body.push(`<tr><td></td><td class="num"></td><td class="num"></td><td class="num"></td><td>G.LOSS</td><td class="num"></td><td class="num">${fmt(r.GLOSS)}</td><td class="num"></td></tr>`);
+    }
     body.push(`<tr class="trading-total"><td>TOTAL</td><td class="num"></td><td class="num">${fmt(lTotal)}</td><td class="num"></td><td>TOTAL</td><td class="num"></td><td class="num">${fmt(rTotal)}</td><td class="num"></td></tr>`);
   });
   expenseRows.forEach((r) => {
@@ -3042,6 +3174,7 @@ export function buildReportHtml(reportType, data, metadata) {
   if (reportType === 'stock-sum') return buildStockSumReportHtml(data, metadata);
   if (reportType === 'stock-sum-detail') return buildStockSumDetailReportHtml(data, metadata);
   if (reportType === 'stock-sum-ledger') return buildStockSumLedgerReportHtml(data, metadata);
+  if (reportType === 'stock-sum-ledger-entry') return buildStockLedgerEntryDetailReportHtml(data, metadata);
   if (reportType === 'stock-lot') return buildStockLotReportHtml(data, metadata);
   if (reportType === 'purchase-list') return buildPurchaseListReportHtml(data, metadata);
   if (reportType === 'purchase-bill') return buildPurchaseBillReportHtml(data, metadata);

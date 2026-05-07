@@ -4,6 +4,51 @@ import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, formatLedgerDateDisplay } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
+import PurchaseBillPrintModal from '../components/PurchaseBillPrintModal';
+import SaleBillPrintModal from '../components/SaleBillPrintModal';
+
+/** Maps Oracle SALE.TYPE (1–9) to print/API letter bucket (same as Slide13). */
+const SALE_LIST_NUMTYPE_TO_PRINT = {
+  1: 'SL',
+  2: 'CH',
+  3: 'SL',
+  4: 'SL',
+  5: 'SL',
+  6: 'SE',
+  7: 'SL',
+  8: 'CN',
+  9: 'RC',
+};
+
+function purchaseModalLabel(typeRaw) {
+  const t = String(typeRaw ?? '').trim().toUpperCase();
+  if (t === 'DN') return 'DEBIT NOTE';
+  return 'PURCHASE BILL';
+}
+
+function stockTypeToJobworkMtype(stockType) {
+  const u = String(stockType ?? '').trim().toUpperCase();
+  if (u === 'JR') return 'R';
+  if (u === 'JI') return 'I';
+  if (u === 'RR') return 'Y';
+  if (u === 'RI') return 'X';
+  return '';
+}
+
+function printTypeForOracleNum(num) {
+  if (!Number.isFinite(num)) return 'SL';
+  return SALE_LIST_NUMTYPE_TO_PRINT[num] || 'SL';
+}
+
+/** Map ledger display “—” / hyphen to single space for SALE/PUR/JOBWORK binds. */
+function normalizeLedgerBTypeForBill(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s || s === '-' || s === '—' || s === '–' || s === '.') return ' ';
+  return s;
+}
+
+/** Purchase / sale print modals must stack above full-screen stock ledger panels. */
+const STOCK_SUM_BILL_MODAL_Z = 1250;
 
 function num(row, upper, lower) {
   const v = row?.[upper] ?? row?.[lower];
@@ -15,6 +60,12 @@ function num(row, upper, lower) {
 function fmtWt(val) {
   const x = parseFloat(val) || 0;
   return x.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtQty(val) {
+  const x = parseFloat(val);
+  if (Number.isNaN(x)) return '0';
+  return x.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
 }
 
 export default function Slide9({ apiBase, formData, onPrev, onReset }) {
@@ -30,11 +81,23 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showReport, setShowReport] = useState(false);
-  const [ledgerOpen, setLedgerOpen] = useState(false);
+  /** summary → item-wise stock sum; ledger → vouchers for one item; ledgerDetail → prod/jobwork drill-down */
+  const [stockPanel, setStockPanel] = useState('summary');
   const [ledgerRows, setLedgerRows] = useState([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerError, setLedgerError] = useState('');
   const [ledgerMeta, setLedgerMeta] = useState(null);
+
+  const [ledgerEntryLoading, setLedgerEntryLoading] = useState(false);
+  const [ledgerEntryError, setLedgerEntryError] = useState('');
+  const [ledgerEntryRows, setLedgerEntryRows] = useState([]);
+  const [ledgerEntryTitle, setLedgerEntryTitle] = useState('');
+  const [ledgerEntryKind, setLedgerEntryKind] = useState('');
+
+  const [purchaseBillOpen, setPurchaseBillOpen] = useState(false);
+  const [purchaseBillParams, setPurchaseBillParams] = useState(null);
+  const [saleBillOpen, setSaleBillOpen] = useState(false);
+  const [saleBillParams, setSaleBillParams] = useState(null);
 
   const compCode = formData.comp_code ?? formData.COMP_CODE;
   const compUid = formData.comp_uid ?? formData.COMP_UID;
@@ -214,6 +277,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
         timeout: 120000,
       });
       setRows(Array.isArray(data) ? data : []);
+      setStockPanel('summary');
       setShowReport(true);
     } catch (err) {
       console.error(err);
@@ -250,7 +314,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
       itemName: String(r.ITEM_NAME ?? r.item_name ?? '').trim(),
       plantCode: pCode,
     });
-    setLedgerOpen(true);
+    setStockPanel('ledger');
     setLedgerLoading(true);
     setLedgerError('');
     setLedgerRows([]);
@@ -300,9 +364,187 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
       ['Stock ledger', ledgerMeta?.itemCode, ledgerMeta?.itemName, compName].filter(Boolean).join('\n')
     ).catch((err) => alert(String(err?.message || err)));
 
+  const goBackFromLedgerDetail = () => {
+    setStockPanel('ledger');
+    setLedgerEntryRows([]);
+    setLedgerEntryTitle('');
+    setLedgerEntryKind('');
+    setLedgerEntryError('');
+    setLedgerEntryLoading(false);
+  };
+
+  const ledgerEntryPdfMeta = useMemo(
+    () => ({
+      companyName: compName,
+      title: ledgerEntryTitle,
+      entryKind: ledgerEntryKind,
+      itemCode: ledgerMeta?.itemCode || '',
+      plantCode: ledgerMeta?.plantCode || '',
+    }),
+    [compName, ledgerEntryTitle, ledgerEntryKind, ledgerMeta]
+  );
+
+  const ledgerEntryPdfData = useMemo(
+    () => ({ rows: ledgerEntryRows, entryKind: ledgerEntryKind }),
+    [ledgerEntryRows, ledgerEntryKind]
+  );
+
+  const downloadLedgerEntryPdf = () =>
+    generatePDF('stock-sum-ledger-entry', ledgerEntryPdfData, ledgerEntryPdfMeta).catch((err) =>
+      alert(String(err?.message || err))
+    );
+
+  const shareLedgerEntryWa = () =>
+    sharePdfWithWhatsApp(
+      'stock-sum-ledger-entry',
+      ledgerEntryPdfData,
+      ledgerEntryPdfMeta,
+      [ledgerEntryTitle, ledgerMeta?.itemCode, compName].filter(Boolean).join('\n')
+    ).catch((err) => alert(String(err?.message || err)));
+
+  const onLedgerRowActivate = async (lr) => {
+    if (!lr || !compCode || !compUid) return;
+    const typ = String(lr.TYPE ?? lr.type ?? '').trim().toUpperCase();
+    const ymd = toInputDateString(lr.VR_DATE ?? lr.vr_date);
+    const oracleDt = toOracleDate(ymd);
+    const vrNo = String(lr.VR_NO ?? lr.vr_no ?? '').trim();
+    const bTypeStr = normalizeLedgerBTypeForBill(lr.B_TYPE ?? lr.b_type);
+
+    if (typ === 'PR' || typ === 'PI') {
+      if (!oracleDt || !vrNo) {
+        alert('Missing voucher date or number for production detail.');
+        return;
+      }
+      setLedgerEntryTitle(`Production (${typ}) — ${vrNo} / ${toDisplayDate(ymd)}`);
+      setLedgerEntryKind('prod');
+      setStockPanel('ledgerDetail');
+      setLedgerEntryLoading(true);
+      setLedgerEntryError('');
+      setLedgerEntryRows([]);
+      try {
+        const { data } = await axios.get(`${apiBase}/api/stock-sum-ledger-prod`, {
+          params: { comp_code: compCode, comp_uid: compUid, vr_date: oracleDt, vr_no: vrNo },
+          withCredentials: true,
+          timeout: 120000,
+        });
+        setLedgerEntryRows(Array.isArray(data) ? data : []);
+      } catch (err) {
+        setLedgerEntryError(err.response?.data?.error || err.message || 'Failed to load production lines');
+      } finally {
+        setLedgerEntryLoading(false);
+      }
+      return;
+    }
+
+    if (typ === 'JR' || typ === 'JI' || typ === 'RR' || typ === 'RI') {
+      const mtype = stockTypeToJobworkMtype(typ);
+      if (!oracleDt || !vrNo || !mtype) {
+        alert('Missing voucher date, number, or jobwork type mapping.');
+        return;
+      }
+      setLedgerEntryTitle(`Jobwork (${typ} → ${mtype}) — ${vrNo} / ${toDisplayDate(ymd)} · B type ${bTypeStr.trim() || '—'}`);
+      setLedgerEntryKind('jobwork');
+      setStockPanel('ledgerDetail');
+      setLedgerEntryLoading(true);
+      setLedgerEntryError('');
+      setLedgerEntryRows([]);
+      try {
+        const { data } = await axios.get(`${apiBase}/api/stock-sum-ledger-jobwork`, {
+          params: {
+            comp_code: compCode,
+            comp_uid: compUid,
+            mtype,
+            r_date: oracleDt,
+            r_no: vrNo,
+            b_type: bTypeStr,
+          },
+          withCredentials: true,
+          timeout: 120000,
+        });
+        setLedgerEntryRows(Array.isArray(data) ? data : []);
+      } catch (err) {
+        setLedgerEntryError(err.response?.data?.error || err.message || 'Failed to load jobwork lines');
+      } finally {
+        setLedgerEntryLoading(false);
+      }
+      return;
+    }
+
+    if (typ === 'PU' || typ === 'DN') {
+      if (!oracleDt || !vrNo) {
+        alert('Cannot open purchase bill: missing date or voucher number.');
+        return;
+      }
+      const head = purchaseModalLabel(typ);
+      setPurchaseBillParams({
+        type: typ,
+        rNo: vrNo,
+        oracleDt,
+        label: `${head} — ${typ} / ${vrNo} / ${toDisplayDate(ymd)}`,
+      });
+      setPurchaseBillOpen(true);
+      return;
+    }
+
+    if (typ === 'S' || typ === 'CN' || typ === 'Y' || typ === 'W') {
+      if (!oracleDt || !vrNo) {
+        alert('Cannot open sale bill: missing date or bill number.');
+        return;
+      }
+      const rawTyp = String(lr.TYPE ?? lr.type ?? '').trim();
+      const ptypeNum = parseInt(rawTyp, 10);
+      const printType =
+        Number.isFinite(ptypeNum) && ptypeNum >= 1 && ptypeNum <= 9
+          ? printTypeForOracleNum(ptypeNum)
+          : rawTyp.toUpperCase() === 'S'
+            ? 'S'
+            : rawTyp.toUpperCase();
+      setSaleBillParams({
+        type: printType,
+        ...(Number.isFinite(ptypeNum) && ptypeNum >= 1 && ptypeNum <= 9 ? { oracleTypeNum: ptypeNum } : {}),
+        billNo: vrNo,
+        bType: bTypeStr,
+        oracleDt,
+        compYear: String(compYear ?? '').trim(),
+        label: `Sale bill — ${rawTyp} / ${vrNo} / ${toDisplayDate(ymd)}`,
+        relaxBillDate: true,
+      });
+      setSaleBillOpen(true);
+    }
+  };
+
   if (showReport) {
     return (
       <div className="slide slide-report slide-9">
+        <PurchaseBillPrintModal
+          open={purchaseBillOpen}
+          onClose={() => {
+            setPurchaseBillOpen(false);
+            setPurchaseBillParams(null);
+          }}
+          apiBase={apiBase}
+          compCode={compCode}
+          compUid={compUid}
+          billParams={purchaseBillParams}
+          companyName={compName}
+          backdropZIndex={STOCK_SUM_BILL_MODAL_Z}
+        />
+        <SaleBillPrintModal
+          open={saleBillOpen}
+          onClose={() => {
+            setSaleBillOpen(false);
+            setSaleBillParams(null);
+          }}
+          apiBase={apiBase}
+          compCode={compCode}
+          compUid={compUid}
+          billParams={saleBillParams}
+          companyName={compName}
+          backdropZIndex={STOCK_SUM_BILL_MODAL_Z}
+        />
+
+        {stockPanel === 'summary' ? (
+          <>
         <div className="report-toolbar">
           <h2>Stock sum</h2>
           <div className="toolbar-actions">
@@ -479,135 +721,300 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
             ← Back
           </button>
         </div>
+          </>
+        ) : null}
 
-        {ledgerOpen ? (
-          <div className="sale-bill-modal-backdrop sale-bill-print-backdrop" role="presentation" onClick={() => setLedgerOpen(false)}>
-            <div
-              className="sale-bill-modal sale-bill-print-modal stock-sum-detail-modal"
-              role="dialog"
-              aria-labelledby="stock-sum-ledger-title"
-              onClick={(ev) => ev.stopPropagation()}
-            >
-              <div className="sale-bill-modal-head no-print stock-sum-detail-modal-head">
-                <h3 id="stock-sum-ledger-title">
-                  Stock ledger — {ledgerMeta?.itemCode || ''} {ledgerMeta?.itemName ? `· ${ledgerMeta.itemName}` : ''}{' '}
-                  {ledgerMeta?.plantCode ? `· Plant ${ledgerMeta.plantCode}` : ''}
-                </h3>
-                <button type="button" className="sale-bill-modal-close" onClick={() => setLedgerOpen(false)} aria-label="Close">
-                  ×
+        {stockPanel === 'ledger' ? (
+          <>
+            <div className="report-toolbar">
+              <h2 className="stock-panel-title">
+                Stock ledger — {ledgerMeta?.itemCode || ''} {ledgerMeta?.itemName ? `· ${ledgerMeta.itemName}` : ''}{' '}
+                {ledgerMeta?.plantCode ? `· Plant ${ledgerMeta.plantCode}` : ''}
+              </h2>
+              <div className="toolbar-actions">
+                <button type="button" className="btn btn-toolbar-back" onClick={() => setStockPanel('summary')}>
+                  ← Stock sum
                 </button>
-                <div className="sale-bill-print-actions">
-                  <button type="button" className="btn btn-export" onClick={downloadLedgerPdf}>
-                    Pdf
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-excel"
-                    onClick={() => {
-                      try {
-                        downloadExcelRows(
-                          ledgerRows,
-                          'StockLedger',
-                          `${compName}_StockLedger_${ledgerMeta?.itemCode || 'item'}_${ledgerMeta?.plantCode || 'all'}`
-                        );
-                      } catch (e) {
-                        alert(String(e?.message || e));
-                      }
-                    }}
-                  >
-                    📊 Excel
-                  </button>
-                  <button type="button" className="btn btn-whatsapp" onClick={shareLedgerWa}>
-                    💬 WhatsApp
-                  </button>
-                </div>
-              </div>
-              <div className="sale-bill-modal-body stock-sum-detail-body">
-                {ledgerLoading ? <p>Loading…</p> : null}
-                {ledgerError ? (
-                  <p className="form-api-error" role="alert">
-                    {ledgerError}
-                  </p>
-                ) : null}
-                {!ledgerLoading && !ledgerError ? (
-                  <div className="table-responsive">
-                    <table className="report-table stock-sum-detail-table">
-                      <thead>
-                        <tr>
-                          <th>VR Date</th>
-                          <th>VR No</th>
-                          <th>Type</th>
-                          <th>B Type</th>
-                          <th className="text-right">Pur wt</th>
-                          <th className="text-right">Prod wt</th>
-                          <th className="text-right">JB wt</th>
-                          <th className="text-right">JI wt</th>
-                          <th className="text-right">Milling wt</th>
-                          <th className="text-right">Sale wt</th>
-                          <th className="text-right">CNote wt</th>
-                          <th className="text-right">CL balance</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {ledgerRows.map((lr, idx) => (
-                          <tr key={`${idx}-${lr.VR_NO ?? lr.vr_no ?? ''}`}>
-                            <td>{formatLedgerDateDisplay(lr.VR_DATE ?? lr.vr_date)}</td>
-                            <td>{lr.VR_NO ?? lr.vr_no ?? '—'}</td>
-                            <td>{lr.TYPE ?? lr.type ?? '—'}</td>
-                            <td>{lr.B_TYPE ?? lr.b_type ?? '—'}</td>
-                            <td className="text-right">{fmtWt(num(lr, 'PUR_WT', 'pur_wt'))}</td>
-                            <td className="text-right">{fmtWt(num(lr, 'PROD_WT', 'prod_wt'))}</td>
-                            <td className="text-right">{fmtWt(num(lr, 'JB_WT', 'jb_wt'))}</td>
-                            <td className="text-right">{fmtWt(num(lr, 'JI_WT', 'ji_wt'))}</td>
-                            <td className="text-right">{fmtWt(num(lr, 'MILLING_WT', 'milling_wt'))}</td>
-                            <td className="text-right">{fmtWt(num(lr, 'SALE_WT', 'sale_wt'))}</td>
-                            <td className="text-right">{fmtWt(num(lr, 'CNOTE_WT', 'cnote_wt'))}</td>
-                            <td className="text-right">{fmtWt(num(lr, 'CL_BAL', 'cl_bal'))}</td>
-                          </tr>
-                        ))}
-                        {ledgerRows.length > 0 ? (
-                          <tr className="stock-sum-grand">
-                            <td colSpan={4}>
-                              <strong>Grand total</strong>
-                            </td>
-                            <td className="text-right">
-                              <strong>{fmtWt(ledgerTotals.purWt)}</strong>
-                            </td>
-                            <td className="text-right">
-                              <strong>{fmtWt(ledgerTotals.prodWt)}</strong>
-                            </td>
-                            <td className="text-right">
-                              <strong>{fmtWt(ledgerTotals.jbWt)}</strong>
-                            </td>
-                            <td className="text-right">
-                              <strong>{fmtWt(ledgerTotals.jiWt)}</strong>
-                            </td>
-                            <td className="text-right">
-                              <strong>{fmtWt(ledgerTotals.millingWt)}</strong>
-                            </td>
-                            <td className="text-right">
-                              <strong>{fmtWt(ledgerTotals.saleWt)}</strong>
-                            </td>
-                            <td className="text-right">
-                              <strong>{fmtWt(ledgerTotals.cnoteWt)}</strong>
-                            </td>
-                            <td className="text-right">
-                              <strong>{fmtWt(ledgerTotals.clBal)}</strong>
-                            </td>
-                          </tr>
-                        ) : null}
-                        {ledgerRows.length === 0 ? (
-                          <tr>
-                            <td colSpan={12}>No stock ledger rows found.</td>
-                          </tr>
-                        ) : null}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : null}
+                <button type="button" className="btn btn-export" onClick={downloadLedgerPdf}>
+                  Pdf
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-excel"
+                  onClick={() => {
+                    try {
+                      downloadExcelRows(
+                        ledgerRows,
+                        'StockLedger',
+                        `${compName}_StockLedger_${ledgerMeta?.itemCode || 'item'}_${ledgerMeta?.plantCode || 'all'}`
+                      );
+                    } catch (e) {
+                      alert(String(e?.message || e));
+                    }
+                  }}
+                >
+                  📊 Excel
+                </button>
+                <button type="button" className="btn btn-whatsapp" onClick={shareLedgerWa}>
+                  💬 WhatsApp
+                </button>
               </div>
             </div>
-          </div>
+            <div className="report-info">
+              <p>
+                <strong>Period</strong> {toDisplayDate(startDate)} – {toDisplayDate(endDate)}
+              </p>
+              <p>
+                {compName} | FY {compYear} · Tap a row for voucher detail or purchase/sale bill.
+              </p>
+            </div>
+            {ledgerLoading ? <p>Loading…</p> : null}
+            {ledgerError ? (
+              <p className="form-api-error" role="alert">
+                {ledgerError}
+              </p>
+            ) : null}
+            {!ledgerLoading && !ledgerError ? (
+              <div className="report-display table-responsive">
+                <table className="report-table stock-sum-detail-table">
+                  <thead>
+                    <tr>
+                      <th>VR Date</th>
+                      <th>VR No</th>
+                      <th>Type</th>
+                      <th>B Type</th>
+                      <th className="text-right">Pur wt</th>
+                      <th className="text-right">Prod wt</th>
+                      <th className="text-right">JB wt</th>
+                      <th className="text-right">JI wt</th>
+                      <th className="text-right">Milling wt</th>
+                      <th className="text-right">Sale wt</th>
+                      <th className="text-right">CNote wt</th>
+                      <th className="text-right">CL balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ledgerRows.map((lr, idx) => (
+                      <tr
+                        key={`${idx}-${lr.VR_NO ?? lr.vr_no ?? ''}`}
+                        className="stock-sum-row-clickable stock-sum-ledger-row-click"
+                        tabIndex={0}
+                        role="button"
+                        onClick={() => onLedgerRowActivate(lr)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onLedgerRowActivate(lr);
+                          }
+                        }}
+                      >
+                        <td>{formatLedgerDateDisplay(lr.VR_DATE ?? lr.vr_date)}</td>
+                        <td>{lr.VR_NO ?? lr.vr_no ?? '—'}</td>
+                        <td>{lr.TYPE ?? lr.type ?? '—'}</td>
+                        <td>{lr.B_TYPE ?? lr.b_type ?? '—'}</td>
+                        <td className="text-right">{fmtWt(num(lr, 'PUR_WT', 'pur_wt'))}</td>
+                        <td className="text-right">{fmtWt(num(lr, 'PROD_WT', 'prod_wt'))}</td>
+                        <td className="text-right">{fmtWt(num(lr, 'JB_WT', 'jb_wt'))}</td>
+                        <td className="text-right">{fmtWt(num(lr, 'JI_WT', 'ji_wt'))}</td>
+                        <td className="text-right">{fmtWt(num(lr, 'MILLING_WT', 'milling_wt'))}</td>
+                        <td className="text-right">{fmtWt(num(lr, 'SALE_WT', 'sale_wt'))}</td>
+                        <td className="text-right">{fmtWt(num(lr, 'CNOTE_WT', 'cnote_wt'))}</td>
+                        <td className="text-right">{fmtWt(num(lr, 'CL_BAL', 'cl_bal'))}</td>
+                      </tr>
+                    ))}
+                    {ledgerRows.length > 0 ? (
+                      <tr className="stock-sum-grand">
+                        <td colSpan={4}>
+                          <strong>Grand total</strong>
+                        </td>
+                        <td className="text-right">
+                          <strong>{fmtWt(ledgerTotals.purWt)}</strong>
+                        </td>
+                        <td className="text-right">
+                          <strong>{fmtWt(ledgerTotals.prodWt)}</strong>
+                        </td>
+                        <td className="text-right">
+                          <strong>{fmtWt(ledgerTotals.jbWt)}</strong>
+                        </td>
+                        <td className="text-right">
+                          <strong>{fmtWt(ledgerTotals.jiWt)}</strong>
+                        </td>
+                        <td className="text-right">
+                          <strong>{fmtWt(ledgerTotals.millingWt)}</strong>
+                        </td>
+                        <td className="text-right">
+                          <strong>{fmtWt(ledgerTotals.saleWt)}</strong>
+                        </td>
+                        <td className="text-right">
+                          <strong>{fmtWt(ledgerTotals.cnoteWt)}</strong>
+                        </td>
+                        <td className="text-right">
+                          <strong>{fmtWt(ledgerTotals.clBal)}</strong>
+                        </td>
+                      </tr>
+                    ) : null}
+                    {ledgerRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={12}>No stock ledger rows found.</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+            <div className="button-group">
+              <button type="button" className="btn btn-secondary" onClick={() => setStockPanel('summary')}>
+                ← Stock sum
+              </button>
+            </div>
+          </>
+        ) : null}
+
+        {stockPanel === 'ledgerDetail' ? (
+          <>
+            <div className="report-toolbar stock-ledger-detail-toolbar">
+              <h2 className="stock-panel-title stock-ledger-detail-title">{ledgerEntryTitle}</h2>
+              <div className="toolbar-actions">
+                <button type="button" className="btn btn-toolbar-back" onClick={goBackFromLedgerDetail}>
+                  ← Stock ledger
+                </button>
+                <button type="button" className="btn btn-export" onClick={downloadLedgerEntryPdf}>
+                  Pdf
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-excel"
+                  onClick={() => {
+                    try {
+                      downloadExcelRows(
+                        ledgerEntryRows,
+                        ledgerEntryKind === 'jobwork' ? 'StockLedgerJobwork' : 'StockLedgerProd',
+                        `${compName}_Ledger_${ledgerMeta?.itemCode || 'item'}_${ledgerEntryKind || 'detail'}`
+                      );
+                    } catch (e) {
+                      alert(String(e?.message || e));
+                    }
+                  }}
+                >
+                  📊 Excel
+                </button>
+                <button type="button" className="btn btn-whatsapp" onClick={shareLedgerEntryWa}>
+                  💬 WhatsApp
+                </button>
+              </div>
+            </div>
+            <div className="report-info">
+              <p>
+                {compName} | FY {compYear} · <strong>Item</strong> {ledgerMeta?.itemCode || '—'} · <strong>Plant</strong>{' '}
+                {ledgerMeta?.plantCode || '—'}
+              </p>
+            </div>
+            <div className="report-display table-responsive">
+              {ledgerEntryLoading ? <p>Loading…</p> : null}
+              {ledgerEntryError ? (
+                <p className="form-api-error" role="alert">
+                  {ledgerEntryError}
+                </p>
+              ) : null}
+              {!ledgerEntryLoading && !ledgerEntryError && ledgerEntryKind === 'prod' ? (
+                <table className="report-table stock-sum-detail-table">
+                  <thead>
+                    <tr>
+                      <th>S date</th>
+                      <th>S no</th>
+                      <th>Trn</th>
+                      <th>Plant</th>
+                      <th>Item</th>
+                      <th>Item name (in)</th>
+                      <th className="text-right">M qnty</th>
+                      <th>M status</th>
+                      <th className="text-right">M wt</th>
+                      <th>Out code</th>
+                      <th>Out name</th>
+                      <th className="text-right">Prod %</th>
+                      <th className="text-right">Prod qnty</th>
+                      <th className="text-right">Prod wt</th>
+                      <th className="text-right">Short</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ledgerEntryRows.map((r, i) => (
+                      <tr key={`p-${i}`}>
+                        <td>{formatLedgerDateDisplay(r.S_DATE ?? r.s_date)}</td>
+                        <td>{r.S_NO ?? r.s_no ?? '—'}</td>
+                        <td>{r.TRN_NO ?? r.trn_no ?? '—'}</td>
+                        <td>{r.PLANT_CODE ?? r.plant_code ?? '—'}</td>
+                        <td>{r.ITEM ?? r.item ?? '—'}</td>
+                        <td className="ledger-detail">{r.ITEM_NAME_IN ?? r.item_name_in ?? '—'}</td>
+                        <td className="text-right">{fmtQty(r.M_QNTY ?? r.m_qnty)}</td>
+                        <td>{r.M_STATUS ?? r.m_status ?? '—'}</td>
+                        <td className="text-right">{fmtWt(r.M_WEIGHT ?? r.m_weight)}</td>
+                        <td>{r.ITEM_CODE ?? r.item_code ?? '—'}</td>
+                        <td className="ledger-detail">{r.ITEM_NAME_CODE ?? r.item_name_code ?? '—'}</td>
+                        <td className="text-right">{fmtQty(r.PROD_PER ?? r.prod_per)}</td>
+                        <td className="text-right">{fmtQty(r.PROD_QNTY ?? r.prod_qnty)}</td>
+                        <td className="text-right">{fmtWt(r.PROD_WEIGHT ?? r.prod_weight)}</td>
+                        <td className="text-right">{fmtWt(r.SHORT ?? r.short)}</td>
+                      </tr>
+                    ))}
+                    {ledgerEntryRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={15}>No production lines for this voucher.</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              ) : null}
+              {!ledgerEntryLoading && !ledgerEntryError && ledgerEntryKind === 'jobwork' ? (
+                <table className="report-table stock-sum-detail-table">
+                  <thead>
+                    <tr>
+                      <th>Type</th>
+                      <th>R date</th>
+                      <th>R no</th>
+                      <th>B type</th>
+                      <th>Trn</th>
+                      <th>Item</th>
+                      <th>Name</th>
+                      <th>Status</th>
+                      <th className="text-right">Qty</th>
+                      <th className="text-right">Weight</th>
+                      <th className="text-right">Rate</th>
+                      <th className="text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ledgerEntryRows.map((r, i) => (
+                      <tr key={`j-${i}`}>
+                        <td>{r.TYPE ?? r.type ?? '—'}</td>
+                        <td>{formatLedgerDateDisplay(r.R_DATE ?? r.r_date)}</td>
+                        <td>{r.R_NO ?? r.r_no ?? '—'}</td>
+                        <td>{r.B_TYPE ?? r.b_type ?? '—'}</td>
+                        <td>{r.TRN_NO ?? r.trn_no ?? '—'}</td>
+                        <td>{r.ITEM_CODE ?? r.item_code ?? '—'}</td>
+                        <td className="ledger-detail">{r.ITEM_NAME ?? r.item_name ?? '—'}</td>
+                        <td>{r.STATUS ?? r.status ?? '—'}</td>
+                        <td className="text-right">{fmtQty(r.QNTY ?? r.qnty)}</td>
+                        <td className="text-right">{fmtWt(r.WEIGHT ?? r.weight)}</td>
+                        <td className="text-right">{fmtWt(r.RATE ?? r.rate)}</td>
+                        <td className="text-right">{fmtWt(r.AMOUNT ?? r.amount)}</td>
+                      </tr>
+                    ))}
+                    {ledgerEntryRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={12}>No jobwork lines for this voucher.</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              ) : null}
+            </div>
+            <div className="button-group">
+              <button type="button" className="btn btn-secondary" onClick={goBackFromLedgerDetail}>
+                ← Stock ledger
+              </button>
+            </div>
+          </>
         ) : null}
 
       </div>

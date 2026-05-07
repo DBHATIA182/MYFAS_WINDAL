@@ -430,6 +430,14 @@ const REQUIRE_SECONDARY_HUB = isDualOracleHubRequired();
 const DUAL_ORACLE_HUB_ENABLED = isDualOracleHubEnabled();
 
 let activeDbConfig = DB_PRIMARY;
+const ORACLE_POOL_ENABLED = String(process.env.ORACLE_POOL_ENABLED ?? '1').trim() !== '0';
+const ORACLE_POOL_MIN = Math.max(0, parseInt(process.env.ORACLE_POOL_MIN ?? '1', 10) || 1);
+const ORACLE_POOL_MAX = Math.max(1, parseInt(process.env.ORACLE_POOL_MAX ?? '12', 10) || 12);
+const ORACLE_POOL_INC = Math.max(1, parseInt(process.env.ORACLE_POOL_INC ?? '1', 10) || 1);
+const ORACLE_POOL_TIMEOUT_SEC = Math.max(5, parseInt(process.env.ORACLE_POOL_TIMEOUT_SEC ?? '60', 10) || 60);
+const ORACLE_STMT_CACHE_SIZE = Math.max(10, parseInt(process.env.ORACLE_STMT_CACHE_SIZE ?? '100', 10) || 100);
+const oraclePools = new Map();
+const oraclePoolCreates = new Map();
 
 function maskOracleLog(conn) {
   if (!conn || typeof conn !== 'object') return '(no config)';
@@ -442,6 +450,54 @@ function formatOracleConnectErr(err) {
   if (!err) return '';
   const n = err.errorNum != null ? ` ORA-${err.errorNum}` : '';
   return `${err.message || err}${n}`;
+}
+
+function oraclePoolKey(connCfg) {
+  const u = String(connCfg?.user ?? '').trim().toUpperCase();
+  const c = String(connCfg?.connectString ?? '').trim().toUpperCase();
+  return `${u}|${c}`;
+}
+
+async function getOrCreateOraclePool(connCfg) {
+  const key = oraclePoolKey(connCfg);
+  const existing = oraclePools.get(key);
+  if (existing) return existing;
+  const inflight = oraclePoolCreates.get(key);
+  if (inflight) return inflight;
+
+  const creating = (async () => {
+    const pool = await oracledb.createPool({
+      user: connCfg.user,
+      password: connCfg.password,
+      connectString: connCfg.connectString,
+      poolMin: ORACLE_POOL_MIN,
+      poolMax: ORACLE_POOL_MAX,
+      poolIncrement: ORACLE_POOL_INC,
+      poolTimeout: ORACLE_POOL_TIMEOUT_SEC,
+      stmtCacheSize: ORACLE_STMT_CACHE_SIZE,
+    });
+    oraclePools.set(key, pool);
+    console.log(`📌 Oracle pool ready: ${String(connCfg.user || '').toUpperCase()}@${connCfg.connectString}`);
+    return pool;
+  })();
+
+  oraclePoolCreates.set(key, creating);
+  try {
+    return await creating;
+  } finally {
+    oraclePoolCreates.delete(key);
+  }
+}
+
+async function getDbConnection(connCfg) {
+  if (!ORACLE_POOL_ENABLED) return oracledb.getConnection(connCfg);
+  try {
+    const pool = await getOrCreateOraclePool(connCfg);
+    return pool.getConnection();
+  } catch (err) {
+    console.warn(`⚠️ Oracle pool fallback (direct connection): ${formatOracleConnectErr(err)}`);
+    return oracledb.getConnection(connCfg);
+  }
 }
 
 function isEffectiveCompUid(schema) {
@@ -595,7 +651,7 @@ async function runQuery(sql, binds = {}, schema = null, executeExtra = {}) {
         }
       : hubCfg;
 
-    conn = await oracledb.getConnection(connCfg);
+    conn = await getDbConnection(connCfg);
 
     const opts = { outFormat: oracledb.OUT_FORMAT_OBJECT, ...oracleExecuteExtra };
     const result = await conn.execute(sql, binds, opts);
@@ -610,6 +666,29 @@ async function runQuery(sql, binds = {}, schema = null, executeExtra = {}) {
       try { await conn.close(); } catch (e) { console.error(e); }
     }
   }
+}
+
+// Consolidated Trading closing stock override (avoids schema-specific CLSTOCK write issues).
+// Key format: "<comp_code>|<comp_uid>"
+const tradingConsolidateOverride = new Map();
+const startupCache = {
+  companyByCode: new Map(),
+  yearsByCompCode: new Map(),
+  ttlMs: 2 * 60 * 1000,
+};
+
+function getStartupCached(map, key) {
+  const item = map.get(key);
+  if (!item) return null;
+  if (Date.now() > item.expireAt) {
+    map.delete(key);
+    return null;
+  }
+  return item.value;
+}
+
+function setStartupCached(map, key, value) {
+  map.set(key, { value, expireAt: Date.now() + startupCache.ttlMs });
 }
 
 /** True when connected as the configured primary hub user (e.g. DAL), before optional secondary-hub login retry. */
@@ -643,7 +722,7 @@ async function lookupAppLoginRows(connCfg, user_name, pw) {
   const tablesStd = ['USERS'];
   for (const t of tablesStd) {
     try {
-      const sql = `SELECT USER_NAME, PW FROM ${t} WHERE ${predStd}`;
+      const sql = `SELECT USER_NAME, PW, COMP_CODE FROM ${t} WHERE ${predStd}`;
       const rows = await runQuery(sql, binds, null, { hubOverride: connCfg, suppressDbErrorLog: true });
       if (Array.isArray(rows) && rows.length > 0) return rows;
     } catch (err) {
@@ -655,7 +734,7 @@ async function lookupAppLoginRows(connCfg, user_name, pw) {
   const tablesAlt = ['USERS'];
   for (const t of tablesAlt) {
     try {
-      const sql = `SELECT USERNAME AS USER_NAME, PW FROM ${t} WHERE ${predAlt}`;
+      const sql = `SELECT USERNAME AS USER_NAME, PW, COMP_CODE FROM ${t} WHERE ${predAlt}`;
       const rows = await runQuery(sql, binds, null, { hubOverride: connCfg, suppressDbErrorLog: true });
       if (Array.isArray(rows) && rows.length > 0) return rows;
     } catch (err) {
@@ -1577,6 +1656,12 @@ function parseSaleBillOracleTypeCandidates(oracleTypesRaw, typeStrRaw) {
     case 'S':
       // Retail (1) before tax invoice (3) — fewer wasted probes when oracle_types is omitted.
       return [1, 3];
+    case 'Y':
+      // Legacy stock ledger “Y” vouchers: probe common SALE.TYPE buckets if DB stores numeric type.
+      return [3, 1, 4, 7];
+    case 'W':
+      // Stock credit-note style row: SALE often CN (8), returns (4–5), or voucher char type.
+      return [8, 4, 5, 1, 3];
     default:
       return [];
   }
@@ -1597,7 +1682,7 @@ function saleBillQrFragmentsForTypeNum(saleTypeNum, taxNonZero, signedColAttempt
  * Dispatch caption lines come from `/api/sale-bill-print` PLANT merge (GODOWN fallback for older DBs; Fox SALE_B_TYPE G parity).
  * disOthMode: 'both' | 'othQuoted' | 'none'; typeMatch: 'numeric' | 'varchar'
  */
-function buildSaleBillPrintSql(qrSelectFragment, disOthMode, typeMatch, extraSaleLineCols) {
+function buildSaleBillPrintSql(qrSelectFragment, disOthMode, typeMatch, extraSaleLineCols, relaxBillDate = false) {
   let disOthLines = '';
   if (disOthMode === 'both') {
     disOthLines = `A.DIS_AMT,
@@ -1763,15 +1848,19 @@ ${extraCols}        A.RATE,
       ${othNameJoinSnip}${masterOthCdJoinSnip}
       WHERE A.COMP_CODE = :comp_code
         AND ${typeClause}
-        AND A.BILL_NO = :bill_no
+        AND TRIM(TO_CHAR(A.BILL_NO)) = TRIM(TO_CHAR(:bill_no))
         AND NVL(TRIM(A.B_TYPE), ' ') = NVL(TRIM(:b_type), ' ')
-        AND A.BILL_DATE >= TO_DATE(:bill_date, 'DD-MM-YYYY')
-        AND A.BILL_DATE < TO_DATE(:bill_date, 'DD-MM-YYYY') + 1
+        ${
+          relaxBillDate
+            ? ''
+            : `AND A.BILL_DATE >= TO_DATE(:bill_date, 'DD-MM-YYYY')
+        AND A.BILL_DATE < TO_DATE(:bill_date, 'DD-MM-YYYY') + 1`
+        }
       ORDER BY A.BILL_DATE, A.BILL_NO, A.B_TYPE, A.TRN_NO`;
 }
 
 /** Fast probe path (matches former “Lean”: core joins only, no optional OTH-charge graphs). */
-function buildSaleBillPrintSqlNano(qrSelectFragment, typeMatch) {
+function buildSaleBillPrintSqlNano(qrSelectFragment, typeMatch, relaxBillDate = false) {
   const typeClause =
     typeMatch === 'numeric' ? `A.TYPE = :sale_type_num` : `UPPER(TRIM(A.TYPE)) = UPPER(TRIM(:type_char))`;
   return `
@@ -1884,10 +1973,14 @@ function buildSaleBillPrintSqlNano(qrSelectFragment, typeMatch) {
       LEFT JOIN MASTER E ON A.COMP_CODE = E.COMP_CODE AND A.DELV_CODE = E.CODE
       WHERE A.COMP_CODE = :comp_code
         AND ${typeClause}
-        AND A.BILL_NO = :bill_no
+        AND TRIM(TO_CHAR(A.BILL_NO)) = TRIM(TO_CHAR(:bill_no))
         AND NVL(TRIM(A.B_TYPE), ' ') = NVL(TRIM(:b_type), ' ')
-        AND A.BILL_DATE >= TO_DATE(:bill_date, 'DD-MM-YYYY')
-        AND A.BILL_DATE < TO_DATE(:bill_date, 'DD-MM-YYYY') + 1
+        ${
+          relaxBillDate
+            ? ''
+            : `AND A.BILL_DATE >= TO_DATE(:bill_date, 'DD-MM-YYYY')
+        AND A.BILL_DATE < TO_DATE(:bill_date, 'DD-MM-YYYY') + 1`
+        }
       ORDER BY A.BILL_DATE, A.BILL_NO, A.B_TYPE, A.TRN_NO`;
 }
 
@@ -1913,11 +2006,13 @@ async function runSaleBillPrintRows(binds, comp_uid) {
   if (disOthProbeQuoted) disOthModes.push('othQuoted');
   if (disOthProbeBoth) disOthModes.push('both');
   const fullMatrixProbe = truthyEnv01(process.env.SALE_BILL_PRINT_FULL_MATRIX);
+  const relaxBillDate = truthyEnv01(binds.relax_bill_date);
+  /** When clauses omit :bill_date, binds must not include it — else ORA-01036 */
   const baseBinds = {
     comp_code: binds.comp_code,
     bill_no: String(binds.bill_no || '').trim(),
     b_type: binds.b_type != null ? String(binds.b_type).trim() : ' ',
-    bill_date: binds.bill_date,
+    ...(relaxBillDate ? {} : { bill_date: binds.bill_date }),
   };
   const candidates = parseSaleBillOracleTypeCandidates(binds.oracle_types, binds.type);
   const typ = String(binds.type || '').trim().toUpperCase();
@@ -1940,7 +2035,7 @@ async function runSaleBillPrintRows(binds, comp_uid) {
         : ['CAST(NULL AS VARCHAR2(4000)) AS SIGNED_QR_CODE'];
     for (const frag of frags) {
       try {
-        const sql = buildSaleBillPrintSqlNano(frag, typeMatch);
+        const sql = buildSaleBillPrintSqlNano(frag, typeMatch, relaxBillDate);
         const rows = await runQuery(sql, queryBinds, comp_uid, {
           suppressDbErrorLog: true,
           ...timeoutOpts,
@@ -1967,7 +2062,7 @@ async function runSaleBillPrintRows(binds, comp_uid) {
       for (const dom of disOthModes) {
         for (const frag of fragList) {
           try {
-            const sql = buildSaleBillPrintSql(frag, dom, typeMatch, extraSaleLineCols);
+            const sql = buildSaleBillPrintSql(frag, dom, typeMatch, extraSaleLineCols, relaxBillDate);
             const rows = await runQuery(sql, queryBinds, comp_uid, {
               suppressDbErrorLog: true,
               ...timeoutOpts,
@@ -2136,7 +2231,8 @@ app.post('/api/login', async (req, res) => {
     }
     const row = rows[0];
     const name = row.USER_NAME ?? row.user_name ?? user_name;
-    res.json({ ok: true, user_name: String(name).trim().toUpperCase() });
+    const compCode = String(row?.COMP_CODE ?? row?.comp_code ?? '').trim();
+    res.json({ ok: true, user_name: String(name).trim().toUpperCase(), comp_code: compCode || null });
   } catch (err) {
     console.error('❌ Login error:', err.message);
     res.status(500).json({ error: err.message });
@@ -2147,12 +2243,31 @@ app.post('/api/login', async (req, res) => {
 app.get('/api/companies', async (req, res) => {
   try {
     const userName = String(req.query.user_name ?? req.query.USER_NAME ?? '').trim().toUpperCase();
-    let authorizedCompCode = '';
-    if (userName) {
+    const forcedCompCode = String(req.query.comp_code ?? req.query.COMP_CODE ?? '').trim();
+    let authorizedCompCode = forcedCompCode;
+    if (!authorizedCompCode && userName) {
       authorizedCompCode = await lookupAuthorizedCompanyCode(activeDbConfig, userName);
     }
-    const rows = await fetchCompanyListRows(authorizedCompCode);
-    res.json(rows);
+    const cacheKey = `companies:${authorizedCompCode || 'ALL'}`;
+    const cachedRows = getStartupCached(startupCache.companyByCode, cacheKey);
+    if (cachedRows) return res.json(cachedRows);
+    let rows = await fetchCompanyListRows(authorizedCompCode);
+
+    // Fallback: if fast-path comp_code restriction yields no rows, retry with user lookup and then full list.
+    if ((!rows || rows.length === 0) && forcedCompCode) {
+      if (userName) {
+        const lookedUpCompCode = await lookupAuthorizedCompanyCode(activeDbConfig, userName);
+        if (lookedUpCompCode && lookedUpCompCode !== forcedCompCode) {
+          rows = await fetchCompanyListRows(lookedUpCompCode);
+        }
+      }
+      if (!rows || rows.length === 0) {
+        rows = await fetchCompanyListRows('');
+      }
+    }
+
+    setStartupCached(startupCache.companyByCode, cacheKey, rows || []);
+    res.json(rows || []);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2161,10 +2276,17 @@ app.get('/api/companies', async (req, res) => {
 // 2. Get Years for Company
 app.get('/api/years', async (req, res) => {
   try {
+    const compCode = String(req.query.comp_code ?? '').trim();
+    const cacheKey = `years:${compCode}`;
+    if (compCode) {
+      const cachedRows = getStartupCached(startupCache.yearsByCompCode, cacheKey);
+      if (cachedRows) return res.json(cachedRows);
+    }
     const rows = await runQuery(
       "SELECT comp_uid, comp_year, comp_s_dt, comp_e_dt FROM compdet WHERE comp_code = :code ORDER BY comp_year DESC",
       { code: req.query.comp_code }
     );
+    if (compCode) setStartupCached(startupCache.yearsByCompCode, cacheKey, rows);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2214,6 +2336,62 @@ app.get('/api/trial-balance', async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error("❌ Trial Balance SQL Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3A. Trial Balance for an explicit list of ledger codes
+app.get('/api/trial-balance-by-codes', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, e_date, codes } = req.query;
+    if (!comp_code || !e_date) {
+      return res.status(400).json({ error: 'comp_code and e_date are required' });
+    }
+    const rawCodes = String(codes || '')
+      .split(',')
+      .map((s) => String(s || '').trim())
+      .filter((s) => /^\d+$/.test(s));
+    const uniqCodes = Array.from(new Set(rawCodes));
+    if (!uniqCodes.length) return res.json([]);
+
+    const codeBindNames = uniqCodes.map((_, i) => `c${i}`);
+    const inSql = codeBindNames.map((n) => `:${n}`).join(',');
+    const bindParams = { comp_code, e_date };
+    codeBindNames.forEach((n, i) => {
+      bindParams[n] = Number(uniqCodes[i]);
+    });
+
+    const sql = `
+      SELECT
+        B.SCHEDULE AS SCHEDULE,
+        NVL(MAX(C.NAME), '') AS SCH_NAME,
+        B.CODE AS CODE,
+        NVL(MAX(B.NAME), '') AS NAME,
+        NVL(MAX(B.CITY), '') AS CITY,
+        SUM(NVL(A.DR_AMT, 0)) AS DR_AMT,
+        SUM(NVL(A.CR_AMT, 0)) AS CR_AMT,
+        CASE WHEN SUM(NVL(A.DR_AMT, 0) - NVL(A.CR_AMT, 0)) > 0
+          THEN SUM(NVL(A.DR_AMT, 0) - NVL(A.CR_AMT, 0)) ELSE 0 END AS CLOSING_DR,
+        CASE WHEN SUM(NVL(A.DR_AMT, 0) - NVL(A.CR_AMT, 0)) < 0
+          THEN ABS(SUM(NVL(A.DR_AMT, 0) - NVL(A.CR_AMT, 0))) ELSE 0 END AS CLOSING_CR
+      FROM MASTER B
+      LEFT JOIN LEDGER A
+        ON A.COMP_CODE = B.COMP_CODE
+       AND A.CODE = B.CODE
+       AND A.VR_DATE <= TO_DATE(:e_date, 'DD-MM-YYYY')
+      LEFT JOIN SCHEDULE C
+        ON C.COMP_CODE = B.COMP_CODE
+       AND C.NO = B.SCHEDULE
+      WHERE B.COMP_CODE = :comp_code
+        AND B.CODE IN (${inSql})
+      GROUP BY B.SCHEDULE, B.CODE
+      ORDER BY B.SCHEDULE NULLS LAST, B.CODE
+    `;
+
+    const rows = await runQuery(sql, bindParams, comp_uid);
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ Trial Balance by codes SQL Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -3717,6 +3895,7 @@ app.get('/api/sale-bill-print', async (req, res) => {
     const bt = b_type != null ? String(b_type).trim() : '';
     let finYear = fin_year != null ? String(fin_year).trim() : '';
     const ot = oracle_types != null ? String(oracle_types).trim() : '';
+    const relaxBillDate = truthyEnv01(req.query.relax_bill_date);
     const rows = await runSaleBillPrintRows(
       {
         comp_code,
@@ -3725,6 +3904,7 @@ app.get('/api/sale-bill-print', async (req, res) => {
         bill_no: String(bill_no).trim(),
         b_type: bt || ' ',
         bill_date,
+        relax_bill_date: relaxBillDate ? '1' : '',
       },
       comp_uid
     );
@@ -4003,6 +4183,112 @@ app.get('/api/stock-sum-ledger', async (req, res) => {
     res.json(rows || []);
   } catch (err) {
     console.error('❌ Stock sum ledger error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Stock ledger line → PROD breakdown (Fox: TYPE PR / PI) */
+app.get('/api/stock-sum-ledger-prod', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, vr_date, vr_no } = req.query;
+    const vno = String(vr_no ?? '').trim();
+    if (!comp_code || !vr_date || !vno) {
+      return res.status(400).json({ error: 'comp_code, vr_date, and vr_no are required' });
+    }
+    const sql = `
+      SELECT
+        A.S_DATE,
+        A.S_NO,
+        A.TRN_NO,
+        A.PLANT_CODE,
+        A.ITEM,
+        B.ITEM_NAME AS ITEM_NAME_IN,
+        A.M_QNTY,
+        A.M_STATUS,
+        A.MILLING AS M_WEIGHT,
+        A.ITEM_CODE,
+        C.ITEM_NAME AS ITEM_NAME_CODE,
+        A.PROD_PER,
+        A.QNTY AS PROD_QNTY,
+        A.WEIGHT AS PROD_WEIGHT,
+        A.SHORT
+      FROM PROD A, ITEMMAST B, ITEMMAST C
+      WHERE A.COMP_CODE = :comp_code
+        AND TRUNC(A.S_DATE) = TRUNC(TO_DATE(:vr_date, 'DD-MM-YYYY'))
+        AND TRIM(TO_CHAR(A.S_NO)) = TRIM(TO_CHAR(:vr_no))
+        AND A.COMP_CODE = B.COMP_CODE
+        AND A.ITEM = B.ITEM_CODE
+        AND A.COMP_CODE = C.COMP_CODE
+        AND A.ITEM_CODE = C.ITEM_CODE
+      ORDER BY A.S_DATE, A.S_NO, A.TRN_NO`;
+    const binds = { comp_code, vr_date, vr_no: vno };
+    const schemaAttempts =
+      comp_uid != null && String(comp_uid).trim() !== '' ? [String(comp_uid).trim(), null] : [null];
+    let rows = [];
+    for (const sch of schemaAttempts) {
+      const got = await runQuery(sql, binds, sch);
+      if (Array.isArray(got) && got.length > 0) {
+        rows = got;
+        break;
+      }
+      if (rows.length === 0) rows = Array.isArray(got) ? got : [];
+    }
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ Stock sum ledger PROD error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Stock ledger line → JOBWORK lines (Fox: JR→R, JI→I, RR→Y, RI→X) */
+app.get('/api/stock-sum-ledger-jobwork', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, mtype, r_date, r_no, b_type } = req.query;
+    const mt = String(mtype ?? '').trim().toUpperCase();
+    const rno = String(r_no ?? '').trim();
+    const btRaw = b_type != null ? String(b_type).trim() : '';
+    const bt = btRaw === '' ? ' ' : btRaw;
+    if (!comp_code || !mt || !r_date || !rno) {
+      return res.status(400).json({ error: 'comp_code, mtype, r_date, and r_no are required' });
+    }
+    const sql = `
+      SELECT
+        A.TYPE,
+        A.R_DATE,
+        A.R_NO,
+        A.B_TYPE,
+        A.TRN_NO,
+        A.ITEM_CODE,
+        B.ITEM_NAME,
+        A.STATUS,
+        A.QNTY,
+        A.WEIGHT,
+        A.RATE,
+        A.AMOUNT
+      FROM JOBWORK A, ITEMMAST B
+      WHERE A.COMP_CODE = :comp_code
+        AND TRIM(A.TYPE) = TRIM(:mtype)
+        AND TRUNC(A.R_DATE) = TRUNC(TO_DATE(:r_date, 'DD-MM-YYYY'))
+        AND TRIM(TO_CHAR(A.R_NO)) = TRIM(TO_CHAR(:r_no))
+        AND TRIM(NVL(A.B_TYPE, CHR(32))) = TRIM(NVL(:b_type, CHR(32)))
+        AND A.COMP_CODE = B.COMP_CODE
+        AND A.ITEM_CODE = B.ITEM_CODE
+      ORDER BY A.R_DATE, A.R_NO, A.B_TYPE, A.TRN_NO`;
+    const binds = { comp_code, mtype: mt, r_date, r_no: rno, b_type: bt };
+    const schemaAttempts =
+      comp_uid != null && String(comp_uid).trim() !== '' ? [String(comp_uid).trim(), null] : [null];
+    let rows = [];
+    for (const sch of schemaAttempts) {
+      const got = await runQuery(sql, binds, sch);
+      if (Array.isArray(got) && got.length > 0) {
+        rows = got;
+        break;
+      }
+      if (rows.length === 0) rows = Array.isArray(got) ? got : [];
+    }
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ Stock sum ledger JOBWORK error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -4622,7 +4908,7 @@ async function buildHsnSalesFullRows({ comp_code, comp_uid, s_date, e_date, code
       NVL(C.HSN_CODE, '') AS IHSN_CODE,
       NVL(C.HSN_UNIT, '') AS HSN_UNIT,
       NVL(D.SCHEDULE, 0) AS SCHEDULE,
-      NVL(A.HSN_CODE, '') AS HSN_CODE,
+      NVL(C.HSN_CODE, '') AS HSN_CODE,
       NVL(A.TAXABLE, 0) AS TAXABLE,
       NVL(A.CGST_AMT, 0) AS CGST_AMT,
       NVL(A.SGST_AMT, 0) AS SGST_AMT,
@@ -4635,95 +4921,41 @@ async function buildHsnSalesFullRows({ comp_code, comp_uid, s_date, e_date, code
     FROM SALE A
     LEFT JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
     LEFT JOIN ITEMMAST C ON A.COMP_CODE = C.COMP_CODE AND A.ITEM_CODE = C.ITEM_CODE
-    LEFT JOIN MASTER D ON A.COMP_CODE = D.COMP_CODE AND A.SUP_CODE = D.CODE
+    LEFT JOIN MASTER D ON A.COMP_CODE = D.COMP_CODE AND A.CODE = D.CODE
     WHERE A.COMP_CODE = :comp_code
-      AND UPPER(TRIM(A.TYPE)) IN ('SL', 'CN', 'RC', 'SE')
       AND A.BILL_DATE >= TO_DATE(:s_date,'DD-MM-YYYY')
       AND A.BILL_DATE < TO_DATE(:e_date,'DD-MM-YYYY') + 1
-      ${codePartyBind !== undefined ? 'AND A.CODE = :code' : ''}${murcSchSql}`;
-
-  const dbikriSql = `
-    SELECT
-      'GR' AS TYPE,
-      A.SV_DATE AS BILL_DATE,
-      A.SV_NO AS BILL_NO,
-      'N' AS B_TYPE,
-      A.CODE,
-      NVL(B.NAME, '') AS NAME,
-      NVL(B.GST_NO, '') AS GST_NO,
-      NVL(B.STATE_CODE, '') AS STATE_CODE,
-      NVL(B.STATE, '') AS STATE,
-      NVL(C.ITEM_CODE, '') AS ITEM_CODE,
-      NVL(C.ITEM_NAME, '') AS ITEM_NAME,
-      NVL(C.HSN_CODE, '') AS IHSN_CODE,
-      NVL(C.HSN_UNIT, '') AS HSN_UNIT,
-      NVL(D.SCHEDULE, 0) AS SCHEDULE,
-      NVL(C.HSN_CODE, '') AS HSN_CODE,
-      NVL(A.AMOUNT, 0) AS TAXABLE,
-      0 AS CGST_AMT,
-      0 AS SGST_AMT,
-      0 AS IGST_AMT,
-      0 AS CGST_PER,
-      0 AS SGST_PER,
-      0 AS IGST_PER,
-      NVL(A.QNTY, 0) AS QNTY,
-      NVL(A.WEIGHT, 0) AS WEIGHT
-    FROM DBIKRI A
-    LEFT JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
-    LEFT JOIN ITEMMAST C ON A.COMP_CODE = C.COMP_CODE AND A.ITEM_CODE = C.ITEM_CODE
-    LEFT JOIN MASTER D ON A.COMP_CODE = D.COMP_CODE AND A.S_CODE = D.CODE
-    WHERE A.COMP_CODE = :comp_code
-      AND A.SV_DATE >= TO_DATE(:s_date,'DD-MM-YYYY')
-      AND A.SV_DATE < TO_DATE(:e_date,'DD-MM-YYYY') + 1
-      ${codePartyBind !== undefined ? 'AND A.CODE = :code' : ''}${murcSchSql}`;
-
-  const jobworkSql = `
-    SELECT
-      'GT' AS TYPE,
-      A.R_DATE AS BILL_DATE,
-      A.R_NO AS BILL_NO,
-      'N' AS B_TYPE,
-      A.CODE,
-      NVL(B.NAME, '') AS NAME,
-      NVL(B.GST_NO, '') AS GST_NO,
-      NVL(B.STATE_CODE, '') AS STATE_CODE,
-      NVL(B.STATE, '') AS STATE,
-      NVL(C.ITEM_CODE, '') AS ITEM_CODE,
-      NVL(C.ITEM_NAME, '') AS ITEM_NAME,
-      NVL(C.HSN_CODE, '') AS IHSN_CODE,
-      NVL(C.HSN_UNIT, '') AS HSN_UNIT,
-      NVL(D.SCHEDULE, 0) AS SCHEDULE,
-      NVL(C.HSN_CODE, '') AS HSN_CODE,
-      NVL(A.JOB_AMT, 0) AS TAXABLE,
-      0 AS CGST_AMT,
-      0 AS SGST_AMT,
-      0 AS IGST_AMT,
-      0 AS CGST_PER,
-      0 AS SGST_PER,
-      0 AS IGST_PER,
-      NVL(A.QNTY, 0) AS QNTY,
-      NVL(A.WEIGHT, 0) AS WEIGHT
-    FROM JOBWORK A
-    LEFT JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
-    LEFT JOIN ITEMMAST C ON A.COMP_CODE = C.COMP_CODE AND A.ITEM_CODE = C.ITEM_CODE
-    LEFT JOIN MASTER D ON A.COMP_CODE = D.COMP_CODE AND A.CR_CODE = D.CODE
-    WHERE A.COMP_CODE = :comp_code
-      AND A.R_DATE >= TO_DATE(:s_date,'DD-MM-YYYY')
-      AND A.R_DATE < TO_DATE(:e_date,'DD-MM-YYYY') + 1
       ${codePartyBind !== undefined ? 'AND A.CODE = :code' : ''}${murcSchSql}`;
 
   const binds = { comp_code, s_date, e_date };
   if (codePartyBind !== undefined) binds.code = codePartyBind;
   if (scheduleBind !== undefined) binds.hsn_sch_no = scheduleBind;
-  const [saleRows, dbikriRows, jobRows] = await Promise.all([
-    runQuery(saleSql, binds, comp_uid),
-    runQuery(dbikriSql, binds, comp_uid),
-    runQuery(jobworkSql, binds, comp_uid),
-  ]);
+  const saleRows = await runQuery(saleSql, binds, comp_uid);
 
-  return [...(saleRows || []), ...(dbikriRows || []), ...(jobRows || [])].map((r) => {
+  function hsnSaleTypeNum(raw) {
+    const s = hsnTxt(raw);
+    if (!s) return NaN;
+    const n = parseInt(s, 10);
+    return Number.isFinite(n) ? n : NaN;
+  }
+  function hsnSaleRowAllowed(rawType) {
+    const n = hsnSaleTypeNum(rawType);
+    if (Number.isFinite(n)) return [0, 1, 3, 4, 7, 8].includes(n);
+    const u = hsnTxt(rawType).toUpperCase();
+    return ['SL', 'SE', 'CN', 'GN', 'CX'].includes(u);
+  }
+  function hsnSaleRowSign(rawType) {
+    const n = hsnSaleTypeNum(rawType);
+    if (Number.isFinite(n)) return n === 4 || n === 8 ? -1 : 1;
+    const u = hsnTxt(rawType).toUpperCase();
+    return ['CN', 'GN'].includes(u) ? -1 : 1;
+  }
+
+  const filteredSaleRows = (saleRows || []).filter((r) => hsnSaleRowAllowed(r.TYPE));
+
+  return [...filteredSaleRows].map((r) => {
     const type = hsnTxt(r.TYPE).toUpperCase();
-    const sign = type === 'CN' ? -1 : 1;
+    const sign = hsnSaleRowSign(r.TYPE);
     const hsn = hsnTxt(r.HSN_CODE) || hsnTxt(r.IHSN_CODE);
     const dt = new Date(r.BILL_DATE);
     return {
@@ -4765,7 +4997,7 @@ async function buildHsnSalesSummaryRows({ comp_code, comp_uid, s_date, e_date, c
       A.TYPE,
       A.BILL_DATE,
       NVL(C.HSN_CODE, '') AS IHSN_CODE,
-      NVL(A.HSN_CODE, '') AS HSN_CODE,
+      NVL(C.HSN_CODE, '') AS HSN_CODE,
       NVL(D.SCHEDULE, 0) AS SCHEDULE,
       NVL(B.GST_NO, '') AS GST_NO,
       NVL(A.TAXABLE, 0) AS TAXABLE,
@@ -4780,77 +5012,41 @@ async function buildHsnSalesSummaryRows({ comp_code, comp_uid, s_date, e_date, c
     FROM SALE A
     LEFT JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
     LEFT JOIN ITEMMAST C ON A.COMP_CODE = C.COMP_CODE AND A.ITEM_CODE = C.ITEM_CODE
-    LEFT JOIN MASTER D ON A.COMP_CODE = D.COMP_CODE AND A.SUP_CODE = D.CODE
+    LEFT JOIN MASTER D ON A.COMP_CODE = D.COMP_CODE AND A.CODE = D.CODE
     WHERE A.COMP_CODE = :comp_code
-      AND UPPER(TRIM(A.TYPE)) IN ('SL', 'CN', 'RC', 'SE')
       AND A.BILL_DATE >= TO_DATE(:s_date,'DD-MM-YYYY')
       AND A.BILL_DATE < TO_DATE(:e_date,'DD-MM-YYYY') + 1
-      ${codePartyBind !== undefined ? 'AND A.CODE = :code' : ''}${murcSchSql}`;
-
-  const dbikriSql = `
-    SELECT
-      'GR' AS TYPE,
-      A.SV_DATE AS BILL_DATE,
-      NVL(C.HSN_CODE, '') AS IHSN_CODE,
-      NVL(C.HSN_CODE, '') AS HSN_CODE,
-      NVL(D.SCHEDULE, 0) AS SCHEDULE,
-      NVL(B.GST_NO, '') AS GST_NO,
-      NVL(A.AMOUNT, 0) AS TAXABLE,
-      0 AS CGST_AMT,
-      0 AS SGST_AMT,
-      0 AS IGST_AMT,
-      0 AS CGST_PER,
-      0 AS SGST_PER,
-      0 AS IGST_PER,
-      NVL(A.QNTY, 0) AS QNTY,
-      NVL(A.WEIGHT, 0) AS WEIGHT
-    FROM DBIKRI A
-    LEFT JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
-    LEFT JOIN ITEMMAST C ON A.COMP_CODE = C.COMP_CODE AND A.ITEM_CODE = C.ITEM_CODE
-    LEFT JOIN MASTER D ON A.COMP_CODE = D.COMP_CODE AND A.S_CODE = D.CODE
-    WHERE A.COMP_CODE = :comp_code
-      AND A.SV_DATE >= TO_DATE(:s_date,'DD-MM-YYYY')
-      AND A.SV_DATE < TO_DATE(:e_date,'DD-MM-YYYY') + 1
-      ${codePartyBind !== undefined ? 'AND A.CODE = :code' : ''}${murcSchSql}`;
-
-  const jobworkSql = `
-    SELECT
-      'GT' AS TYPE,
-      A.R_DATE AS BILL_DATE,
-      NVL(C.HSN_CODE, '') AS IHSN_CODE,
-      NVL(C.HSN_CODE, '') AS HSN_CODE,
-      NVL(D.SCHEDULE, 0) AS SCHEDULE,
-      NVL(B.GST_NO, '') AS GST_NO,
-      NVL(A.JOB_AMT, 0) AS TAXABLE,
-      0 AS CGST_AMT,
-      0 AS SGST_AMT,
-      0 AS IGST_AMT,
-      0 AS CGST_PER,
-      0 AS SGST_PER,
-      0 AS IGST_PER,
-      NVL(A.QNTY, 0) AS QNTY,
-      NVL(A.WEIGHT, 0) AS WEIGHT
-    FROM JOBWORK A
-    LEFT JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
-    LEFT JOIN ITEMMAST C ON A.COMP_CODE = C.COMP_CODE AND A.ITEM_CODE = C.ITEM_CODE
-    LEFT JOIN MASTER D ON A.COMP_CODE = D.COMP_CODE AND A.CR_CODE = D.CODE
-    WHERE A.COMP_CODE = :comp_code
-      AND A.R_DATE >= TO_DATE(:s_date,'DD-MM-YYYY')
-      AND A.R_DATE < TO_DATE(:e_date,'DD-MM-YYYY') + 1
       ${codePartyBind !== undefined ? 'AND A.CODE = :code' : ''}${murcSchSql}`;
 
   const binds = { comp_code, s_date, e_date };
   if (codePartyBind !== undefined) binds.code = codePartyBind;
   if (scheduleBind !== undefined) binds.hsn_sch_no = scheduleBind;
-  const [saleRows, dbikriRows, jobRows] = await Promise.all([
-    runQuery(saleSql, binds, comp_uid),
-    runQuery(dbikriSql, binds, comp_uid),
-    runQuery(jobworkSql, binds, comp_uid),
-  ]);
+  const saleRows = await runQuery(saleSql, binds, comp_uid);
 
-  return [...(saleRows || []), ...(dbikriRows || []), ...(jobRows || [])].map((r) => {
+  function hsnSaleTypeNum(raw) {
+    const s = hsnTxt(raw);
+    if (!s) return NaN;
+    const n = parseInt(s, 10);
+    return Number.isFinite(n) ? n : NaN;
+  }
+  function hsnSaleRowAllowed(rawType) {
+    const n = hsnSaleTypeNum(rawType);
+    if (Number.isFinite(n)) return [0, 1, 3, 4, 7, 8].includes(n);
+    const u = hsnTxt(rawType).toUpperCase();
+    return ['SL', 'SE', 'CN', 'GN', 'CX'].includes(u);
+  }
+  function hsnSaleRowSign(rawType) {
+    const n = hsnSaleTypeNum(rawType);
+    if (Number.isFinite(n)) return n === 4 || n === 8 ? -1 : 1;
+    const u = hsnTxt(rawType).toUpperCase();
+    return ['CN', 'GN'].includes(u) ? -1 : 1;
+  }
+
+  const filteredSaleRows = (saleRows || []).filter((r) => hsnSaleRowAllowed(r.TYPE));
+
+  return [...filteredSaleRows].map((r) => {
     const type = hsnTxt(r.TYPE).toUpperCase();
-    const sign = type === 'CN' ? -1 : 1;
+    const sign = hsnSaleRowSign(r.TYPE);
     const hsn = hsnTxt(r.HSN_CODE) || hsnTxt(r.IHSN_CODE);
     const dt = new Date(r.BILL_DATE);
     return {
@@ -5116,17 +5312,17 @@ async function buildHsnPurchaseFullRows({ comp_code, comp_uid, s_date, e_date, c
       NVL(A.IGST_PER, 0) AS IGST_PER,
       NVL(A.QNTY, 0) AS QNTY,
       NVL(A.WEIGHT, 0) AS WEIGHT,
-      NVL(A.S_P, '') AS S_P
+      CAST(NULL AS VARCHAR2(1)) AS S_P
     FROM PURCHASE A
     LEFT JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
     LEFT JOIN ITEMMAST C ON A.COMP_CODE = C.COMP_CODE AND A.ITEM_CODE = C.ITEM_CODE
-    LEFT JOIN MASTER D ON A.COMP_CODE = D.COMP_CODE AND A.PUR_CODE = D.CODE
+    LEFT JOIN MASTER D ON A.COMP_CODE = D.COMP_CODE AND A.P_CODE = D.CODE
     WHERE A.COMP_CODE = :comp_code
       AND A.R_DATE >= TO_DATE(:s_date,'DD-MM-YYYY')
       AND A.R_DATE < TO_DATE(:e_date,'DD-MM-YYYY') + 1
       AND (
         UPPER(TRIM(A.TYPE)) = 'PU'
-        OR (UPPER(TRIM(A.TYPE)) = 'EV' AND NVL(A.INPUT_YN,'Y') = 'Y' AND NVL(A.SHOW_IN_GSTR,'Y') = 'Y')
+        OR (UPPER(TRIM(A.TYPE)) = 'EV' AND NVL(A.INPUT_YN,'Y') = 'Y')
         OR UPPER(TRIM(A.TYPE)) = 'DN'
         OR (UPPER(TRIM(A.TYPE)) = 'DX' AND NVL(A.INPUT_YN,'Y') <> 'N')
         OR (UPPER(TRIM(A.TYPE)) = 'CX' AND NVL(A.INPUT_YN,'Y') <> 'N')
@@ -5419,6 +5615,7 @@ app.get('/api/trading-ac', async (req, res) => {
       schedule,
       code,
       edt,
+      tdg_type,
       // accepted for parity with VFP call signature
       mcb,
       mwyn,
@@ -5460,20 +5657,359 @@ app.get('/api/trading-ac', async (req, res) => {
     const codeFilterSql = codeFilterN === undefined ? null : codeFilterN;
     const mfynMode = String(mfyn || 'A').trim().toUpperCase();
     const manualConfirmed = String(manual_confirmed || 'N').trim().toUpperCase() === 'Y';
+    const tdgTypeMode = String(tdg_type || 'C').trim().toUpperCase() === 'I' ? 'I' : 'C';
+    const consolidateKey = `${String(comp_code || '').trim()}|${String(comp_uid || '').trim()}`;
+    const consolidateOverride = Number(tradingConsolidateOverride.get(consolidateKey) ?? NaN);
     const needLedgerBase = mfynMode === 'A' && codeFilterN === undefined ? 1 : 0;
+    void needLedgerBase;
 
-    // Auto mode keeps rebuilding CLSTOCK from MASTER schedule.
-    // Manual mode must preserve saved AMOUNT/SHORTAGE so user doesn't re-enter every run.
-    const mustRebuildClstock = mfynMode !== 'M';
+    if (tdgTypeMode === 'I') {
+      const seedRows = await runQuery(
+        `
+        SELECT
+          NVL(A.CAT_CODE,'') AS CAT_CODE,
+          A.ITEM_CODE,
+          NVL(A.ITEM_NAME,'') AS ITEM_NAME,
+          SUM(NVL(C.R_WEIGHT,0)-NVL(C.I_WEIGHT,0)) AS CL_WGT,
+          MAX(NVL(B.RATE,0)) AS RATE,
+          MAX(NVL(B.AMOUNT,0)) AS AMOUNT,
+          MAX(NVL(A.S_CODE,0)) AS S_CODE,
+          MAX(NVL(A.P_CODE,0)) AS P_CODE,
+          MAX(NVL(A.CAT,'')) AS CAT
+        FROM ITEMMAST A
+        LEFT JOIN CLSTOCK B
+          ON A.COMP_CODE = B.COMP_CODE
+         AND A.ITEM_CODE = B.ITEM_CODE
+        LEFT JOIN STOCK C
+          ON A.COMP_CODE = C.COMP_CODE
+         AND A.ITEM_CODE = C.ITEM_CODE
+        WHERE A.COMP_CODE = :comp_code
+          AND (C.VR_DATE IS NULL OR C.VR_DATE <= :e_date)
+        GROUP BY A.CAT_CODE, A.ITEM_CODE, A.ITEM_NAME
+        ORDER BY A.CAT_CODE, A.ITEM_CODE
+        `,
+        { comp_code, e_date: eDate },
+        comp_uid
+      );
+      if (!manualConfirmed) {
+        return res.json({
+          ok: true,
+          requiresManualEntry: true,
+          rows: (seedRows || []).map((r) => ({
+            CAT_CODE: String(r.CAT_CODE || ''),
+            ITEM_CODE: String(r.ITEM_CODE || ''),
+            ITEM_NAME: String(r.ITEM_NAME || ''),
+            CL_WGT: Number(r.CL_WGT) || 0,
+            RATE: Number(r.RATE) || 0,
+            AMOUNT: Number(r.AMOUNT) || 0,
+            S_CODE: Number(r.S_CODE) || 0,
+            P_CODE: Number(r.P_CODE) || 0,
+            CAT: String(r.CAT || ''),
+          })),
+          debug: { comp_code, comp_uid, tdg_type: tdgTypeMode, seed_count: (seedRows || []).length },
+        });
+      }
+
+      const itemRows = await runQuery(
+        `
+        SELECT
+          NVL(A.CAT_CODE,'') AS CAT_CODE,
+          A.ITEM_CODE,
+          NVL(B.ITEM_NAME,'') AS ITEM_NAME,
+          NVL(A.P_CODE,0) AS P_CODE,
+          NVL(A.S_CODE,0) AS S_CODE,
+          MAX(NVL(A.RATE,0)) AS RATE,
+          MAX(NVL(A.CL_WGT,0)) AS CL_WGT,
+          MAX(NVL(A.AMOUNT,0)) AS CL_AMT,
+          MAX(NVL(B.R_F,'F')) AS R_F,
+          SUM(CASE WHEN C.TYPE='OP' THEN NVL(C.R_WEIGHT,0) ELSE 0 END) AS OPWGT,
+          SUM(CASE WHEN C.TYPE='OP' THEN NVL(C.AMOUNT,0) ELSE 0 END) AS OPAMT,
+          SUM(CASE WHEN C.VR_DATE >= :s_date THEN NVL(C.R_WEIGHT,0) ELSE 0 END) AS PWGT,
+          SUM(CASE WHEN C.VR_DATE >= :s_date THEN NVL(C.I_WEIGHT,0) ELSE 0 END) AS SWGT
+        FROM CLSTOCK A
+        JOIN ITEMMAST B
+          ON A.COMP_CODE = B.COMP_CODE
+         AND A.ITEM_CODE = B.ITEM_CODE
+        LEFT JOIN STOCK C
+          ON A.COMP_CODE = C.COMP_CODE
+         AND A.ITEM_CODE = C.ITEM_CODE
+        WHERE A.COMP_CODE = :comp_code
+        GROUP BY A.CAT_CODE, A.ITEM_CODE, B.ITEM_NAME, A.P_CODE, A.S_CODE
+        `,
+        { comp_code, s_date: sDate },
+        comp_uid
+      );
+
+      const pxRows = await runQuery(
+        `
+        SELECT A.CODE, NVL(B.NAME,'') AS NAME, NVL(B.SCHEDULE,0) AS SCHEDULE,
+               SUM(NVL(A.DR_AMT,0)-NVL(A.CR_AMT,0)) AS CLBAL
+        FROM LEDGER A
+        JOIN MASTER B ON A.COMP_CODE=B.COMP_CODE AND A.CODE=B.CODE
+        WHERE A.COMP_CODE=:comp_code
+          AND A.VR_DATE BETWEEN :s_date AND :e_date
+        GROUP BY A.CODE, B.NAME, B.SCHEDULE
+        `,
+        { comp_code, s_date: sDate, e_date: eDate },
+        comp_uid
+      );
+
+      const ledgerByCode = new Map((pxRows || []).map((r) => [String(r.CODE || '').trim(), Number(r.CLBAL) || 0]));
+      const touched = new Set();
+      const stockRows = (itemRows || []).map((r) => {
+        const pCode = String(r.P_CODE || '').trim();
+        const sCode = String(r.S_CODE || '').trim();
+        let pAmt = 0;
+        let sAmt = 0;
+        if (pCode && !touched.has(`P:${pCode}`)) {
+          pAmt = Math.abs(ledgerByCode.get(pCode) || 0);
+          touched.add(`P:${pCode}`);
+        }
+        if (sCode && !touched.has(`S:${sCode}`)) {
+          sAmt = Math.abs(ledgerByCode.get(sCode) || 0);
+          touched.add(`S:${sCode}`);
+        }
+        const opAmt = Number(r.OPAMT) || 0;
+        const clAmt = Number(r.CL_AMT) || 0;
+        const gpl = (opAmt + pAmt) - (sAmt + clAmt);
+        return {
+          CODE: String(r.ITEM_CODE || '').trim(),
+          NAME: String(r.ITEM_NAME || '').trim(),
+          OQTY: 0,
+          OWGT: Number(r.OPWGT) || 0,
+          OAMT: opAmt,
+          PQTY: 0,
+          PWGT: Number(r.PWGT) || 0,
+          PAMT: pAmt,
+          SQTY: 0,
+          SWGT: Number(r.SWGT) || 0,
+          SAMT: sAmt,
+          SHORT: 0,
+          CQTY: 0,
+          CWGT: Number(r.CL_WGT) || 0,
+          CAMT: clAmt,
+          GPROFIT: gpl < 0 ? Math.abs(gpl) : 0,
+          GLOSS: gpl > 0 ? gpl : 0,
+          S_NO: Number(String(r.R_F || 'F').trim().toUpperCase() === 'R' ? 1 : 2),
+          DR_AMT: 0,
+          CR_AMT: 0,
+          A_CODE: '',
+          P_CODE: pCode,
+          MILLING_YN: 'N',
+          E_DATE: eDate,
+          CAT_CODE: String(r.CAT_CODE || '').trim(),
+          CAT_NAME: '',
+        };
+      });
+
+      const expenseRows = (pxRows || [])
+        .filter((r) => {
+          const s = Number(r.SCHEDULE) || 0;
+          // Expense detail requirement:
+          // - schedule > 13 and < 14
+          // - schedule > 15 and < 16
+          // This keeps only 13.xx and 15.xx blocks (not 14.xx / 16.xx).
+          return (s > 13 && s < 14) || (s > 15 && s < 16);
+        })
+        .map((r) => {
+          const cl = Number(r.CLBAL) || 0;
+          return {
+            CODE: '000000',
+            NAME: String(r.NAME || '').trim(),
+            OQTY: 0, OWGT: 0, OAMT: 0,
+            PQTY: 0, PWGT: 0, PAMT: cl > 0 ? cl : 0,
+            SQTY: 0, SWGT: 0, SAMT: cl < 0 ? Math.abs(cl) : 0,
+            SHORT: 0, CQTY: 0, CWGT: 0, CAMT: 0,
+            GPROFIT: 0, GLOSS: 0,
+            S_NO: 9,
+            // Frontend Trading A/C uses DR_AMT / CR_AMT to render expense rows.
+            DR_AMT: cl > 0 ? cl : 0,
+            CR_AMT: cl < 0 ? Math.abs(cl) : 0,
+            A_CODE: String(r.CODE || '').trim(),
+            P_CODE: '',
+            MILLING_YN: '',
+            E_DATE: eDate,
+            CAT_CODE: 'DEXP',
+            CAT_NAME: '',
+          };
+        });
+
+      const rows = [...stockRows, ...expenseRows];
+      return res.json({
+        ok: true,
+        params: { comp_code, comp_uid, edt, tdg_type: tdgTypeMode },
+        rows,
+        debug: {
+          comp_code,
+          comp_uid,
+          tdg_type: tdgTypeMode,
+          stock_count: stockRows.length,
+          expense_count: expenseRows.length,
+        },
+      });
+    }
+
+    if (tdgTypeMode === 'C' && !manualConfirmed) {
+      let amount = Number.isFinite(consolidateOverride) ? consolidateOverride : 0;
+      if (!Number.isFinite(consolidateOverride)) {
+        let amtRows = [];
+        try {
+          amtRows = await runQuery(
+            `SELECT NVL(MAX(NVL(AMOUNT,0)),0) AS AMOUNT FROM CLSTOCK WHERE COMP_CODE = :comp_code`,
+            { comp_code },
+            comp_uid,
+            { suppressDbErrorLog: true }
+          );
+        } catch {
+          amtRows = [];
+        }
+        amount = Number(amtRows?.[0]?.AMOUNT) || 0;
+      }
+      return res.json({
+        ok: true,
+        requiresManualEntry: true,
+        rows: [{ AMOUNT: amount }],
+        debug: { comp_code, comp_uid, tdg_type: tdgTypeMode },
+      });
+    }
+
+    // Consolidated Trading after manual confirm:
+    // use a schema-safe path (ledger + schedule joins only) to avoid install-specific
+    // ITEMMAST/CLSTOCK numeric conversion issues.
+    if (tdgTypeMode === 'C' && manualConfirmed) {
+      const safeRun = async (sql, binds) => {
+        try {
+          return await runQuery(sql, binds, comp_uid, { suppressDbErrorLog: true });
+        } catch {
+          return [];
+        }
+      };
+
+      const pRows = await safeRun(
+        `
+        SELECT NVL(SUM(NVL(A.DR_AMT,0)),0) AS PUR_AMT
+        FROM LEDGER A
+        JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
+        WHERE A.COMP_CODE = :comp_code
+          AND A.VR_DATE >= :s_date
+          AND A.VR_DATE <= :e_date
+          AND NVL(B.SCHEDULE,0) > 14
+          AND NVL(B.SCHEDULE,0) < 15
+        `,
+        { comp_code, s_date: sDate, e_date: eDate }
+      );
+      const sRows = await safeRun(
+        `
+        SELECT NVL(SUM(NVL(A.CR_AMT,0)),0) AS SAL_AMT
+        FROM LEDGER A
+        JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
+        WHERE A.COMP_CODE = :comp_code
+          AND A.VR_DATE >= :s_date
+          AND A.VR_DATE <= :e_date
+          AND NVL(B.SCHEDULE,0) > 12
+          AND NVL(B.SCHEDULE,0) < 13
+        `,
+        { comp_code, s_date: sDate, e_date: eDate }
+      );
+
+      let closingAmt = Number.isFinite(consolidateOverride) ? consolidateOverride : 0;
+      if (!Number.isFinite(consolidateOverride)) {
+        const cRows = await safeRun(
+          `SELECT NVL(SUM(NVL(AMOUNT,0)),0) AS AMOUNT FROM CLSTOCK WHERE COMP_CODE = :comp_code`,
+          { comp_code }
+        );
+        closingAmt = Number(cRows?.[0]?.AMOUNT) || 0;
+      }
+
+      const openingAmt = 0;
+      const purchaseAmt = Number(pRows?.[0]?.PUR_AMT) || 0;
+      const salesAmt = Number(sRows?.[0]?.SAL_AMT) || 0;
+      const gpl = (openingAmt + purchaseAmt) - (salesAmt + closingAmt);
+
+      const expRows = await safeRun(
+        `
+        SELECT B.CODE, NVL(B.NAME,'') AS NAME, NVL(SUM(NVL(A.DR_AMT,0)-NVL(A.CR_AMT,0)),0) AS CLBAL
+        FROM LEDGER A
+        JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
+        WHERE A.COMP_CODE = :comp_code
+          AND A.VR_DATE >= :s_date
+          AND A.VR_DATE <= :e_date
+          AND (
+            (NVL(B.SCHEDULE,0) > 13 AND NVL(B.SCHEDULE,0) < 14)
+            OR
+            (NVL(B.SCHEDULE,0) > 15 AND NVL(B.SCHEDULE,0) < 16)
+          )
+        GROUP BY B.CODE, B.NAME
+        HAVING ABS(NVL(SUM(NVL(A.DR_AMT,0)-NVL(A.CR_AMT,0)),0)) > 0.0001
+        ORDER BY B.NAME, B.CODE
+        `,
+        { comp_code, s_date: sDate, e_date: eDate }
+      );
+
+      const stockRows = [
+        {
+          CODE: 'CONSOLIDATE',
+          NAME: 'CONSOLIDATE',
+          OQTY: 0, OWGT: 0, OAMT: openingAmt,
+          PQTY: 0, PWGT: 0, PAMT: purchaseAmt,
+          SQTY: 0, SWGT: 0, SAMT: salesAmt,
+          SHORT: 0, CQTY: 0, CWGT: 0, CAMT: closingAmt,
+          GPROFIT: gpl < 0 ? Math.abs(gpl) : 0,
+          GLOSS: gpl > 0 ? gpl : 0,
+          S_NO: 0, DR_AMT: 0, CR_AMT: 0,
+          A_CODE: '', P_CODE: '', MILLING_YN: 'N',
+          E_DATE: eDate, CAT_CODE: '', CAT_NAME: '',
+        },
+      ];
+
+      const expenseRowsOut = (expRows || []).map((r) => {
+        const cl = Number(r.CLBAL) || 0;
+        return {
+          CODE: '000000',
+          NAME: String(r.NAME || '').trim(),
+          OQTY: 0, OWGT: 0, OAMT: 0,
+          PQTY: 0, PWGT: 0, PAMT: cl > 0 ? cl : 0,
+          SQTY: 0, SWGT: 0, SAMT: cl < 0 ? Math.abs(cl) : 0,
+          SHORT: 0, CQTY: 0, CWGT: 0, CAMT: 0,
+          GPROFIT: 0, GLOSS: 0,
+          S_NO: 9,
+          DR_AMT: cl > 0 ? cl : 0,
+          CR_AMT: cl < 0 ? Math.abs(cl) : 0,
+          A_CODE: String(r.CODE || '').trim(),
+          P_CODE: '',
+          MILLING_YN: '',
+          E_DATE: eDate,
+          CAT_CODE: 'DEXP',
+          CAT_NAME: '',
+        };
+      });
+
+      return res.json({
+        ok: true,
+        params: { comp_code, comp_uid, edt, tdg_type: tdgTypeMode },
+        rows: [...stockRows, ...expenseRowsOut],
+        debug: {
+          comp_code,
+          comp_uid,
+          tdg_type: tdgTypeMode,
+          stock_count: stockRows.length,
+          expense_count: expenseRowsOut.length,
+          consolidate_mode: 'safe_ledger_path',
+        },
+      });
+    }
+
+    // On this schema CLSTOCK may not contain CODE/NAME; avoid code-wise rebuild here.
+    const mustRebuildClstock = false;
     if (mustRebuildClstock) {
       // Exact VFP-style reset flow:
       // DELETE FROM CLSTOCK WHERE COMP_CODE=:COMP_CODE
-      // INSERT INTO CLSTOCK(COMP_CODE,CODE,NAME,OP_BALANCE) SELECT ... FROM MASTER WHERE ... SCHEDULE=:SCHEDULE
+      // INSERT INTO CLSTOCK(COMP_CODE,CODE) SELECT ... FROM MASTER WHERE ... SCHEDULE=:SCHEDULE
       await runQuery(`DELETE FROM CLSTOCK WHERE COMP_CODE = :comp_code`, { comp_code }, comp_uid, { autoCommit: true });
       await runQuery(
         `
-        INSERT INTO CLSTOCK (COMP_CODE, CODE, NAME, OP_BALANCE)
-        SELECT COMP_CODE, CODE, NAME, NVL(OP_BALANCE,0)
+        INSERT INTO CLSTOCK (COMP_CODE, CODE)
+        SELECT COMP_CODE, CODE
         FROM MASTER
         WHERE COMP_CODE = :comp_code
           AND ROUND(NVL(SCHEDULE,0), 2) = ROUND(:schedule_num, 2)
@@ -5487,7 +6023,7 @@ app.get('/api/trading-ac', async (req, res) => {
 
     let baseMasterRows = await runQuery(
       `
-      SELECT CODE, NVL(NAME,'') AS NAME, NVL(OP_BALANCE,0) AS OP_BALANCE
+      SELECT CODE, NVL(NAME,'') AS NAME, 0 AS OP_BALANCE
       FROM MASTER
       WHERE COMP_CODE = :comp_code
         AND ROUND(NVL(SCHEDULE,0), 2) = ROUND(:schedule_num, 2)
@@ -5501,7 +6037,7 @@ app.get('/api/trading-ac', async (req, res) => {
     if (!Array.isArray(baseMasterRows) || baseMasterRows.length === 0) {
       baseMasterRows = await runQuery(
         `
-        SELECT CODE, NVL(NAME,'') AS NAME, NVL(OP_BALANCE,0) AS OP_BALANCE
+        SELECT CODE, NVL(NAME,'') AS NAME, 0 AS OP_BALANCE
         FROM MASTER
         WHERE COMP_CODE = :comp_code
           AND ROUND(NVL(SCHEDULE,0), 2) = ROUND(:schedule_num, 2)
@@ -5519,7 +6055,7 @@ app.get('/api/trading-ac', async (req, res) => {
     if (mfynMode === 'M' && !manualConfirmed) {
       let manualRows = await runQuery(
         `
-        SELECT CODE, NVL(NAME,'') AS NAME, NVL(OP_BALANCE,0) AS OP_BALANCE, NVL(AMOUNT,0) AS AMOUNT, NVL(SHORTAGE,0) AS SHORTAGE
+        SELECT CODE, CAST('' AS VARCHAR2(120)) AS NAME, 0 AS OP_BALANCE, NVL(AMOUNT,0) AS AMOUNT, NVL(SHORTAGE,0) AS SHORTAGE
         FROM CLSTOCK
         WHERE COMP_CODE = :comp_code
           AND (:code_filter IS NULL OR CODE = :code_filter)
@@ -5571,19 +6107,16 @@ app.get('/api/trading-ac', async (req, res) => {
       SELECT
         M.CODE AS CODE,
         NVL(M.NAME,'') AS NAME,
-        NVL(M.OP_BALANCE,0) AS M_OP_BALANCE,
-        NVL(M.SHORTAGE,0) AS M_SHORTAGE,
-        NVL(C.OP_BALANCE, NVL(M.OP_BALANCE,0)) AS C_OP_BALANCE,
-        NVL(C.AMOUNT,0) AS C_AMOUNT,
-        NVL(C.SHORTAGE, NVL(M.SHORTAGE,0)) AS C_SHORTAGE,
+        0 AS M_OP_BALANCE,
+        0 AS M_SHORTAGE,
+        0 AS C_OP_BALANCE,
+        0 AS C_AMOUNT,
+        0 AS C_SHORTAGE,
         M.CODE AS P_CODE,
         'W' AS TDG_Q_W,
         CAST('' AS VARCHAR2(6)) AS CAT_CODE,
         CAST('' AS VARCHAR2(40)) AS CAT_NAME
       FROM MASTER M
-      LEFT JOIN CLSTOCK C
-        ON C.COMP_CODE = M.COMP_CODE
-       AND C.CODE = M.CODE
       WHERE M.COMP_CODE = :comp_code
         AND (
           :schedule_txt = ''
@@ -5602,50 +6135,54 @@ app.get('/api/trading-ac', async (req, res) => {
       comp_uid
     );
 
-    const openingRows = await runQuery(
-      `SELECT SUP_CODE AS CODE, SUM(NVL(BAGS,0)+NVL(KATTA,0)+NVL(HKATTA,0)) AS OQTY, SUM(NVL(WEIGHT,0)) AS OWGT
+    const runTradingOptionalRows = async (sql, binds) => {
+      try {
+        return await runQuery(sql, binds, comp_uid, { suppressDbErrorLog: true });
+      } catch (err) {
+        if (isOptionalPrintSqlError(err)) return [];
+        throw err;
+      }
+    };
+
+    const openingRows = await runTradingOptionalRows(
+      `SELECT S_CODE AS CODE, SUM(NVL(BAGS,0)+NVL(KATTA,0)+NVL(HKATTA,0)) AS OQTY, SUM(NVL(WEIGHT,0)) AS OWGT
        FROM CPUR
        WHERE COMP_CODE = :comp_code AND R_DATE < :s_date
-       GROUP BY SUP_CODE`,
-      { comp_code, s_date: sDate },
-      comp_uid
+       GROUP BY S_CODE`,
+      { comp_code, s_date: sDate }
     );
-    const purchaseRows = await runQuery(
-      `SELECT PUR_CODE AS CODE,
+    const purchaseRows = await runTradingOptionalRows(
+      `SELECT P_CODE AS CODE,
               SUM(CASE WHEN TYPE='DN' THEN NVL(QNTY,0)*-1 ELSE NVL(QNTY,0) END) AS PQTY,
               SUM(CASE WHEN TYPE='DN' THEN NVL(WEIGHT,0)*-1 ELSE NVL(WEIGHT,0) END) AS PWGT
        FROM PURCHASE
        WHERE COMP_CODE = :comp_code AND R_DATE <= :e_date AND TYPE IN ('PU','DN','PB')
-       GROUP BY PUR_CODE`,
-      { comp_code, e_date: eDate },
-      comp_uid
+       GROUP BY P_CODE`,
+      { comp_code, e_date: eDate }
     );
     const saleTypeList = String(mcb || 'C').trim().toUpperCase() === 'C' ? `'SL','SE','CH'` : `'SL','SE'`;
-    const saleRows = await runQuery(
-      `SELECT SUP_CODE AS CODE, SUM(NVL(QNTY,0)) AS SQTY, SUM(NVL(WEIGHT,0)) AS SWGT
+    const saleRows = await runTradingOptionalRows(
+      `SELECT S_CODE AS CODE, SUM(NVL(QNTY,0)) AS SQTY, SUM(NVL(WEIGHT,0)) AS SWGT
        FROM SALE
        WHERE COMP_CODE = :comp_code AND BILL_DATE <= :e_date AND TYPE IN (${saleTypeList})
-       GROUP BY SUP_CODE`,
-      { comp_code, e_date: eDate },
-      comp_uid
+       GROUP BY S_CODE`,
+      { comp_code, e_date: eDate }
     );
-    const cnRows = await runQuery(
-      `SELECT SUP_CODE AS CODE, SUM(NVL(QNTY,0)) AS SQTY, SUM(NVL(WEIGHT,0)) AS SWGT
+    const cnRows = await runTradingOptionalRows(
+      `SELECT S_CODE AS CODE, SUM(NVL(QNTY,0)) AS SQTY, SUM(NVL(WEIGHT,0)) AS SWGT
        FROM SALE
        WHERE COMP_CODE = :comp_code AND BILL_DATE <= :e_date AND TYPE = 'CN'
-       GROUP BY SUP_CODE`,
-      { comp_code, e_date: eDate },
-      comp_uid
+       GROUP BY S_CODE`,
+      { comp_code, e_date: eDate }
     );
     const dbikriRows =
       String(mcb || 'C').trim().toUpperCase() === 'B'
-        ? await runQuery(
+        ? await runTradingOptionalRows(
             `SELECT S_CODE AS CODE, SUM(NVL(QNTY,0)) AS SQTY, SUM(NVL(WEIGHT,0)) AS SWGT
              FROM DBIKRI
              WHERE COMP_CODE = :comp_code AND SV_DATE <= :e_date
              GROUP BY S_CODE`,
-            { comp_code, e_date: eDate },
-            comp_uid
+            { comp_code, e_date: eDate }
           )
         : [];
     const ledgerRows = await runQuery(
@@ -5654,8 +6191,6 @@ app.get('/api/trading-ac', async (req, res) => {
        WHERE COMP_CODE = :comp_code
          AND VR_DATE >= :s_date
          AND VR_DATE <= :e_date
-         AND NVL(BIKRI,'N') <> 'Y'
-         AND NVL(COST_CODE,'ZZZZZZ') <> 'CLOSNG'
        GROUP BY CODE`,
       { comp_code, s_date: sDate, e_date: eDate },
       comp_uid
@@ -5773,8 +6308,6 @@ app.get('/api/trading-ac', async (req, res) => {
        AND A.CODE = B.CODE
       WHERE A.COMP_CODE = :comp_code
         AND A.VR_DATE <= :e_date
-        AND NVL(A.BIKRI,'N') <> 'Y'
-        AND NVL(A.COST_CODE,'ZZZZZZ') <> 'CLOSNG'
         AND NVL(B.SCHEDULE,0) >= 13
         AND NVL(B.SCHEDULE,0) < 16
         AND TRUNC(NVL(B.SCHEDULE,0)) <> 14
@@ -5794,18 +6327,15 @@ app.get('/api/trading-ac', async (req, res) => {
           SELECT
             M.CODE AS CODE,
             NVL(M.NAME,'') AS NAME,
-            NVL(C.OP_BALANCE, NVL(M.OP_BALANCE,0)) AS OAMT,
-            NVL(C.AMOUNT,0) AS CAMT,
-            NVL(C.SHORTAGE, NVL(M.SHORTAGE,0)) AS SHORT,
-            NVL(I.P_CODE, '') AS P_CODE,
+            0 AS OAMT,
+            0 AS CAMT,
+            0 AS SHORT,
+            NVL(I.P_CODE, 0) AS P_CODE,
             NVL(I.CAT_CODE, '') AS CAT_CODE,
             NVL(E.CAT_NAME, '') AS CAT_NAME
           FROM MASTER M
-          LEFT JOIN CLSTOCK C
-            ON C.COMP_CODE = M.COMP_CODE
-           AND C.CODE = M.CODE
           LEFT JOIN (
-            SELECT COMP_CODE, S_CODE AS S_CODE, MAX(TRIM(P_CODE)) AS P_CODE, MAX(NVL(CAT_CODE,'')) AS CAT_CODE
+            SELECT COMP_CODE, S_CODE AS S_CODE, MAX(NVL(P_CODE,0)) AS P_CODE, MAX(NVL(CAT_CODE,'')) AS CAT_CODE
             FROM ITEMMAST
             GROUP BY COMP_CODE, S_CODE
           ) I
@@ -5828,8 +6358,6 @@ app.get('/api/trading-ac', async (req, res) => {
           WHERE COMP_CODE = :comp_code
             AND VR_DATE >= :s_date
             AND VR_DATE <= :e_date
-            AND NVL(BIKRI,'N') <> 'Y'
-            AND NVL(COST_CODE,'ZZZZZZ') <> 'CLOSNG'
           GROUP BY CODE
         )
         SELECT
@@ -5842,7 +6370,7 @@ app.get('/api/trading-ac', async (req, res) => {
           CASE WHEN ((NVL(B.OAMT,0)+NVL(L.PAMT,0))-(NVL(L.SAMT,0)+NVL(B.CAMT,0))) > 0 THEN ((NVL(B.OAMT,0)+NVL(L.PAMT,0))-(NVL(L.SAMT,0)+NVL(B.CAMT,0))) ELSE 0 END AS GLOSS,
           0 AS S_NO, 0 AS DR_AMT, 0 AS CR_AMT,
           CAST('' AS VARCHAR2(6)) AS A_CODE,
-          NVL(B.P_CODE, '') AS P_CODE,
+          NVL(B.P_CODE, 0) AS P_CODE,
           CAST('' AS VARCHAR2(1)) AS MILLING_YN,
           :e_date AS E_DATE,
           NVL(B.CAT_CODE,'') AS CAT_CODE,
@@ -5933,6 +6461,16 @@ app.get('/api/trading-ac', async (req, res) => {
       stockOut = Array.from(grp.values());
     }
 
+    // In consolidated mode, honor manual closing stock override (no DB dependency).
+    if (tdgTypeMode === 'C' && Number.isFinite(consolidateOverride) && (stockOut || []).length) {
+      const targetClosing = consolidateOverride;
+      const currentClosing = (stockOut || []).reduce((s, r) => s + numVal(r?.CAMT), 0);
+      const delta = targetClosing - currentClosing;
+      if (Math.abs(delta) > 0.0001) {
+        stockOut[0] = { ...stockOut[0], CAMT: numVal(stockOut[0]?.CAMT) + delta };
+      }
+    }
+
     const rows = [...stockOut, ...(expenseRows || [])];
     res.json({
       ok: true,
@@ -6007,8 +6545,6 @@ app.get('/api/pl-profit-loss', async (req, res) => {
       INNER JOIN SCHEDULE C ON B.COMP_CODE = C.COMP_CODE AND B.SCHEDULE = C.NO
       WHERE A.COMP_CODE = :comp_code
         AND A.VR_DATE <= TO_DATE(:e_date, 'DD-MM-YYYY')
-        AND NVL(A.BIKRI, 'N') <> 'Y'
-        AND NVL(A.COST_CODE, 'ZZZZZZ') <> 'CLOSNG'
         AND NVL(C.NO, 0) >= 16
       GROUP BY B.SCHEDULE, C.NAME, A.CODE, B.NAME
       HAVING ABS(SUM(NVL(A.DR_AMT, 0) - NVL(A.CR_AMT, 0))) > 0.0001
@@ -6151,8 +6687,6 @@ app.get('/api/balance-sheet', async (req, res) => {
       INNER JOIN SCHEDULE C ON B.COMP_CODE = C.COMP_CODE AND B.SCHEDULE = C.NO
       WHERE A.COMP_CODE = :comp_code
         AND A.VR_DATE <= TO_DATE(:e_date, 'DD-MM-YYYY')
-        AND NVL(A.BIKRI,'N') <> 'Y'
-        AND NVL(A.COST_CODE,'ZZZZZZ') <> 'CLOSNG'
         AND NVL(C.NO,0) >= 16
       `,
       { comp_code, e_date: eDateOracle },
@@ -6175,8 +6709,6 @@ app.get('/api/balance-sheet', async (req, res) => {
       INNER JOIN SCHEDULE C ON B.COMP_CODE = C.COMP_CODE AND B.SCHEDULE = C.NO
       WHERE A.COMP_CODE = :comp_code
         AND A.VR_DATE <= TO_DATE(:e_date, 'DD-MM-YYYY')
-        AND NVL(A.BIKRI,'Z') <> 'Y'
-        AND NVL(A.COST_CODE,'ZZZZZZ') <> 'CLOSNG'
         AND NVL(C.NO,0) < 12
       GROUP BY A.CODE, B.SCHEDULE
       `,
@@ -6436,8 +6968,6 @@ app.get('/api/balance-sheet-schedule-accounts', async (req, res) => {
       INNER JOIN SCHEDULE C ON B.COMP_CODE = C.COMP_CODE AND B.SCHEDULE = C.NO
       WHERE A.COMP_CODE = :comp_code
         AND A.VR_DATE <= TO_DATE(:e_date, 'DD-MM-YYYY')
-        AND NVL(A.BIKRI,'Z') <> 'Y'
-        AND NVL(A.COST_CODE,'ZZZZZZ') <> 'CLOSNG'
         AND NVL(C.NO,0) < 12
       GROUP BY A.CODE, B.NAME, B.SCHEDULE
       `,
@@ -6476,53 +7006,176 @@ app.get('/api/balance-sheet-schedule-accounts', async (req, res) => {
   }
 });
 
+app.get('/api/trading-ac-category-codes', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, cat_code } = req.query;
+    if (!comp_code) return res.status(400).json({ error: 'comp_code is required' });
+    const cat = String(cat_code || '').trim();
+    if (!cat) return res.json({ ok: true, rows: [] });
+
+    const rows = await runQuery(
+      `
+      SELECT CODE, SIDE, SCH
+      FROM (
+        SELECT DISTINCT
+          M.CODE AS CODE,
+          'S' AS SIDE,
+          NVL(M.SCHEDULE,0) AS SCH
+        FROM ITEMMAST I
+        JOIN MASTER M
+          ON I.COMP_CODE = M.COMP_CODE
+         AND NVL(I.S_CODE,0) = M.CODE
+        WHERE I.COMP_CODE = :comp_code
+          AND (
+            :cat_code = 'ALL'
+            OR
+            (:cat_code = 'UNCAT' AND TRIM(NVL(I.CAT_CODE,'')) = '')
+            OR TRIM(NVL(I.CAT_CODE,'')) = :cat_code
+          )
+          AND NVL(I.S_CODE,0) <> 0
+          AND NVL(M.SCHEDULE,0) > 12
+          AND NVL(M.SCHEDULE,0) < 13
+        UNION
+        SELECT DISTINCT
+          M.CODE AS CODE,
+          'P' AS SIDE,
+          NVL(M.SCHEDULE,0) AS SCH
+        FROM ITEMMAST I
+        JOIN MASTER M
+          ON I.COMP_CODE = M.COMP_CODE
+         AND NVL(I.P_CODE,0) = M.CODE
+        WHERE I.COMP_CODE = :comp_code
+          AND (
+            :cat_code = 'ALL'
+            OR
+            (:cat_code = 'UNCAT' AND TRIM(NVL(I.CAT_CODE,'')) = '')
+            OR TRIM(NVL(I.CAT_CODE,'')) = :cat_code
+          )
+          AND NVL(I.P_CODE,0) <> 0
+          AND NVL(M.SCHEDULE,0) > 14
+          AND NVL(M.SCHEDULE,0) < 15
+      )
+      ORDER BY SIDE, CODE
+      `,
+      { comp_code, cat_code: cat },
+      comp_uid
+    );
+
+    res.json({
+      ok: true,
+      rows: (rows || []).map((r) => ({
+        CODE: String(r.CODE || '').trim(),
+        SIDE: String(r.SIDE || '').trim(),
+        SCHEDULE: Number(r.SCH) || 0,
+      })),
+    });
+  } catch (err) {
+    console.error('❌ Trading category linked codes error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/trading-ac/manual-save', async (req, res) => {
   try {
-    const { comp_code, comp_uid, rows } = req.body || {};
+    const { comp_code, comp_uid, rows, tdg_type } = req.body || {};
     if (!comp_code || !comp_uid) return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    const tdgTypeMode = String(tdg_type || 'C').trim().toUpperCase() === 'I' ? 'I' : 'C';
     const list = Array.isArray(rows) ? rows : [];
+    if (tdgTypeMode === 'I') {
+      const compdet = await runCompdetHeaderRow(comp_code, comp_uid);
+      const compYear = String(compdet?.COMP_YEAR ?? compdet?.comp_year ?? '');
+      const compUid = isEffectiveCompUid(comp_uid) ? String(comp_uid).trim() : null;
+      const connCfg = compUid
+        ? {
+            user: compUid,
+            password: compUid,
+            connectString: activeDbConfig.connectString,
+          }
+        : activeDbConfig;
+      let conn;
+      try {
+        conn = await getDbConnection(connCfg);
+        await conn.execute(`DELETE FROM CLSTOCK WHERE COMP_CODE = :comp_code`, { comp_code }, { autoCommit: false });
+
+        const bindRows = list
+          .map((r) => {
+            const itemCode = String(r?.item_code ?? r?.ITEM_CODE ?? '').trim();
+            if (!itemCode) return null;
+            return {
+              comp_code,
+              comp_year: compYear,
+              cat_code: String(r?.cat_code ?? r?.CAT_CODE ?? ''),
+              item_code: itemCode,
+              rate: Number(r?.rate ?? r?.RATE ?? 0) || 0,
+              amount: Number(r?.amount ?? r?.AMOUNT ?? 0) || 0,
+              s_code: Number(r?.s_code ?? r?.S_CODE ?? 0) || 0,
+              p_code: Number(r?.p_code ?? r?.P_CODE ?? 0) || 0,
+              cat: String(r?.cat ?? r?.CAT ?? ''),
+              cl_wgt: Number(r?.cl_wgt ?? r?.CL_WGT ?? 0) || 0,
+            };
+          })
+          .filter(Boolean);
+
+        if (bindRows.length > 0) {
+          await conn.executeMany(
+            `
+            INSERT INTO CLSTOCK (COMP_CODE, COMP_YEAR, CAT_CODE, ITEM_CODE, RATE, AMOUNT, S_CODE, P_CODE, CAT, CL_WGT)
+            VALUES (:comp_code, :comp_year, :cat_code, :item_code, :rate, :amount, :s_code, :p_code, :cat, :cl_wgt)
+            `,
+            bindRows,
+            { autoCommit: false }
+          );
+        }
+        await conn.commit();
+      } catch (saveErr) {
+        if (conn) {
+          try { await conn.rollback(); } catch (_) {}
+        }
+        throw saveErr;
+      } finally {
+        if (conn) {
+          try { await conn.close(); } catch (_) {}
+        }
+      }
+      return res.json({ ok: true });
+    }
+
+    if (tdgTypeMode === 'C') {
+      const first = list?.[0] || {};
+      const amount = Number(first?.amount ?? first?.AMOUNT ?? 0);
+      const safeAmount = Number.isFinite(amount) ? amount : 0;
+      const consolidateKey = `${String(comp_code || '').trim()}|${String(comp_uid || '').trim()}`;
+      console.log('ℹ️ Trading consolidate save:', { comp_code, comp_uid, safeAmount, consolidateKey });
+      tradingConsolidateOverride.set(consolidateKey, safeAmount);
+      return res.json({ ok: true });
+    }
+
     for (const r of list) {
       const code = parseMasterCodeForSql(r?.code ?? r?.CODE);
       if (code === undefined) continue;
       const amount = Number(r?.amount ?? r?.AMOUNT ?? 0);
       const shortage = Number(r?.shortage ?? r?.SHORTAGE ?? 0);
-      let master = await runQuery(
-        `SELECT NVL(NAME,'') AS NAME, NVL(OP_BALANCE,0) AS OP_BALANCE FROM MASTER WHERE COMP_CODE = :comp_code AND CODE = :code`,
-        { comp_code, code },
-        comp_uid
-      );
-      if (!Array.isArray(master) || master.length === 0) {
-        master = await runQuery(
-          `SELECT NVL(NAME,'') AS NAME, NVL(OP_BALANCE,0) AS OP_BALANCE FROM MASTER WHERE COMP_CODE = :comp_code AND CODE = :code`,
-          { comp_code, code },
-          null,
-          { suppressDbErrorLog: true }
-        );
-      }
-      const m = (master || [])[0] || {};
       const compdet = await runCompdetHeaderRow(comp_code, comp_uid);
       const compYear = Number(compdet?.COMP_YEAR ?? compdet?.comp_year ?? 0) || 0;
       await runQuery(
         `
         MERGE INTO CLSTOCK C
         USING (
-          SELECT :comp_code AS COMP_CODE, :comp_year AS COMP_YEAR, :code AS CODE, :name AS NAME, :op_balance AS OP_BALANCE,
+          SELECT :comp_code AS COMP_CODE, :comp_year AS COMP_YEAR, :code AS CODE,
                  :amount AS AMOUNT, :shortage AS SHORTAGE
           FROM DUAL
         ) X
         ON (C.COMP_CODE = X.COMP_CODE AND C.CODE = X.CODE)
         WHEN MATCHED THEN
-          UPDATE SET C.AMOUNT = X.AMOUNT, C.SHORTAGE = X.SHORTAGE, C.NAME = X.NAME, C.OP_BALANCE = X.OP_BALANCE
+          UPDATE SET C.AMOUNT = X.AMOUNT, C.SHORTAGE = X.SHORTAGE
         WHEN NOT MATCHED THEN
-          INSERT (COMP_CODE, COMP_YEAR, CODE, NAME, OP_BALANCE, AMOUNT, SHORTAGE)
-          VALUES (X.COMP_CODE, X.COMP_YEAR, X.CODE, X.NAME, X.OP_BALANCE, X.AMOUNT, X.SHORTAGE)
+          INSERT (COMP_CODE, COMP_YEAR, CODE, AMOUNT, SHORTAGE)
+          VALUES (X.COMP_CODE, X.COMP_YEAR, X.CODE, X.AMOUNT, X.SHORTAGE)
         `,
         {
           comp_code,
           comp_year: compYear,
           code,
-          name: String(m.NAME || ''),
-          op_balance: Number(m.OP_BALANCE) || 0,
           amount: Number.isFinite(amount) ? amount : 0,
           shortage: Number.isFinite(shortage) ? shortage : 0,
         },
@@ -6561,7 +7214,7 @@ app.get('/api/trading-ac-ledger', async (req, res) => {
                0 AS DR_AMOUNT, 0 AS S_QNTY, 0 AS S_WEIGHT, 0 AS CR_AMOUNT
         FROM PURCHASE
         WHERE COMP_CODE = :comp_code
-          AND PUR_CODE = :code
+          AND P_CODE = :code
           AND R_DATE >= :s_date
           AND R_DATE <= :e_date
           AND TYPE IN ('PU','DN','PB')
@@ -6591,7 +7244,7 @@ app.get('/api/trading-ac-ledger', async (req, res) => {
                SUM(CASE WHEN TRIM(TYPE)='CN' THEN NVL(BILL_AMT,0)*-1 ELSE NVL(BILL_AMT,0) END) AS CR_AMOUNT
         FROM SALE
         WHERE COMP_CODE = :comp_code
-          AND SUP_CODE = :code
+          AND S_CODE = :code
           AND BILL_DATE >= :s_date
           AND BILL_DATE <= :e_date
           AND TRIM(TYPE) IN (${saleTypes.map((_, i) => `:st${i}`).join(',')})
@@ -6612,7 +7265,6 @@ app.get('/api/trading-ac-ledger', async (req, res) => {
           AND CODE = :code
           AND VR_DATE >= :s_date
           AND VR_DATE <= :e_date
-          AND NVL(BIKRI,'N') <> 'Y'
         GROUP BY TRUNC(VR_DATE), VR_NO, VR_TYPE, TYPE
         `,
         { comp_code, code: codeN, s_date: sDate, e_date: eDate },
@@ -6882,14 +7534,14 @@ app.get('/api/gstr1', async (req, res) => {
     const saleSql = `
       SELECT
         A.TYPE, A.B_TYPE, A.BILL_DATE, A.BILL_NO, A.SALE_INV_NO,
-        A.SB_NO, A.SB_DATE, A.SB_TYPE,
+        A.RB_NO AS SB_NO, A.RB_DATE AS SB_DATE, A.RB_TYPE AS SB_TYPE,
         A.CODE, M.NAME, M.GST_NO, M.L_C, M.STATE_CODE, M.STATE,
         I.HSN_CODE, I.ITEM_NAME, I.HSN_UNIT,
         A.QNTY, A.WEIGHT,
-        A.INPUT_YN, CAST(NULL AS VARCHAR2(1)) AS SL_C, CAST(NULL AS NUMBER) AS SCHEDULE,
+        CAST(NULL AS VARCHAR2(1)) AS INPUT_YN, CAST(NULL AS VARCHAR2(1)) AS SL_C, CAST(NULL AS NUMBER) AS SCHEDULE,
         A.TAXABLE, A.CGST_AMT, A.SGST_AMT, A.IGST_AMT,
         A.CGST_PER, A.SGST_PER, A.IGST_PER,
-        A.BILL_AMT, A.REMARKS, A.REMARKS1, A.V_DATE
+        A.BILL_AMT, A.REMARKS, A.V_DATE
       FROM SALE A
       LEFT JOIN MASTER M ON A.COMP_CODE = M.COMP_CODE AND A.CODE = M.CODE
       LEFT JOIN ITEMMAST I ON A.COMP_CODE = I.COMP_CODE AND A.ITEM_CODE = I.ITEM_CODE
@@ -6897,10 +7549,10 @@ app.get('/api/gstr1', async (req, res) => {
         AND TRUNC(A.BILL_DATE) BETWEEN TRUNC(TO_DATE(:s_date,'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date,'DD-MM-YYYY'))`;
     const purchaseSql = `
       SELECT
-        A.TYPE, A.S_P, A.R_DATE, A.R_NO, A.BILL_DATE, A.BILL_NO, CAST(NULL AS VARCHAR2(1)) AS B_TYPE,
+        A.TYPE, CAST(NULL AS VARCHAR2(1)) AS S_P, A.R_DATE, A.R_NO, A.BILL_DATE, A.BILL_NO, CAST(NULL AS VARCHAR2(1)) AS B_TYPE,
         A.CODE, M.NAME, M.GST_NO, M.L_C, M.STATE_CODE, M.STATE,
         I.HSN_CODE, I.ITEM_NAME, I.HSN_UNIT,
-        A.QNTY, A.WEIGHT, A.INPUT_YN, CAST(NULL AS VARCHAR2(5)) AS TAX_FORM, A.REMARKS, A.SHOW_IN_GSTR, A.TAXABLE, A.CGST_AMT, A.SGST_AMT, A.IGST_AMT,
+        A.QNTY, A.WEIGHT, A.INPUT_YN, CAST(NULL AS VARCHAR2(5)) AS TAX_FORM, A.REMARKS, CAST(NULL AS VARCHAR2(1)) AS SHOW_IN_GSTR, A.TAXABLE, A.CGST_AMT, A.SGST_AMT, A.IGST_AMT,
         A.CGST_PER, A.SGST_PER, A.IGST_PER
       FROM PURCHASE A
       LEFT JOIN MASTER M ON A.COMP_CODE = M.COMP_CODE AND A.CODE = M.CODE
@@ -6918,14 +7570,58 @@ app.get('/api/gstr1', async (req, res) => {
       billTotals.set(k, gstrNum(billTotals.get(k)) + inv);
     });
 
+    /**
+     * GSTR classification
+     * New DBs: SALE.TYPE is numeric (VFP-style) instead of SL/SE/CN buckets.
+     * - Outward invoices: 0,1,3
+     * - Notes/returns: 4,7,8 (4 & 8 are negative for EXEMP/HSN/GSTR3B sign)
+     *
+     * Keep backward compatibility with legacy char TYPEs (SL/SE/CN/…).
+     */
+    function saleTypeNum(raw) {
+      if (raw == null || raw === '') return NaN;
+      if (typeof raw === 'number') return raw;
+      const s = String(raw).trim();
+      if (!s) return NaN;
+      const n = parseInt(s, 10);
+      return Number.isFinite(n) ? n : NaN;
+    }
+    function saleTypeUpper(raw) {
+      return gstrTxt(raw).toUpperCase();
+    }
+    const isInvoiceTypeNum = (n) => n === 0 || n === 1 || n === 3;
+    const isNoteTypeNum = (n) => n === 4 || n === 7 || n === 8;
+    const isNegTypeNum = (n) => n === 4 || n === 8;
+    const isExportTypeNum = (n) => n === 6;
+    const isRcTypeNum = (n) => n === 9;
+
     const outwardSet = new Set(['SL', 'ST', 'SR', 'GT', 'GR', 'SX']);
     const outwardSetCn = new Set(['SL', 'ST', 'SR', 'GT', 'GR', 'SX', 'CN', 'GN', 'CX']);
+    function isOutwardInvoiceRow(r) {
+      const n = saleTypeNum(r?.TYPE);
+      if (Number.isFinite(n)) return isInvoiceTypeNum(n);
+      return outwardSet.has(saleTypeUpper(r?.TYPE));
+    }
+    function isOutwardOrNoteRow(r) {
+      const n = saleTypeNum(r?.TYPE);
+      if (Number.isFinite(n)) return isInvoiceTypeNum(n) || isNoteTypeNum(n);
+      return outwardSetCn.has(saleTypeUpper(r?.TYPE));
+    }
+    function saleRowSignForGstr(r, { includeExport = true } = {}) {
+      const n = saleTypeNum(r?.TYPE);
+      if (Number.isFinite(n)) {
+        if (isNegTypeNum(n)) return -1;
+        return 1;
+      }
+      const tp = saleTypeUpper(r?.TYPE);
+      if (!includeExport && tp === 'ER') return 1;
+      return ['CN', 'GN', 'CX', 'ER'].includes(tp) ? -1 : 1;
+    }
     const b2b = [];
     const b2bMap = new Map();
     const b2bBillTaxableMap = new Map();
     saleRows.forEach((r) => {
-      const tp = gstrTxt(r.TYPE).toUpperCase();
-      if (!outwardSet.has(tp)) return;
+      if (!isOutwardInvoiceRow(r)) return;
       if (!gstrHas(r.GST_NO)) return;
       const taxTotal = gstrNum(r.CGST_AMT) + gstrNum(r.SGST_AMT) + gstrNum(r.IGST_AMT);
       if (opts.btobYn !== 'Y' && taxTotal === 0) return;
@@ -6933,8 +7629,8 @@ app.get('/api/gstr1', async (req, res) => {
       b2bBillTaxableMap.set(bk, gstrNum(b2bBillTaxableMap.get(bk)) + gstrNum(r.TAXABLE));
     });
     saleRows.forEach((r) => {
-      const tp = gstrTxt(r.TYPE).toUpperCase();
-      if (!outwardSet.has(tp)) return;
+      const tp = saleTypeUpper(r.TYPE);
+      if (!isOutwardInvoiceRow(r)) return;
       if (!gstrHas(r.GST_NO)) return;
       const taxTotal = gstrNum(r.CGST_AMT) + gstrNum(r.SGST_AMT) + gstrNum(r.IGST_AMT);
       if (opts.btobYn !== 'Y' && taxTotal === 0) return;
@@ -6976,18 +7672,18 @@ app.get('/api/gstr1', async (req, res) => {
     const b2clBillTotals = new Map();
     const b2clBillTaxable = new Map();
     saleRows.forEach((r) => {
-      const tp = gstrTxt(r.TYPE).toUpperCase();
-      if (!outwardSetCn.has(tp)) return;
+      const tp = saleTypeUpper(r.TYPE);
+      if (!isOutwardOrNoteRow(r)) return;
       if (gstrHas(r.GST_NO)) return;
-      const sign = tp === 'CN' ? -1 : 1;
+      const sign = saleRowSignForGstr(r);
       const billKey = keyOf(r.TYPE, r.BILL_NO, r.B_TYPE, r.BILL_DATE);
       const lineInv = gstrNum(r.TAXABLE) + gstrNum(r.CGST_AMT) + gstrNum(r.SGST_AMT) + gstrNum(r.IGST_AMT);
       b2clBillTotals.set(billKey, gstrNum(b2clBillTotals.get(billKey)) + sign * lineInv);
       b2clBillTaxable.set(billKey, gstrNum(b2clBillTaxable.get(billKey)) + sign * gstrNum(r.TAXABLE));
     });
     saleRows.forEach((r) => {
-      const tp = gstrTxt(r.TYPE).toUpperCase();
-      if (!outwardSetCn.has(tp)) return;
+      const tp = saleTypeUpper(r.TYPE);
+      if (!isOutwardOrNoteRow(r)) return;
       if (gstrHas(r.GST_NO)) return;
       const taxTotal = gstrNum(r.CGST_AMT) + gstrNum(r.SGST_AMT) + gstrNum(r.IGST_AMT);
       if (opts.btoclYn !== 'Y' && taxTotal === 0) return;
@@ -6996,7 +7692,7 @@ app.get('/api/gstr1', async (req, res) => {
       const invNo = gstrTxt(r.SALE_INV_NO) || gstrTxt(r.BILL_NO);
       const rate = gstrRate(gstrNum(r.CGST_PER) + gstrNum(r.SGST_PER) + gstrNum(r.IGST_PER));
       const k = keyOf(invNo, r.BILL_DATE, rate, r.TYPE, r.B_TYPE);
-      const sign = tp === 'CN' ? -1 : 1;
+      const sign = saleRowSignForGstr(r);
       const it = b2clMap.get(k) || {
         INVOICE_NO: invNo,
         INVOICE_DATE: gstrDt(r.BILL_DATE),
@@ -7040,8 +7736,8 @@ app.get('/api/gstr1', async (req, res) => {
 
     // --------- B2CS (VFP X1/X2/X3/X4/X5/X6/X7 equivalent) ---------
     const mdetRows = saleRows.filter((r) => {
-      const tp = gstrTxt(r.TYPE).toUpperCase();
-      if (!outwardSetCn.has(tp)) return false;
+      const tp = saleTypeUpper(r.TYPE);
+      if (!isOutwardOrNoteRow(r)) return false;
       if (gstrHas(r.GST_NO)) return false;
       if (opts.btocsYn !== 'Y') {
         const taxTotal = gstrNum(r.CGST_AMT) + gstrNum(r.SGST_AMT) + gstrNum(r.IGST_AMT);
@@ -7053,8 +7749,8 @@ app.get('/api/gstr1', async (req, res) => {
     // X1: grouped invoice/rate rows
     const x1Map = new Map();
     mdetRows.forEach((r) => {
-      const tp = gstrTxt(r.TYPE).toUpperCase();
-      const sign = ['CN', 'GN', 'CX'].includes(tp) ? -1 : 1;
+      const tp = saleTypeUpper(r.TYPE);
+      const sign = saleRowSignForGstr(r, { includeExport: false });
       const rate = gstrRate(gstrNum(r.CGST_PER) + gstrNum(r.SGST_PER) + gstrNum(r.IGST_PER));
       const invNo = gstrTxt(r.BILL_NO);
       const invDt = gstrDt(r.BILL_DATE);
@@ -7129,12 +7825,17 @@ app.get('/api/gstr1', async (req, res) => {
 
     const cdnrMap = new Map();
     saleRows.forEach((r) => {
-      const tp = gstrTxt(r.TYPE).toUpperCase();
-      if (!['CN', 'GN', 'CX'].includes(tp)) return;
+      const n = saleTypeNum(r.TYPE);
+      const tp = saleTypeUpper(r.TYPE);
+      if (Number.isFinite(n)) {
+        if (!isNoteTypeNum(n)) return;
+      } else {
+        if (!['CN', 'GN', 'CX'].includes(tp)) return;
+      }
       if (!gstrHas(r.GST_NO)) return;
       const taxTotal = gstrNum(r.CGST_AMT) + gstrNum(r.SGST_AMT) + gstrNum(r.IGST_AMT);
       if (opts.btobYn !== 'Y' && taxTotal === 0) return;
-      const noteType = tp === 'CX' ? 'D' : 'C';
+      const noteType = Number.isFinite(n) ? (n === 7 ? 'D' : 'C') : tp === 'CX' ? 'D' : 'C';
       const rate = gstrRate(gstrNum(r.CGST_PER) + gstrNum(r.SGST_PER) + gstrNum(r.IGST_PER));
       const k = keyOf(r.GST_NO, r.BILL_NO, r.BILL_DATE, noteType, rate);
       const it = cdnrMap.get(k) || {
@@ -7204,12 +7905,17 @@ app.get('/api/gstr1', async (req, res) => {
     const cdnur = [];
     const cdnurMap = new Map();
     saleRows.forEach((r) => {
-      const tp = gstrTxt(r.TYPE).toUpperCase();
-      if (!['CN', 'GN', 'CX'].includes(tp)) return;
+      const n = saleTypeNum(r.TYPE);
+      const tp = saleTypeUpper(r.TYPE);
+      if (Number.isFinite(n)) {
+        if (!isNoteTypeNum(n)) return;
+      } else {
+        if (!['CN', 'GN', 'CX'].includes(tp)) return;
+      }
       if (gstrHas(r.GST_NO)) return;
       const taxTotal = gstrNum(r.CGST_AMT) + gstrNum(r.SGST_AMT) + gstrNum(r.IGST_AMT);
       if (opts.btobYn !== 'Y' && taxTotal === 0) return;
-      const noteType = tp === 'CX' ? 'D' : 'C';
+      const noteType = Number.isFinite(n) ? (n === 7 ? 'D' : 'C') : tp === 'CX' ? 'D' : 'C';
       const rate = gstrRate(gstrNum(r.CGST_PER) + gstrNum(r.SGST_PER) + gstrNum(r.IGST_PER));
       const k = keyOf(r.BILL_NO, r.BILL_DATE, noteType, rate);
       const it = cdnurMap.get(k) || {
@@ -7243,11 +7949,16 @@ app.get('/api/gstr1', async (req, res) => {
 
     const expMap = new Map();
     saleRows.forEach((r) => {
-      const tp = gstrTxt(r.TYPE).toUpperCase();
-      if (!['SE', 'ER'].includes(tp)) return;
+      const n = saleTypeNum(r.TYPE);
+      const tp = saleTypeUpper(r.TYPE);
+      if (Number.isFinite(n)) {
+        if (!isExportTypeNum(n)) return;
+      } else {
+        if (!['SE', 'ER'].includes(tp)) return;
+      }
       const rate = gstrRate(gstrNum(r.CGST_PER) + gstrNum(r.SGST_PER) + gstrNum(r.IGST_PER));
       const k = keyOf(r.BILL_NO, r.BILL_DATE, rate);
-      const sign = tp === 'ER' ? -1 : 1;
+      const sign = Number.isFinite(n) ? 1 : tp === 'ER' ? -1 : 1;
       const it = expMap.get(k) || {
         EXPORT_TYPE: rate === 0 ? 'WOPAY' : 'WPAY',
         INVOICE_NO: fmtInvNo(r, opts),
@@ -7274,8 +7985,13 @@ app.get('/api/gstr1', async (req, res) => {
     if (opts.btobYn !== 'Y') {
       // X1
       const x1 = saleRows.filter((r) => {
-        const tp = gstrTxt(r.TYPE).toUpperCase();
-        if (!['SL', 'ST', 'SR', 'GT', 'GR', 'SX', 'CN'].includes(tp)) return false;
+        const n = saleTypeNum(r.TYPE);
+        const tp = saleTypeUpper(r.TYPE);
+        if (Number.isFinite(n)) {
+          if (!(isInvoiceTypeNum(n) || isNoteTypeNum(n))) return false;
+        } else {
+          if (!['SL', 'ST', 'SR', 'GT', 'GR', 'SX', 'CN'].includes(tp)) return false;
+        }
         const taxTotal = gstrNum(r.CGST_AMT) + gstrNum(r.SGST_AMT) + gstrNum(r.IGST_AMT);
         return taxTotal === 0;
       });
@@ -7287,8 +8003,9 @@ app.get('/api/gstr1', async (req, res) => {
         const out = new Map();
         rows.forEach((r) => {
           const lc = gstrTxt(r.L_C).toUpperCase() === 'L' ? 'L' : 'C';
-          const tp = gstrTxt(r.TYPE).toUpperCase();
-          const amt = tp === 'CN' ? -gstrNum(r.TAXABLE) : gstrNum(r.TAXABLE);
+          const n = saleTypeNum(r.TYPE);
+          const tp = saleTypeUpper(r.TYPE);
+          const amt = Number.isFinite(n) ? (isNegTypeNum(n) ? -gstrNum(r.TAXABLE) : gstrNum(r.TAXABLE)) : tp === 'CN' ? -gstrNum(r.TAXABLE) : gstrNum(r.TAXABLE);
           out.set(lc, gstrNum(out.get(lc)) + amt);
         });
         return out;
@@ -7350,8 +8067,9 @@ app.get('/api/gstr1', async (req, res) => {
       saleRows.forEach((r) => {
         const isReg = gstrHas(r.GST_NO);
         if (isReg !== registered) return;
-        const tp = gstrTxt(r.TYPE).toUpperCase();
-        const sign = ['CN', 'GN', 'CX', 'ER'].includes(tp) ? -1 : 1;
+        const n = saleTypeNum(r.TYPE);
+        const tp = saleTypeUpper(r.TYPE);
+        const sign = Number.isFinite(n) ? (isNegTypeNum(n) ? -1 : 1) : ['CN', 'GN', 'CX', 'ER'].includes(tp) ? -1 : 1;
         const rate = gstrRate(gstrNum(r.CGST_PER) + gstrNum(r.SGST_PER) + gstrNum(r.IGST_PER));
         const k = keyOf(r.HSN_CODE, rate);
         const it = m.get(k) || {
@@ -7384,7 +8102,7 @@ app.get('/api/gstr1', async (req, res) => {
     // then summarize by TYPE+B_TYPE for from/to/total.
     const uniqueDocs = new Map();
     saleRows.forEach((r) => {
-      const tp = gstrTxt(r.TYPE).toUpperCase();
+      const tp = saleTypeUpper(r.TYPE);
       const bt = gstrTxt(r.B_TYPE);
       const billNo = gstrTxt(r.BILL_NO);
       const billDate = gstrDt(r.BILL_DATE);
@@ -7404,11 +8122,17 @@ app.get('/api/gstr1', async (req, res) => {
     });
     const docs = Array.from(docsMap.values()).map((d) => ({
       NATURE_OF_DOCUMENT:
-        d.TYPE === 'CN'
-          ? 'Credit note'
-          : (d.TYPE === 'SL' || d.TYPE === 'SE')
-            ? 'Invoice for outward supply'
-            : 'Invoice for outward supply',
+        (() => {
+          const n = saleTypeNum(d.TYPE);
+          const tp = saleTypeUpper(d.TYPE);
+          if (Number.isFinite(n)) {
+            if (n === 8) return 'Credit note';
+            if (n === 7) return 'Debit note';
+            return 'Invoice for outward supply';
+          }
+          if (tp === 'CN') return 'Credit note';
+          return 'Invoice for outward supply';
+        })(),
       SR_NO_FROM: d.from,
       SR_NO_TO: d.to,
       TOTAL_NUMBER: d.total,
@@ -7416,8 +8140,16 @@ app.get('/api/gstr1', async (req, res) => {
     }));
 
     // GSTR3B (VFP-aligned totals)
-    const saleSign = (tp) => (['CN', 'GN', 'CX', 'ER'].includes(gstrTxt(tp).toUpperCase()) ? -1 : 1);
-    const saleSignNoEr = (tp) => (['CN', 'GN', 'CX'].includes(gstrTxt(tp).toUpperCase()) ? -1 : 1);
+    const saleSign = (tp) => {
+      const n = saleTypeNum(tp);
+      if (Number.isFinite(n)) return isNegTypeNum(n) ? -1 : 1;
+      return ['CN', 'GN', 'CX', 'ER'].includes(gstrTxt(tp).toUpperCase()) ? -1 : 1;
+    };
+    const saleSignNoEr = (tp) => {
+      const n = saleTypeNum(tp);
+      if (Number.isFinite(n)) return isNegTypeNum(n) ? -1 : 1;
+      return ['CN', 'GN', 'CX'].includes(gstrTxt(tp).toUpperCase()) ? -1 : 1;
+    };
     const sumSigned = (rows, signFn) => rows.reduce((a, r) => {
       const s = signFn(r.TYPE);
       a.taxable += s * gstrNum(r.TAXABLE);
@@ -7443,7 +8175,11 @@ app.get('/api/gstr1', async (req, res) => {
     let IGST_PAID = 0;
 
     const aBase = sumSigned(
-      saleRows.filter((r) => gstrTxt(r.TYPE).toUpperCase() !== 'RC' && taxTotal(r) !== 0),
+      saleRows.filter((r) => {
+        const n = saleTypeNum(r.TYPE);
+        if (Number.isFinite(n)) return !isRcTypeNum(n) && taxTotal(r) !== 0;
+        return gstrTxt(r.TYPE).toUpperCase() !== 'RC' && taxTotal(r) !== 0;
+      }),
       saleSign
     );
     const aCx = sumPlain(purRows.filter((r) => gstrTxt(r.TYPE).toUpperCase() === 'CX' && gstrTxt(r.S_P).toUpperCase() !== 'P' && taxTotal(r) !== 0));
@@ -7459,12 +8195,20 @@ app.get('/api/gstr1', async (req, res) => {
     IGST_PAYABLE = row31a.igst;
 
     const row31b = sumSigned(
-      saleRows.filter((r) => ['SE', 'ER'].includes(gstrTxt(r.TYPE).toUpperCase()) && taxTotal(r) === 0),
+      saleRows.filter((r) => {
+        const n = saleTypeNum(r.TYPE);
+        if (Number.isFinite(n)) return isExportTypeNum(n) && taxTotal(r) === 0;
+        return ['SE', 'ER'].includes(gstrTxt(r.TYPE).toUpperCase()) && taxTotal(r) === 0;
+      }),
       saleSign
     );
 
     const cBase = sumSigned(
-      saleRows.filter((r) => !['RC', 'SE', 'ER'].includes(gstrTxt(r.TYPE).toUpperCase()) && taxTotal(r) === 0),
+      saleRows.filter((r) => {
+        const n = saleTypeNum(r.TYPE);
+        if (Number.isFinite(n)) return !isRcTypeNum(n) && !isExportTypeNum(n) && taxTotal(r) === 0;
+        return !['RC', 'SE', 'ER'].includes(gstrTxt(r.TYPE).toUpperCase()) && taxTotal(r) === 0;
+      }),
       saleSignNoEr
     );
     const cCx = sumPlain(purRows.filter((r) => gstrTxt(r.TYPE).toUpperCase() === 'CX' && gstrTxt(r.S_P).toUpperCase() !== 'P' && taxTotal(r) === 0));
@@ -7477,7 +8221,11 @@ app.get('/api/gstr1', async (req, res) => {
     };
 
     const row31d = sumSigned(
-      saleRows.filter((r) => gstrTxt(r.TYPE).toUpperCase() === 'RC' && taxTotal(r) !== 0),
+      saleRows.filter((r) => {
+        const n = saleTypeNum(r.TYPE);
+        if (Number.isFinite(n)) return isRcTypeNum(n) && taxTotal(r) !== 0;
+        return gstrTxt(r.TYPE).toUpperCase() === 'RC' && taxTotal(r) !== 0;
+      }),
       saleSignNoEr
     );
     CGST_PAYABLE += row31d.cgst;
@@ -7488,19 +8236,35 @@ app.get('/api/gstr1', async (req, res) => {
     IGST_PAID = row4a1.igst;
     SGST_PAID = row4a1.sgst;
     CGST_PAID = row4a1.cgst;
-    const row4a2 = sumPlain(purRows.filter((r) => gstrTxt(r.TYPE).toUpperCase() === 'EV' && gstrTxt(r.REMARKS).toUpperCase().startsWith('IS') && gstrTxt(r.SHOW_IN_GSTR).toUpperCase() === 'Y'));
+    const row4a2 = sumPlain(
+      purRows.filter((r) => gstrTxt(r.TYPE).toUpperCase() === 'EV' && gstrTxt(r.REMARKS).toUpperCase().startsWith('IS'))
+    );
     IGST_PAID += row4a2.igst;
     SGST_PAID += row4a2.sgst;
     CGST_PAID += row4a2.cgst;
     const row4a3 = sumSigned(
-      saleRows.filter((r) => gstrTxt(r.TYPE).toUpperCase() === 'RC' && gstrTxt(r.INPUT_YN).toUpperCase() !== 'N' && taxTotal(r) !== 0),
+      saleRows.filter((r) => {
+        const n = saleTypeNum(r.TYPE);
+        if (Number.isFinite(n)) return isRcTypeNum(n) && gstrTxt(r.INPUT_YN).toUpperCase() !== 'N' && taxTotal(r) !== 0;
+        return gstrTxt(r.TYPE).toUpperCase() === 'RC' && gstrTxt(r.INPUT_YN).toUpperCase() !== 'N' && taxTotal(r) !== 0;
+      }),
       saleSignNoEr
     );
     IGST_PAID += row4a3.igst;
     SGST_PAID += row4a3.sgst;
     CGST_PAID += row4a3.cgst;
 
-    const row4a5Base = sumPlain(purRows.filter((r) => (gstrTxt(r.TYPE).toUpperCase() === 'PU' || (gstrTxt(r.TYPE).toUpperCase() === 'EV' && !gstrTxt(r.REMARKS).toUpperCase().startsWith('IS') && gstrTxt(r.INPUT_YN).toUpperCase() !== 'N' && gstrTxt(r.SHOW_IN_GSTR).toUpperCase() === 'Y')) && gstrTxt(r.TAX_FORM).toUpperCase() !== 'I' && taxTotal(r) !== 0));
+    const row4a5Base = sumPlain(
+      purRows.filter(
+        (r) =>
+          (gstrTxt(r.TYPE).toUpperCase() === 'PU' ||
+            (gstrTxt(r.TYPE).toUpperCase() === 'EV' &&
+              !gstrTxt(r.REMARKS).toUpperCase().startsWith('IS') &&
+              gstrTxt(r.INPUT_YN).toUpperCase() !== 'N')) &&
+          gstrTxt(r.TAX_FORM).toUpperCase() !== 'I' &&
+          taxTotal(r) !== 0
+      )
+    );
     const row4a5Dn = sumPlain(purRows.filter((r) => (gstrTxt(r.TYPE).toUpperCase() === 'DN' || (gstrTxt(r.TYPE).toUpperCase() === 'DX' && gstrTxt(r.S_P).toUpperCase() === 'P')) && taxTotal(r) !== 0));
     const row4a5Cx = sumPlain(purRows.filter((r) => gstrTxt(r.TYPE).toUpperCase() === 'CX' && gstrTxt(r.S_P).toUpperCase() === 'P' && taxTotal(r) !== 0));
     const row4a5 = {
@@ -7518,14 +8282,23 @@ app.get('/api/gstr1', async (req, res) => {
       if (isL) a.l += gstrNum(r.TAXABLE); else a.c += gstrNum(r.TAXABLE);
       return a;
     }, { l: 0, c: 0 });
-    const exBase = sumLc(purRows.filter((r) => (gstrTxt(r.TYPE).toUpperCase() === 'PU' || (gstrTxt(r.TYPE).toUpperCase() === 'EV' && gstrTxt(r.INPUT_YN).toUpperCase() === 'N' && gstrTxt(r.SHOW_IN_GSTR).toUpperCase() === 'Y')) && gstrTxt(r.TAX_FORM).toUpperCase() !== 'I' && taxTotal(r) === 0));
+    const exBase = sumLc(
+      purRows.filter(
+        (r) =>
+          (gstrTxt(r.TYPE).toUpperCase() === 'PU' ||
+            (gstrTxt(r.TYPE).toUpperCase() === 'EV' && gstrTxt(r.INPUT_YN).toUpperCase() === 'N')) &&
+          gstrTxt(r.TAX_FORM).toUpperCase() !== 'I' &&
+          taxTotal(r) === 0
+      )
+    );
     const exDn = sumLc(purRows.filter((r) => ['DX', 'DN'].includes(gstrTxt(r.TYPE).toUpperCase()) && taxTotal(r) === 0));
     const exCx = sumLc(purRows.filter((r) => gstrTxt(r.TYPE).toUpperCase() === 'CX' && gstrTxt(r.S_P).toUpperCase() === 'P' && taxTotal(r) === 0));
     const row5 = { l: exBase.l - exDn.l + exCx.l, c: exBase.c - exDn.c + exCx.c };
 
     const row51 = saleRows.reduce((a, r) => {
       if (Math.trunc(gstrNum(r.SCHEDULE)) !== 11) return a;
-      const sign = gstrTxt(r.TYPE).toUpperCase() === 'CN' ? -1 : 1;
+      const n = saleTypeNum(r.TYPE);
+      const sign = Number.isFinite(n) ? (isNegTypeNum(n) ? -1 : 1) : gstrTxt(r.TYPE).toUpperCase() === 'CN' ? -1 : 1;
       const isL = gstrTxt(r.SL_C).toUpperCase() === 'L';
       if (isL) a.l += sign * gstrNum(r.TAXABLE); else a.c += sign * gstrNum(r.TAXABLE);
       return a;
@@ -7611,10 +8384,25 @@ app.get('/api/gstr1-b2cs-detail', async (req, res) => {
       ORDER BY A.BILL_DATE, A.BILL_NO, A.B_TYPE, A.TRN_NO`;
     const rows = (await runQuery(saleSql, { comp_code, s_date, e_date }, comp_uid)) || [];
 
+    function saleTypeNum(raw) {
+      if (raw == null || raw === '') return NaN;
+      if (typeof raw === 'number') return raw;
+      const s = String(raw).trim();
+      if (!s) return NaN;
+      const n = parseInt(s, 10);
+      return Number.isFinite(n) ? n : NaN;
+    }
+    const isInvoiceTypeNum = (n) => n === 0 || n === 1 || n === 3;
+    const isNoteTypeNum = (n) => n === 4 || n === 7 || n === 8;
+    const isNegTypeNum = (n) => n === 4 || n === 8;
+
     const outwardSetCn = new Set(['SL', 'ST', 'SR', 'GT', 'GR', 'SX', 'CN', 'GN', 'CX']);
     const mdetRows = rows.filter((r) => {
+      const n = saleTypeNum(r.TYPE);
       const tp = gstrTxt(r.TYPE).toUpperCase();
-      if (!outwardSetCn.has(tp)) return false;
+      if (Number.isFinite(n)) {
+        if (!(isInvoiceTypeNum(n) || isNoteTypeNum(n))) return false;
+      } else if (!outwardSetCn.has(tp)) return false;
       if (gstrHas(r.GST_NO)) return false;
       if (opts.btocsYn !== 'Y') {
         const taxTotal = gstrNum(r.CGST_AMT) + gstrNum(r.SGST_AMT) + gstrNum(r.IGST_AMT);
@@ -7659,12 +8447,13 @@ app.get('/api/gstr1-b2cs-detail', async (req, res) => {
       if (!x5Keys.has(keyOf(type, invNo, bType, invDate))) return;
 
       const pos = `${gstrTxt(r.STATE_CODE)}-${gstrTxt(r.STATE)}`.trim();
-      const rowRate = gstrRaclste(gstrNum(r.CGST_PER) + gstrNum(r.SGST_PER) + gstrNum(r.IGST_PER));
+      const rowRate = gstrRate(gstrNum(r.CGST_PER) + gstrNum(r.SGST_PER) + gstrNum(r.IGST_PER));
       if (targetPos && pos !== targetPos) return;
       if (gstrRate(rowRate) !== targetRate) return;
 
       const dk = keyOf(type, invDate, invNo, bType, pos, rowRate);
-      const sign = ['CN', 'GN', 'CX'].includes(type) ? -1 : 1;
+      const n = saleTypeNum(type);
+      const sign = Number.isFinite(n) ? (isNegTypeNum(n) ? -1 : 1) : ['CN', 'GN', 'CX'].includes(type) ? -1 : 1;
       const item = detailMap.get(dk) || {
         TYPE: type,
         BILL_DATE: invDate,
@@ -7739,7 +8528,7 @@ app.get('/api/gstr1-sale-detail', async (req, res) => {
         B.STATE,
         A.TRN_NO,
         A.ITEM_CODE,
-        A.HSN_CODE AS SALE_HSN_CODE,
+        CAST(NULL AS VARCHAR2(30)) AS SALE_HSN_CODE,
         C.HSN_CODE,
         A.QNTY,
         A.WEIGHT,
@@ -7820,7 +8609,7 @@ app.get('/api/gstr1-note-detail', async (req, res) => {
         SELECT
           A.TYPE, A.BILL_DATE, A.BILL_NO, A.B_TYPE, A.SALE_INV_NO,
           A.CODE, B.NAME, B.GST_NO, B.STATE_CODE, B.STATE,
-          A.TRN_NO, A.ITEM_CODE, A.HSN_CODE AS SALE_HSN_CODE, C.HSN_CODE,
+          A.TRN_NO, A.ITEM_CODE, CAST(NULL AS VARCHAR2(30)) AS SALE_HSN_CODE, C.HSN_CODE,
           A.QNTY, A.WEIGHT, A.RATE, A.AMOUNT, A.TAXABLE, A.CGST_AMT, A.SGST_AMT, A.IGST_AMT, A.BILL_AMT
         FROM SALE A
         LEFT JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
@@ -7933,17 +8722,34 @@ app.get('/api/gstr1-exemp-detail', async (req, res) => {
         AND TRUNC(A.BILL_DATE) BETWEEN TRUNC(TO_DATE(:s_date,'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date,'DD-MM-YYYY'))
       ORDER BY A.BILL_DATE, A.BILL_NO, A.B_TYPE, A.TRN_NO`;
     const rows = (await runQuery(saleSql, { comp_code, s_date, e_date }, comp_uid)) || [];
+    function saleTypeNum(raw) {
+      if (raw == null || raw === '') return NaN;
+      if (typeof raw === 'number') return raw;
+      const s = String(raw).trim();
+      if (!s) return NaN;
+      const n = parseInt(s, 10);
+      return Number.isFinite(n) ? n : NaN;
+    }
+    const isInvoiceTypeNum = (n) => n === 0 || n === 1 || n === 3;
+    const isNoteTypeNum = (n) => n === 4 || n === 7 || n === 8;
+    const isNegTypeNum = (n) => n === 4 || n === 8;
     const key = String(row_key).trim().toUpperCase();
     const isReg = key.startsWith('REG_');
     const isIntra = key.endsWith('_INTRA');
     const details = rows
-      .filter((r) => ['SL', 'ST', 'SR', 'GT', 'GR', 'SX', 'CN'].includes(gstrTxt(r.TYPE).toUpperCase()))
+      .filter((r) => {
+        const n = saleTypeNum(r.TYPE);
+        const tp = gstrTxt(r.TYPE).toUpperCase();
+        if (Number.isFinite(n)) return isInvoiceTypeNum(n) || isNoteTypeNum(n);
+        return ['SL', 'ST', 'SR', 'GT', 'GR', 'SX', 'CN'].includes(tp);
+      })
       .filter((r) => (gstrNum(r.CGST_AMT) + gstrNum(r.SGST_AMT) + gstrNum(r.IGST_AMT)) === 0)
       .filter((r) => (isReg ? gstrHas(r.GST_NO) : !gstrHas(r.GST_NO)))
       .filter((r) => (isIntra ? gstrTxt(r.L_C).toUpperCase() === 'L' : gstrTxt(r.L_C).toUpperCase() !== 'L'))
       .map((r) => {
+        const n = saleTypeNum(r.TYPE);
         const tp = gstrTxt(r.TYPE).toUpperCase();
-        const sign = tp === 'CN' ? -1 : 1;
+        const sign = Number.isFinite(n) ? (isNegTypeNum(n) ? -1 : 1) : tp === 'CN' ? -1 : 1;
         return {
           TYPE: gstrTxt(r.TYPE),
           BILL_DATE: gstrDt(r.BILL_DATE),
@@ -7990,13 +8796,23 @@ app.get('/api/gstr1-hsn-detail', async (req, res) => {
         AND TRUNC(A.BILL_DATE) BETWEEN TRUNC(TO_DATE(:s_date,'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date,'DD-MM-YYYY'))
       ORDER BY A.BILL_DATE, A.BILL_NO, A.B_TYPE, A.TRN_NO`;
     const rows = (await runQuery(saleSql, { comp_code, s_date, e_date }, comp_uid)) || [];
+    function saleTypeNum(raw) {
+      if (raw == null || raw === '') return NaN;
+      if (typeof raw === 'number') return raw;
+      const s = String(raw).trim();
+      if (!s) return NaN;
+      const n = parseInt(s, 10);
+      return Number.isFinite(n) ? n : NaN;
+    }
+    const isNegTypeNum = (n) => n === 4 || n === 8;
     const details = rows
       .filter((r) => (isReg ? gstrHas(r.GST_NO) : !gstrHas(r.GST_NO)))
       .filter((r) => gstrTxt(r.HSN_CODE) === targetHsn)
       .filter((r) => gstrRate(gstrNum(r.CGST_PER) + gstrNum(r.SGST_PER) + gstrNum(r.IGST_PER)) === targetRate)
       .map((r) => {
+        const n = saleTypeNum(r.TYPE);
         const tp = gstrTxt(r.TYPE).toUpperCase();
-        const sign = ['CN', 'GN', 'CX', 'ER'].includes(tp) ? -1 : 1;
+        const sign = Number.isFinite(n) ? (isNegTypeNum(n) ? -1 : 1) : ['CN', 'GN', 'CX', 'ER'].includes(tp) ? -1 : 1;
         return {
           TYPE: gstrTxt(r.TYPE),
           BILL_DATE: gstrDt(r.BILL_DATE),

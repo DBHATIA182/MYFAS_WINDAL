@@ -35,7 +35,10 @@ export default function LoginSlide({ apiBase, onSuccess, onExit }) {
         { withCredentials: true, timeout: 60000 }
       );
       if (data?.ok) {
-        onSuccess({ userName: data.user_name ?? u });
+        onSuccess({
+          userName: data.user_name ?? u,
+          comp_code: data.comp_code ?? data.COMP_CODE ?? '',
+        });
       } else {
         setError('Login failed.');
       }

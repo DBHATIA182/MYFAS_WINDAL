@@ -30,6 +30,14 @@ function avgRate(amount, weight, qty) {
   return 0;
 }
 
+function asNumericCodeText(v) {
+  const t = String(v ?? '').trim();
+  if (!t) return '';
+  const n = Number(t);
+  if (!Number.isFinite(n)) return '';
+  return String(Math.trunc(n));
+}
+
 export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onReset }) {
   const ledgerNumericColumns = new Set(['VR_NO', 'R_QNTY', 'R_WEIGHT', 'DR_AMOUNT', 'S_QNTY', 'S_WEIGHT', 'CR_AMOUNT', 'BAL_QNTY', 'BAL_WEIGHT', 'CL_BALANCE']);
   const blankIfZero = (v) => (num(v) === 0 ? '' : null);
@@ -46,14 +54,7 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
   const compYear = formData.comp_year ?? formData.COMP_YEAR ?? '';
 
   const [edt, setEdt] = useState('');
-  const [schedule, setSchedule] = useState('12.10');
-  const [code, setCode] = useState('');
-  const [mcb, setMcb] = useState('C');
-  const [mwyn, setMwyn] = useState('N');
-  const [catCodeYn, setCatCodeYn] = useState('N');
-  const [mShortPick, setMShortPick] = useState('N');
-  const [mfyn, setMfyn] = useState('A');
-  const [accountOptions, setAccountOptions] = useState([]);
+  const [tdgType, setTdgType] = useState('C');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [rows, setRows] = useState([]);
@@ -79,6 +80,8 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
   const [glLedgerTitle, setGlLedgerTitle] = useState('');
   const [glVoucherRows, setGlVoucherRows] = useState(null);
   const [glVoucherTitle, setGlVoucherTitle] = useState('');
+  const [catTrialRows, setCatTrialRows] = useState([]);
+  const [catTrialTitle, setCatTrialTitle] = useState('');
   const [billPrintOpen, setBillPrintOpen] = useState(false);
   const [billPrintParams, setBillPrintParams] = useState(null);
 
@@ -109,46 +112,6 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
     };
   }, [apiBase, compCode, compUid]);
 
-  useEffect(() => {
-    const scheduleNorm = normalizeSchedule(schedule);
-    if (!compCode || !compUid || !/^\d{1,2}\.\d{2}$/.test(scheduleNorm)) {
-      setAccountOptions([]);
-      return;
-    }
-    let ignore = false;
-    axios
-      .get(`${apiBase}/api/trading-ac-accounts`, {
-        params: {
-          comp_code: compCode,
-          comp_uid: compUid,
-          schedule: scheduleNorm,
-        },
-        withCredentials: true,
-        timeout: 60000,
-      })
-      .then(({ data }) => {
-        if (ignore) return;
-        const rows = Array.isArray(data?.rows) ? data.rows : [];
-        setAccountOptions(rows);
-      })
-      .catch(() => {
-        if (!ignore) setAccountOptions([]);
-      });
-    return () => {
-      ignore = true;
-    };
-  }, [apiBase, compCode, compUid, schedule]);
-
-  const normalizeSchedule = (raw) => {
-    const txt = String(raw ?? '').replace(/[^\d.]/g, '');
-    if (!txt) return '';
-    const parts = txt.split('.');
-    const intPart = (parts[0] || '').slice(0, 2);
-    const decPartRaw = parts.length > 1 ? parts.slice(1).join('') : '';
-    if (decPartRaw.length === 0) return intPart;
-    return `${intPart}.${decPartRaw.slice(0, 2)}`;
-  };
-
   const hasTradingValue = (r) =>
     num(r?.OAMT) !== 0 ||
     num(r?.PAMT) !== 0 ||
@@ -172,6 +135,53 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
     () => (rows || []).filter((r) => String(r?.CODE ?? '').trim() === '000000' && hasExpenseValue(r)),
     [rows]
   );
+  const itemwiseCatRows = useMemo(() => {
+    if (String(tdgType || 'C').trim().toUpperCase() !== 'I') return stockRows;
+    const grp = new Map();
+    (stockRows || []).forEach((r) => {
+      const cat = String(r?.CAT_CODE ?? '').trim() || 'UNCAT';
+      const cur = grp.get(cat) || {
+        CODE: cat,
+        NAME: cat,
+        CAT_CODE: cat,
+        OQTY: 0,
+        OWGT: 0,
+        OAMT: 0,
+        PQTY: 0,
+        PWGT: 0,
+        PAMT: 0,
+        SQTY: 0,
+        SWGT: 0,
+        SAMT: 0,
+        SHORT: 0,
+        CQTY: 0,
+        CWGT: 0,
+        CAMT: 0,
+        GPROFIT: 0,
+        GLOSS: 0,
+        P_CODE: '',
+        S_CODE: '',
+        A_CODE: '',
+      };
+      cur.OQTY += num(r?.OQTY);
+      cur.OWGT += num(r?.OWGT);
+      cur.OAMT += num(r?.OAMT);
+      cur.PQTY += num(r?.PQTY);
+      cur.PWGT += num(r?.PWGT);
+      cur.PAMT += num(r?.PAMT);
+      cur.SQTY += num(r?.SQTY);
+      cur.SWGT += num(r?.SWGT);
+      cur.SAMT += num(r?.SAMT);
+      cur.SHORT += num(r?.SHORT);
+      cur.CQTY += num(r?.CQTY);
+      cur.CWGT += num(r?.CWGT);
+      cur.CAMT += num(r?.CAMT);
+      cur.GPROFIT += num(r?.GPROFIT);
+      cur.GLOSS += num(r?.GLOSS);
+      grp.set(cat, cur);
+    });
+    return Array.from(grp.values()).sort((a, b) => String(a.CAT_CODE || '').localeCompare(String(b.CAT_CODE || '')));
+  }, [stockRows, tdgType]);
   const summary = useMemo(() => {
     const opening = stockRows.reduce((sum, r) => sum + num(r?.OAMT), 0);
     const purchase = stockRows.reduce((sum, r) => sum + num(r?.PAMT), 0);
@@ -374,12 +384,8 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
       alert('Please select Ending Date.');
       return false;
     }
-    const scheduleNorm = normalizeSchedule(schedule);
-    if (!/^\d{1,2}\.\d{2}$/.test(scheduleNorm)) {
-      alert('Trading Schedule must be in 99.99 format (example: 12.10).');
-      return false;
-    }
-    setSchedule(scheduleNorm);
+    const scheduleNorm = '12.10';
+    const tdgMode = String(tdgType || 'C').trim().toUpperCase() === 'I' ? 'I' : 'C';
     setLoading(true);
     setError('');
     try {
@@ -388,13 +394,14 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
           comp_code: compCode,
           comp_uid: compUid,
           schedule: scheduleNorm,
-          code,
+          code: '',
           edt: edtOracle,
-          mcb,
-          mwyn,
-          cat_code_yn: catCodeYn,
-          m_short_pick: mShortPick,
-          mfyn,
+          mcb: 'C',
+          mwyn: 'N',
+          cat_code_yn: 'N',
+          m_short_pick: 'N',
+          mfyn: 'A',
+          tdg_type: tdgMode,
           manual_confirmed: manualConfirmed ? 'Y' : 'N',
         },
         withCredentials: true,
@@ -433,11 +440,22 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
         {
           comp_code: compCode,
           comp_uid: compUid,
-          rows: manualRows.map((r) => ({
-            code: r.CODE,
-            amount: num(r.AMOUNT),
-            shortage: num(r.SHORTAGE),
-          })),
+          tdg_type: String(tdgType || 'C').trim().toUpperCase(),
+          rows:
+            String(tdgType || 'C').trim().toUpperCase() === 'I'
+              ? manualRows.map((r) => ({
+                  cat_code: r.CAT_CODE,
+                  item_code: r.ITEM_CODE,
+                  rate: num(r.RATE),
+                  amount: num(r.AMOUNT),
+                  s_code: num(r.S_CODE),
+                  p_code: num(r.P_CODE),
+                  cat: r.CAT,
+                  cl_wgt: num(r.CL_WGT),
+                }))
+              : manualRows.map((r) => ({
+                  amount: num(r.AMOUNT),
+                })),
         },
         { withCredentials: true, timeout: 120000 }
       );
@@ -449,11 +467,17 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
     }
   };
 
-  /** Stock rows use CODE (commodity); direct-expense rows use placeholder CODE 000000 and real GL in A_CODE. */
+  /** Stock rows use numeric P_CODE/S_CODE; direct-expense rows use real GL in A_CODE. */
   const tradingLedgerAccountCode = (row) => {
-    const ac = String(row?.A_CODE ?? '').trim();
-    if (ac) return ac;
-    return String(row?.CODE ?? '').trim();
+    const ac = asNumericCodeText(row?.A_CODE);
+    if (ac && ac !== '0') return ac;
+    const pCode = asNumericCodeText(row?.P_CODE);
+    if (pCode && pCode !== '0') return pCode;
+    const sCode = asNumericCodeText(row?.S_CODE);
+    if (sCode && sCode !== '0') return sCode;
+    const code = asNumericCodeText(row?.CODE);
+    if (code && code !== '0') return code;
+    return '';
   };
 
   const isDirectExpenseRow = (row) =>
@@ -470,6 +494,61 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
     setGlLedgerCode('');
     setGlLedgerTitle('');
     setScreen('report');
+  };
+
+  const openSimpleLedgerByCode = async (ledgerCode, ledgerName = '') => {
+    const code = asNumericCodeText(ledgerCode);
+    if (!code || code === '000000') {
+      alert('No account code for ledger on this row.');
+      return;
+    }
+    const sYmd = toInputDateString(formData.comp_s_dt ?? formData.COMP_S_DT);
+    const eYmd = toInputDateString(edt);
+    if (!sYmd || !eYmd) {
+      alert('Financial year start (comp_s_dt) and Trading A/C ending date are required for ledger.');
+      return;
+    }
+    const sOracle = toOracleDate(sYmd);
+    const eOracle = toOracleDate(eYmd);
+    if (!sOracle || !eOracle) {
+      alert('Invalid date range for ledger.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await axios.get(`${apiBase}/api/ledger`, {
+        params: {
+          comp_code: compCode,
+          code,
+          s_date: sOracle,
+          e_date: eOracle,
+          comp_uid: compUid,
+          voucher_wise_total: 'N',
+        },
+        withCredentials: true,
+        timeout: 180000,
+      });
+      const rows = Array.isArray(data) ? data : [];
+      if (!rows.length) {
+        alert('No transactions found for this account in the selected period.');
+        return;
+      }
+      setGlLedgerRows(rows);
+      setGlLedgerStart(sYmd);
+      setGlLedgerEnd(eYmd);
+      setGlLedgerCode(code);
+      setGlLedgerTitle(String(ledgerName || '').trim());
+      setGlVoucherRows(null);
+      setGlVoucherTitle('');
+      setBillPrintOpen(false);
+      setBillPrintParams(null);
+      setScreen('gl-ledger');
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Failed to load ledger');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const openGlLedgerSaleBill = (row) => {
@@ -567,45 +646,7 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
     setError('');
     try {
       if (isDirectExpenseRow(row)) {
-        const sYmd = toInputDateString(formData.comp_s_dt ?? formData.COMP_S_DT);
-        const eYmd = toInputDateString(edt);
-        if (!sYmd || !eYmd) {
-          alert('Financial year start (comp_s_dt) and Trading A/C ending date are required for ledger.');
-          return;
-        }
-        const sOracle = toOracleDate(sYmd);
-        const eOracle = toOracleDate(eYmd);
-        if (!sOracle || !eOracle) {
-          alert('Invalid date range for ledger.');
-          return;
-        }
-        const { data } = await axios.get(`${apiBase}/api/ledger`, {
-          params: {
-            comp_code: compCode,
-            code: ledgerCode,
-            s_date: sOracle,
-            e_date: eOracle,
-            comp_uid: compUid,
-            voucher_wise_total: 'N',
-          },
-          withCredentials: true,
-          timeout: 180000,
-        });
-        const rows = Array.isArray(data) ? data : [];
-        if (!rows.length) {
-          alert('No transactions found for this account in the selected period.');
-          return;
-        }
-        setGlLedgerRows(rows);
-        setGlLedgerStart(sYmd);
-        setGlLedgerEnd(eYmd);
-        setGlLedgerCode(ledgerCode);
-        setGlLedgerTitle(String(row.NAME || '').trim());
-        setGlVoucherRows(null);
-        setGlVoucherTitle('');
-        setBillPrintOpen(false);
-        setBillPrintParams(null);
-        setScreen('gl-ledger');
+        await openSimpleLedgerByCode(ledgerCode, String(row.NAME || '').trim());
         return;
       }
 
@@ -616,7 +657,7 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
           comp_uid: compUid,
           code: ledgerCode,
           edt: edtOracle,
-          mcb,
+          mcb: 'C',
         },
         withCredentials: true,
         timeout: 180000,
@@ -634,6 +675,87 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
       setScreen('ledger');
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'Failed to load ledger');
+    } finally {
+      setLoading(false);
+    }
+  };
+  const openCategoryTrialBalance = async (catRow) => {
+    const cat = String(catRow?.CAT_CODE ?? '').trim() || 'UNCAT';
+    setLoading(true);
+    setError('');
+    try {
+      const { data: catData } = await axios.get(`${apiBase}/api/trading-ac-category-codes`, {
+        params: {
+          comp_code: compCode,
+          comp_uid: compUid,
+          cat_code: cat,
+        },
+        withCredentials: true,
+        timeout: 120000,
+      });
+      const linked = Array.from(
+        new Set((Array.isArray(catData?.rows) ? catData.rows : []).map((r) => asNumericCodeText(r?.CODE)).filter(Boolean))
+      );
+      if (!linked.length) {
+        alert(`No linked sale/purchase ledger codes found for category ${cat}.`);
+        return;
+      }
+      const edtOracle = toOracleDate(edt);
+      const { data } = await axios.get(`${apiBase}/api/trial-balance-by-codes`, {
+        params: {
+          comp_code: compCode,
+          comp_uid: compUid,
+          e_date: edtOracle,
+          codes: linked.join(','),
+        },
+        withCredentials: true,
+        timeout: 180000,
+      });
+      setCatTrialRows(Array.isArray(data) ? data : []);
+      setCatTrialTitle(`Category ${cat} — linked ledger codes (${linked.length}) [Sale: >12<13, Purchase: >14<15]`);
+      setScreen('cat-trial');
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Failed to load category-linked Trial Balance');
+    } finally {
+      setLoading(false);
+    }
+  };
+  const openAllLinkedTrialBalance = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data: catData } = await axios.get(`${apiBase}/api/trading-ac-category-codes`, {
+        params: {
+          comp_code: compCode,
+          comp_uid: compUid,
+          cat_code: 'ALL',
+        },
+        withCredentials: true,
+        timeout: 120000,
+      });
+      const linked = Array.from(
+        new Set((Array.isArray(catData?.rows) ? catData.rows : []).map((r) => asNumericCodeText(r?.CODE)).filter(Boolean))
+      );
+      if (!linked.length) {
+        alert('No linked sale/purchase ledger codes found.');
+        return;
+      }
+      const edtOracle = toOracleDate(edt);
+      const { data } = await axios.get(`${apiBase}/api/trial-balance-by-codes`, {
+        params: {
+          comp_code: compCode,
+          comp_uid: compUid,
+          e_date: edtOracle,
+          codes: linked.join(','),
+        },
+        withCredentials: true,
+        timeout: 180000,
+      });
+      setCatTrialRows(Array.isArray(data) ? data : []);
+      setCatTrialTitle(`All linked ledger codes (${linked.length}) [Sale: >12<13, Purchase: >14<15]`);
+      setScreen('cat-trial');
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Failed to load linked Trial Balance');
     } finally {
       setLoading(false);
     }
@@ -752,10 +874,19 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
       const lTotal = num(r.OAMT) + num(r.PAMT) + num(r.GPROFIT);
       const rTotal = num(r.SAMT) + num(r.CAMT) + num(r.GLOSS);
       tradingRows.push({ LEFT_PARTICULARS: title, LEFT_WEIGHT: '', LEFT_AMOUNT: '', RIGHT_PARTICULARS: '', RIGHT_WEIGHT: '', RIGHT_AMOUNT: '' });
-      tradingRows.push({ LEFT_PARTICULARS: 'OPENING', LEFT_WEIGHT: fmtWeight(r.OWGT), LEFT_AMOUNT: fmtAmount(r.OAMT), RIGHT_PARTICULARS: 'SALES', RIGHT_WEIGHT: fmtWeight(r.SWGT), RIGHT_AMOUNT: fmtAmount(r.SAMT) });
-      tradingRows.push({ LEFT_PARTICULARS: 'PURCHASE', LEFT_WEIGHT: fmtWeight(r.PWGT), LEFT_AMOUNT: fmtAmount(r.PAMT), RIGHT_PARTICULARS: 'SHORT/ACCESS', RIGHT_WEIGHT: fmtWeight(r.SHORT), RIGHT_AMOUNT: fmtAmount(0) });
+      // Hide weight-driven rows when the weight is 0 (prevents noisy empty lines in item-wise export).
+      const openingLine = num(r.OWGT) !== 0 ? { LEFT_PARTICULARS: 'OPENING', LEFT_WEIGHT: fmtWeight(r.OWGT), LEFT_AMOUNT: fmtAmount(r.OAMT) } : { LEFT_PARTICULARS: '', LEFT_WEIGHT: '', LEFT_AMOUNT: '' };
+      const salesLine = num(r.SWGT) !== 0 ? { RIGHT_PARTICULARS: 'SALES', RIGHT_WEIGHT: fmtWeight(r.SWGT), RIGHT_AMOUNT: fmtAmount(r.SAMT) } : { RIGHT_PARTICULARS: '', RIGHT_WEIGHT: '', RIGHT_AMOUNT: '' };
+      if (openingLine.LEFT_PARTICULARS || salesLine.RIGHT_PARTICULARS) tradingRows.push({ ...openingLine, ...salesLine });
+
+      const purchaseLine = num(r.PWGT) !== 0 ? { LEFT_PARTICULARS: 'PURCHASE', LEFT_WEIGHT: fmtWeight(r.PWGT), LEFT_AMOUNT: fmtAmount(r.PAMT) } : { LEFT_PARTICULARS: '', LEFT_WEIGHT: '', LEFT_AMOUNT: '' };
+      const shortLine = num(r.SHORT) !== 0 ? { RIGHT_PARTICULARS: 'SHORT/ACCESS', RIGHT_WEIGHT: fmtWeight(r.SHORT), RIGHT_AMOUNT: fmtAmount(0) } : { RIGHT_PARTICULARS: '', RIGHT_WEIGHT: '', RIGHT_AMOUNT: '' };
+      if (purchaseLine.LEFT_PARTICULARS || shortLine.RIGHT_PARTICULARS) tradingRows.push({ ...purchaseLine, ...shortLine });
+
       tradingRows.push({ LEFT_PARTICULARS: 'G.PROFIT', LEFT_WEIGHT: '', LEFT_AMOUNT: fmtAmount(r.GPROFIT), RIGHT_PARTICULARS: 'CLOSING', RIGHT_WEIGHT: fmtWeight(r.CWGT), RIGHT_AMOUNT: fmtAmount(r.CAMT) });
-      tradingRows.push({ LEFT_PARTICULARS: '', LEFT_WEIGHT: '', LEFT_AMOUNT: '', RIGHT_PARTICULARS: 'G.LOSS', RIGHT_WEIGHT: '', RIGHT_AMOUNT: fmtAmount(r.GLOSS) });
+      if (num(r.GLOSS) !== 0) {
+        tradingRows.push({ LEFT_PARTICULARS: '', LEFT_WEIGHT: '', LEFT_AMOUNT: '', RIGHT_PARTICULARS: 'G.LOSS', RIGHT_WEIGHT: '', RIGHT_AMOUNT: fmtAmount(r.GLOSS) });
+      }
       tradingRows.push({ LEFT_PARTICULARS: 'TOTAL', LEFT_WEIGHT: '', LEFT_AMOUNT: fmtAmount(lTotal), RIGHT_PARTICULARS: 'TOTAL', RIGHT_WEIGHT: '', RIGHT_AMOUNT: fmtAmount(rTotal) });
     });
     payload.expenseRows.forEach((r) => {
@@ -835,44 +966,86 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
         <div className="report-display table-responsive">
           <table className="report-table">
             <thead>
-              <tr>
-                <th>Code</th>
-                <th>Name</th>
-                <th className="text-right">Opening</th>
-                <th className="text-right">Closing Amount</th>
-                <th className="text-right">Shortage</th>
-              </tr>
+              {String(tdgType || 'C').trim().toUpperCase() === 'I' ? (
+                <tr>
+                  <th>Cat</th>
+                  <th>Item Code</th>
+                  <th>Item Name</th>
+                  <th className="text-right">Cl.Wgt</th>
+                  <th className="text-right">Rate</th>
+                  <th className="text-right">Amount</th>
+                </tr>
+              ) : (
+                <tr>
+                  <th>Code</th>
+                  <th>Name</th>
+                  <th className="text-right">Opening</th>
+                  <th className="text-right">Closing Amount</th>
+                  <th className="text-right">Shortage</th>
+                </tr>
+              )}
             </thead>
             <tbody>
-              {manualRows.map((r, i) => (
-                <tr key={`${r.CODE}_${i}`}>
-                  <td>{r.CODE}</td>
-                  <td>{r.NAME}</td>
-                  <td className="text-right">{fmtAmount(r.OP_BALANCE)}</td>
-                  <td className="text-right">
-                    <input
-                      className="form-input"
-                      value={r.AMOUNT ?? 0}
-                      onChange={(e) =>
-                        setManualRows((prev) =>
-                          prev.map((x, idx) => (idx === i ? { ...x, AMOUNT: e.target.value } : x))
-                        )
-                      }
-                    />
-                  </td>
-                  <td className="text-right">
-                    <input
-                      className="form-input"
-                      value={r.SHORTAGE ?? 0}
-                      onChange={(e) =>
-                        setManualRows((prev) =>
-                          prev.map((x, idx) => (idx === i ? { ...x, SHORTAGE: e.target.value } : x))
-                        )
-                      }
-                    />
-                  </td>
-                </tr>
-              ))}
+              {manualRows.map((r, i) =>
+                String(tdgType || 'C').trim().toUpperCase() === 'I' ? (
+                  <tr key={`${r.ITEM_CODE}_${i}`}>
+                    <td>{r.CAT_CODE}</td>
+                    <td>{r.ITEM_CODE}</td>
+                    <td>{r.ITEM_NAME}</td>
+                    <td className="text-right">
+                      <input
+                        className="form-input"
+                        value={r.CL_WGT ?? 0}
+                        onChange={(e) =>
+                          setManualRows((prev) =>
+                            prev.map((x, idx) => (idx === i ? { ...x, CL_WGT: e.target.value } : x))
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="text-right">
+                      <input
+                        className="form-input"
+                        value={r.RATE ?? 0}
+                        onChange={(e) =>
+                          setManualRows((prev) =>
+                            prev.map((x, idx) => (idx === i ? { ...x, RATE: e.target.value } : x))
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="text-right">
+                      <input
+                        className="form-input"
+                        value={r.AMOUNT ?? 0}
+                        onChange={(e) =>
+                          setManualRows((prev) =>
+                            prev.map((x, idx) => (idx === i ? { ...x, AMOUNT: e.target.value } : x))
+                          )
+                        }
+                      />
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={`cons_${i}`}>
+                    <td>CONSOLIDATE</td>
+                    <td>Closing Stock Amount</td>
+                    <td className="text-right">{fmtAmount(0)}</td>
+                    <td className="text-right">
+                      <input
+                        className="form-input"
+                        value={r.AMOUNT ?? 0}
+                        onChange={(e) =>
+                          setManualRows((prev) =>
+                            prev.map((x, idx) => (idx === i ? { ...x, AMOUNT: e.target.value } : x))
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="text-right">{fmtAmount(0)}</td>
+                  </tr>
+                )
+              )}
             </tbody>
           </table>
         </div>
@@ -906,6 +1079,11 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
             <button type="button" className="btn btn-whatsapp" onClick={shareTradingWhatsapp} disabled={!rows.length}>
               WhatsApp
             </button>
+            {String(tdgType || 'C').trim().toUpperCase() === 'C' ? (
+              <button type="button" className="btn btn-secondary" onClick={openAllLinkedTrialBalance} disabled={loading || !rows.length}>
+                Linked Accounts
+              </button>
+            ) : null}
           </div>
         </div>
         <div className="report-info">
@@ -928,108 +1106,258 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
         ) : null}
         {rows.length ? (
           <div className="report-display table-responsive trading-ac-report">
-            <table className="report-table trading-ac-layout">
-              <thead>
-                <tr>
-                  <th>Particulars</th>
-                  <th className="text-right">Weight</th>
-                  <th className="text-right">Amount</th>
-                  <th className="text-right">Avg.Rate</th>
-                  <th>Particulars</th>
-                  <th className="text-right">Weight</th>
-                  <th className="text-right">Amount</th>
-                  <th className="text-right">Avg.Rate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stockRows.map((r, idx) => {
-                  const lTotal = num(r.OAMT) + num(r.PAMT) + num(r.GPROFIT);
-                  const rTotal = num(r.SAMT) + num(r.CAMT) + num(r.GLOSS);
-                  return (
-                    <React.Fragment key={`stock_${idx}_${r.CODE}`}>
-                      <tr className="trading-ac-title-row sale-list-row-clickable" onClick={() => openLedger(r)} role="button" tabIndex={0}>
-                        <td colSpan={8}><strong>{String(r.NAME || '').trim() || String(r.CODE || '').trim()}</strong></td>
-                      </tr>
-                      <tr>
-                        <td>OPENING</td>
-                        <td className="text-right">{fmtWeight(r.OWGT)}</td>
-                        <td className="text-right">{fmtAmount(r.OAMT)}</td>
-                        <td className="text-right">{fmtAmount(avgRate(r.OAMT, r.OWGT, r.OQTY))}</td>
-                        <td>SALES</td>
-                        <td className="text-right">{fmtWeight(r.SWGT)}</td>
-                        <td className="text-right">{fmtAmount(r.SAMT)}</td>
-                        <td className="text-right">{fmtAmount(avgRate(r.SAMT, r.SWGT, r.SQTY))}</td>
-                      </tr>
-                      <tr>
-                        <td>PURCHASE</td>
-                        <td className="text-right">{fmtWeight(r.PWGT)}</td>
-                        <td className="text-right">{fmtAmount(r.PAMT)}</td>
-                        <td className="text-right">{fmtAmount(avgRate(r.PAMT, r.PWGT, r.PQTY))}</td>
-                        <td>SHORT/ACCESS</td>
-                        <td className="text-right">{fmtWeight(r.SHORT)}</td>
-                        <td className="text-right">{fmtAmount(0)}</td>
-                        <td className="text-right">{fmtAmount(0)}</td>
-                      </tr>
-                      <tr>
-                        <td>G.PROFIT</td>
-                        <td className="text-right">{fmtWeight(0)}</td>
-                        <td className="text-right">{fmtAmount(r.GPROFIT)}</td>
-                        <td className="text-right">{fmtAmount(0)}</td>
-                        <td>CLOSING</td>
-                        <td className="text-right">{fmtWeight(r.CWGT)}</td>
-                        <td className="text-right">{fmtAmount(r.CAMT)}</td>
-                        <td className="text-right">{fmtAmount(avgRate(r.CAMT, r.CWGT, r.CQTY))}</td>
-                      </tr>
-                      <tr>
-                        <td />
-                        <td />
-                        <td />
-                        <td />
-                        <td>G.LOSS</td>
-                        <td className="text-right">{fmtWeight(0)}</td>
-                        <td className="text-right">{fmtAmount(r.GLOSS)}</td>
-                        <td className="text-right">{fmtAmount(0)}</td>
-                      </tr>
-                      <tr className="stock-sum-grand">
-                        <td><strong>TOTAL</strong></td>
-                        <td className="text-right"><strong>{fmtWeight(0)}</strong></td>
-                        <td className="text-right"><strong>{fmtAmount(lTotal)}</strong></td>
-                        <td className="text-right"><strong>{fmtAmount(0)}</strong></td>
-                        <td><strong>TOTAL</strong></td>
-                        <td className="text-right"><strong>{fmtWeight(0)}</strong></td>
-                        <td className="text-right"><strong>{fmtAmount(rTotal)}</strong></td>
-                        <td className="text-right"><strong>{fmtAmount(0)}</strong></td>
-                      </tr>
-                    </React.Fragment>
-                  );
-                })}
-
-                {expenseRows.map((r, idx) => (
+            {String(tdgType || 'C').trim().toUpperCase() === 'C' ? (
+              <table className="report-table trading-ac-layout">
+                <thead>
+                  <tr>
+                    <th>Particulars</th>
+                    <th className="text-right">Amount</th>
+                    <th>Particulars</th>
+                    <th className="text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
                   <tr
-                    key={`exp_${idx}_${r.A_CODE || r.NAME || idx}`}
                     className="sale-list-row-clickable"
-                    onClick={() => openLedger(r)}
+                    onClick={openAllLinkedTrialBalance}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        openLedger(r);
+                        openAllLinkedTrialBalance();
                       }
                     }}
                   >
-                    <td>{String(r.NAME || '').trim()}</td>
-                    <td className="text-right">{fmtWeight(0)}</td>
-                    <td className="text-right">{fmtAmount(r.DR_AMT)}</td>
-                    <td className="text-right">{fmtAmount(0)}</td>
-                    <td />
-                    <td className="text-right">{fmtWeight(0)}</td>
-                    <td className="text-right">{fmtAmount(r.CR_AMT)}</td>
-                    <td className="text-right">{fmtAmount(0)}</td>
+                    <td>OPENING</td>
+                    <td className="text-right">{fmtAmount(summary.opening)}</td>
+                    <td>SALE</td>
+                    <td className="text-right">{fmtAmount(summary.sales)}</td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                  <tr
+                    className="sale-list-row-clickable"
+                    onClick={openAllLinkedTrialBalance}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openAllLinkedTrialBalance();
+                      }
+                    }}
+                  >
+                    <td>PURCHASE</td>
+                    <td className="text-right">{fmtAmount(summary.purchase)}</td>
+                    <td>CLOSING STOCK</td>
+                    <td className="text-right">{fmtAmount(summary.closing)}</td>
+                  </tr>
+                  <tr
+                    className="stock-sum-grand sale-list-row-clickable"
+                    onClick={openAllLinkedTrialBalance}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openAllLinkedTrialBalance();
+                      }
+                    }}
+                  >
+                    <td colSpan={2}>
+                      <strong>{summary.grossProfitLoss >= 0 ? 'Gross Profit' : 'Gross Loss'}</strong>
+                    </td>
+                    <td colSpan={2} className="text-right">
+                      <strong>{fmtAmount(Math.abs(summary.grossProfitLoss))}</strong>
+                    </td>
+                  </tr>
+                  {expenseRows.map((r, idx) => (
+                    <tr
+                      key={`exp_cons_${idx}_${r.A_CODE || r.NAME || idx}`}
+                      className="sale-list-row-clickable"
+                      onClick={openAllLinkedTrialBalance}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openAllLinkedTrialBalance();
+                        }
+                      }}
+                    >
+                      <td>{String(r.NAME || '').trim()}</td>
+                      <td className="text-right">{fmtAmount(r.DR_AMT)}</td>
+                      <td />
+                      <td className="text-right">{fmtAmount(r.CR_AMT)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <table className="report-table trading-ac-layout">
+                <thead>
+                  <tr>
+                    <th>Particulars</th>
+                    <th className="text-right">Weight</th>
+                    <th className="text-right">Amount</th>
+                    <th className="text-right">Avg.Rate</th>
+                    <th>Particulars</th>
+                    <th className="text-right">Weight</th>
+                    <th className="text-right">Amount</th>
+                    <th className="text-right">Avg.Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {itemwiseCatRows.map((r, idx) => {
+                    const lTotal = num(r.OAMT) + num(r.PAMT) + num(r.GPROFIT);
+                    const rTotal = num(r.SAMT) + num(r.CAMT) + num(r.GLOSS);
+                    const showOpening = num(r.OWGT) !== 0;
+                    const showPurchase = num(r.PWGT) !== 0;
+                    const showSales = num(r.SWGT) !== 0;
+                    const showShort = num(r.SHORT) !== 0;
+                    return (
+                      <React.Fragment key={`stock_${idx}_${r.CODE}`}>
+                        <tr
+                          className="trading-ac-title-row sale-list-row-clickable"
+                          onClick={() => openCategoryTrialBalance(r)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              openCategoryTrialBalance(r);
+                            }
+                          }}
+                        >
+                          <td colSpan={8}><strong>{String(r.NAME || '').trim() || String(r.CODE || '').trim()}</strong></td>
+                        </tr>
+                        {showOpening || showSales ? (
+                          <tr>
+                            {showOpening ? (
+                              <>
+                                <td>OPENING</td>
+                                <td className="text-right">{fmtWeight(r.OWGT)}</td>
+                                <td className="text-right">{fmtAmount(r.OAMT)}</td>
+                                <td className="text-right">{fmtAmount(avgRate(r.OAMT, r.OWGT, r.OQTY))}</td>
+                              </>
+                            ) : (
+                              <>
+                                <td />
+                                <td />
+                                <td />
+                                <td />
+                              </>
+                            )}
+                            {showSales ? (
+                              <>
+                                <td>SALES</td>
+                                <td className="text-right">{fmtWeight(r.SWGT)}</td>
+                                <td className="text-right">{fmtAmount(r.SAMT)}</td>
+                                <td className="text-right">{fmtAmount(avgRate(r.SAMT, r.SWGT, r.SQTY))}</td>
+                              </>
+                            ) : (
+                              <>
+                                <td />
+                                <td />
+                                <td />
+                                <td />
+                              </>
+                            )}
+                          </tr>
+                        ) : null}
+                        {showPurchase || showShort ? (
+                          <tr>
+                            {showPurchase ? (
+                              <>
+                                <td>PURCHASE</td>
+                                <td className="text-right">{fmtWeight(r.PWGT)}</td>
+                                <td className="text-right">{fmtAmount(r.PAMT)}</td>
+                                <td className="text-right">{fmtAmount(avgRate(r.PAMT, r.PWGT, r.PQTY))}</td>
+                              </>
+                            ) : (
+                              <>
+                                <td />
+                                <td />
+                                <td />
+                                <td />
+                              </>
+                            )}
+                            {showShort ? (
+                              <>
+                                <td>SHORT/ACCESS</td>
+                                <td className="text-right">{fmtWeight(r.SHORT)}</td>
+                                <td className="text-right">{fmtAmount(0)}</td>
+                                <td className="text-right">{fmtAmount(0)}</td>
+                              </>
+                            ) : (
+                              <>
+                                <td />
+                                <td />
+                                <td />
+                                <td />
+                              </>
+                            )}
+                          </tr>
+                        ) : null}
+                        <tr>
+                          <td>G.PROFIT</td>
+                          <td className="text-right">{fmtWeight(0)}</td>
+                          <td className="text-right">{fmtAmount(r.GPROFIT)}</td>
+                          <td className="text-right">{fmtAmount(0)}</td>
+                          <td>CLOSING</td>
+                          <td className="text-right">{fmtWeight(r.CWGT)}</td>
+                          <td className="text-right">{fmtAmount(r.CAMT)}</td>
+                          <td className="text-right">{fmtAmount(avgRate(r.CAMT, r.CWGT, r.CQTY))}</td>
+                        </tr>
+                        <tr>
+                          <td />
+                          <td />
+                          <td />
+                          <td />
+                          <td>G.LOSS</td>
+                          <td className="text-right">{fmtWeight(0)}</td>
+                          <td className="text-right">{fmtAmount(r.GLOSS)}</td>
+                          <td className="text-right">{fmtAmount(0)}</td>
+                        </tr>
+                        <tr className="stock-sum-grand">
+                          <td><strong>TOTAL</strong></td>
+                          <td className="text-right"><strong>{fmtWeight(0)}</strong></td>
+                          <td className="text-right"><strong>{fmtAmount(lTotal)}</strong></td>
+                          <td className="text-right"><strong>{fmtAmount(0)}</strong></td>
+                          <td><strong>TOTAL</strong></td>
+                          <td className="text-right"><strong>{fmtWeight(0)}</strong></td>
+                          <td className="text-right"><strong>{fmtAmount(rTotal)}</strong></td>
+                          <td className="text-right"><strong>{fmtAmount(0)}</strong></td>
+                        </tr>
+                      </React.Fragment>
+                    );
+                  })}
+                  {expenseRows.map((r, idx) => (
+                    <tr
+                      key={`exp_item_${idx}_${r.A_CODE || r.NAME || idx}`}
+                      className="sale-list-row-clickable"
+                      onClick={() => openLedger(r)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openLedger(r);
+                        }
+                      }}
+                    >
+                      <td>{String(r.NAME || '').trim()}</td>
+                      <td className="text-right">{fmtWeight(0)}</td>
+                      <td className="text-right">{fmtAmount(r.DR_AMT)}</td>
+                      <td className="text-right">{fmtAmount(0)}</td>
+                      <td />
+                      <td className="text-right">{fmtWeight(0)}</td>
+                      <td className="text-right">{fmtAmount(r.CR_AMT)}</td>
+                      <td className="text-right">{fmtAmount(0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
             <div className="trading-summary">
               <h3>Summary</h3>
               <table className="report-table trading-ac-layout">
@@ -1236,6 +1564,33 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
             </p>
           </div>
         ) : null}
+      </div>
+    );
+  }
+
+  if (screen === 'cat-trial') {
+    return (
+      <div className="slide slide-report slide-17">
+        <div className="report-toolbar">
+          <h2>Trial Balance (Category Linked)</h2>
+          <div className="toolbar-actions">
+            <button type="button" className="btn btn-toolbar-back" onClick={() => setScreen('report')}>
+              ← Back to Trading A/C
+            </button>
+          </div>
+        </div>
+        <div className="report-info">
+          <p><strong>{catTrialTitle}</strong></p>
+          <p>{compName} | FY {compYear} | As on {toDisplayDate(edt)}</p>
+        </div>
+        {error ? <div className="form-api-error">{error}</div> : null}
+        <div className="report-display">
+          <ReportTable
+            data={catTrialRows}
+            type="trial-balance"
+            onLedgerClick={(code, name) => openSimpleLedgerByCode(code, name)}
+          />
+        </div>
       </div>
     );
   }
@@ -1459,87 +1814,16 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
           </button>
         </div>
         <div className="form-group trading-form-row">
-          <label>Schedule</label>
-          <span className="trading-form-colon">:</span>
-          <input
-            className="form-input"
-            value={schedule}
-            onChange={(e) => setSchedule(normalizeSchedule(e.target.value))}
-            onBlur={() => {
-              const n = normalizeSchedule(schedule);
-              if (/^\d{1,2}$/.test(n)) setSchedule(`${n}.00`);
-            }}
-            placeholder="12.10"
-            maxLength={5}
-          />
-        </div>
-        <div className="form-group trading-form-row">
-          <label>Specific Trading A/c</label>
-          <span className="trading-form-colon">:</span>
-          <select
-            className="form-input"
-            value={code}
-            onChange={(e) => setCode(String(e.target.value || '').trim())}
-          >
-            <option value="">All</option>
-            {accountOptions.map((r) => (
-              <option key={String(r.CODE || '').trim()} value={String(r.CODE || '').trim()}>
-                {String(r.NAME || '').trim()} [{String(r.CODE || '').trim()}]
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-group trading-form-row">
           <label>Ending Date</label>
           <span className="trading-form-colon">:</span>
           <input type="date" className="form-input" value={edt} onChange={(e) => setEdt(e.target.value)} required />
         </div>
         <div className="form-group trading-form-row">
-          <label>(C)halan/(B)ikri Wgt</label>
+          <label>Trading Consolidate / Item Wise</label>
           <span className="trading-form-colon">:</span>
-          <select className="form-input" value={mcb} onChange={(e) => setMcb(String(e.target.value || 'C').toUpperCase())}>
-            <option value="C">C</option>
-            <option value="B">B</option>
-          </select>
-        </div>
-        <div className="form-group trading-form-row">
-          <label>Milling Wgt (Y/N)</label>
-          <span className="trading-form-colon">:</span>
-          <select className="form-input" value={mwyn} onChange={(e) => setMwyn(String(e.target.value || 'N').toUpperCase())}>
-            <option value="Y">Y</option>
-            <option value="N">N</option>
-          </select>
-        </div>
-        <div className="form-group trading-form-row">
-          <label>Cat.Wise (Y/N)</label>
-          <span className="trading-form-colon">:</span>
-          <select
-            className="form-input"
-            value={catCodeYn}
-            onChange={(e) => setCatCodeYn(String(e.target.value || 'N').toUpperCase())}
-          >
-            <option value="Y">Y</option>
-            <option value="N">N</option>
-          </select>
-        </div>
-        <div className="form-group trading-form-row">
-          <label>Pick Shortage Y/N</label>
-          <span className="trading-form-colon">:</span>
-          <select
-            className="form-input"
-            value={mShortPick}
-            onChange={(e) => setMShortPick(String(e.target.value || 'N').toUpperCase())}
-          >
-            <option value="Y">Y</option>
-            <option value="N">N</option>
-          </select>
-        </div>
-        <div className="form-group trading-form-row">
-          <label>Cl.Stock Manual/Auto</label>
-          <span className="trading-form-colon">:</span>
-          <select className="form-input" value={mfyn} onChange={(e) => setMfyn(String(e.target.value || 'A').toUpperCase())}>
-            <option value="A">A</option>
-            <option value="M">M</option>
+          <select className="form-input" value={tdgType} onChange={(e) => setTdgType(String(e.target.value || 'C').toUpperCase())}>
+            <option value="C">Consolidate</option>
+            <option value="I">Item Wise</option>
           </select>
         </div>
         <div className="button-group">

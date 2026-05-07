@@ -10,6 +10,12 @@ set "PATH=%ProgramFiles%\Cloudflared;%ProgramFiles(x86)%\Cloudflared;%ProgramFil
 
 echo [%date% %time%] Starting API ^+ Vite ^+ tunnel...>> logs\autostart-stack.log
 
+REM Must match manual "start services batch file.bat": free listeners or 2nd node hits EADDRINUSE on 5001/5174.
+taskkill /F /IM cloudflared.exe >> logs\autostart-stack.log 2>&1
+echo [%date% %time%] Freeing ports 5001 ^& 5174...>> logs\autostart-stack.log
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0free-windal-stack-ports.ps1" -Ports 5001,5174 >> logs\autostart-stack.log 2>&1
+timeout /t 3 /nobreak >nul
+
 start "FAS-API" /MIN cmd /c "node server.cjs >> logs\server.log 2>&1"
 timeout /t 2 /nobreak >nul
 start "FAS-Web" /MIN cmd /c "set WINDAL_TUNNEL_DEV=1&& npm.cmd run dev -- --host 0.0.0.0 --port 5174 >> logs\frontend.log 2>&1"

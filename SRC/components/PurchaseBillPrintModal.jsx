@@ -68,6 +68,8 @@ export default function PurchaseBillPrintModal({
   compUid,
   billParams,
   companyName = '',
+  /** When other stacked UI (e.g. stock ledger panel) is open, raise above it. */
+  backdropZIndex,
 }) {
   const [header, setHeader] = useState(null);
   const [lines, setLines] = useState([]);
@@ -277,7 +279,12 @@ export default function PurchaseBillPrintModal({
   ];
 
   return (
-    <div className="sale-bill-modal-backdrop sale-bill-print-backdrop" role="presentation" onClick={onClose}>
+    <div
+      className="sale-bill-modal-backdrop sale-bill-print-backdrop"
+      role="presentation"
+      onClick={onClose}
+      style={backdropZIndex != null ? { zIndex: backdropZIndex } : undefined}
+    >
       <div
         className="sale-bill-modal sale-bill-print-modal"
         role="dialog"

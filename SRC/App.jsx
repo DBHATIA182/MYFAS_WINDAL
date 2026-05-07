@@ -226,6 +226,7 @@ function App() {
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceListening, setVoiceListening] = useState(false);
   const [loginUserName, setLoginUserName] = useState(initialAuth.userName);
+  const [authorizedCompCode, setAuthorizedCompCode] = useState('');
   const [deployUpdateEnabled, setDeployUpdateEnabled] = useState(false);
   const [deployUpdateRequiresKey, setDeployUpdateRequiresKey] = useState(true);
   const [deployUpdateServerBusy, setDeployUpdateServerBusy] = useState(false);
@@ -288,6 +289,7 @@ function App() {
         if (!cancelled && actualClient && actualClient !== expectedClient) {
           setAuthenticated(false);
           setLoginUserName('');
+          setAuthorizedCompCode('');
           setCompanies([]);
           setYears([]);
           setCurrentSlide(1);
@@ -447,9 +449,12 @@ function App() {
     const fetchCompanies = async () => {
       try {
         setLoading(true);
-        const response = await axios.get(`${API_BASE}/api/companies`, {
-          params: loginUserName ? { user_name: loginUserName } : undefined,
-        });
+        const params = authorizedCompCode
+          ? { comp_code: authorizedCompCode }
+          : loginUserName
+            ? { user_name: loginUserName }
+            : undefined;
+        const response = await axios.get(`${API_BASE}/api/companies`, { params });
         console.log('Company list received:', response.data);
         setCompanies(response.data || []);
       } catch (error) {
@@ -459,11 +464,13 @@ function App() {
       }
     };
     fetchCompanies();
-  }, [authenticated, loginUserName]);
+  }, [authenticated, loginUserName, authorizedCompCode]);
 
   const handleLoginSuccess = (payload) => {
     const u = String(payload?.userName ?? payload?.user_name ?? '').trim().toUpperCase();
+    const cc = String(payload?.comp_code ?? payload?.COMP_CODE ?? '').trim();
     setLoginUserName(u);
+    setAuthorizedCompCode(cc);
     setAuthenticated(true);
     safeStorageSet(
       AUTH_STORAGE_KEY,
@@ -545,6 +552,7 @@ function App() {
     if (!window.confirm('Exit the application?')) return;
     setAuthenticated(false);
     setLoginUserName('');
+    setAuthorizedCompCode('');
     setCompanies([]);
     setYears([]);
     setCurrentSlide(1);

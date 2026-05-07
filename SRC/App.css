@@ -228,6 +228,12 @@ body {
   overflow-x: auto;
 }
 
+/* HSN Sales/Purchase totals: improve readability of grand-total rows. */
+.slide-16 .report-table tr.stock-sum-grand td {
+  font-size: 0.9rem !important;
+  font-weight: 700;
+}
+
 .hsn-mobile-filter-wrap {
   display: none;
   margin-bottom: 0.65rem;
@@ -4200,6 +4206,14 @@ td.sale-list-total-pad {
 .stock-sum-detail-table th.text-right,
 .stock-sum-detail-table td.text-right {
   text-align: right !important;
+}
+
+/* Stock sum (slide 9): full-screen ledger / detail panels — long titles wrap cleanly */
+.slide-9.slide-report .report-toolbar h2.stock-panel-title {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: clamp(0.95rem, 2.2vw, 1.15rem);
+  line-height: 1.35;
 }
 
 .stock-sum-run {

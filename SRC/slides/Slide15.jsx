@@ -19,6 +19,18 @@ function toUpperOneChar(v) {
   return String(v ?? '').toUpperCase().slice(0, 1);
 }
 
+function monthEndYmd(ymd) {
+  const s = String(ymd || '').trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return '';
+  const y = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(y) || !Number.isFinite(mm) || mm < 1 || mm > 12) return '';
+  const d = new Date(y, mm, 0);
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${m[1]}-${m[2]}-${day}`;
+}
+
 function pickAndRenameRows(rows, columns) {
   const list = Array.isArray(rows) ? rows : [];
   return list.map((r) => {
@@ -225,6 +237,12 @@ export default function Slide15({ apiBase, formData, onPrev, onReset }) {
   const [saleDetailLoading, setSaleDetailLoading] = useState(false);
   const [detailScreenOpen, setDetailScreenOpen] = useState(false);
   const [detailScreenMode, setDetailScreenMode] = useState('final');
+
+  useEffect(() => {
+    if (!sDate) return;
+    const monthEnd = monthEndYmd(sDate);
+    if (monthEnd && monthEnd !== eDate) setEDate(monthEnd);
+  }, [sDate]);
 
   const clearDetailPanels = () => {
     setDetailRows([]);

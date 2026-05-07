@@ -16,6 +16,18 @@ function fmt(v) {
   return v == null ? '' : String(v);
 }
 
+function monthEndYmd(ymd) {
+  const s = String(ymd || '').trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return '';
+  const y = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(y) || !Number.isFinite(mm) || mm < 1 || mm > 12) return '';
+  const d = new Date(y, mm, 0);
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${m[1]}-${m[2]}-${day}`;
+}
+
 function isDateColumn(name) {
   const k = String(name || '').toUpperCase();
   return k.includes('DATE');
@@ -271,6 +283,12 @@ export default function Slide16({ apiBase, formData, onPrev, onReset, reportMode
     if (s) setSDate(s);
     if (e) setEDate(e);
   }, [formData.comp_s_dt, formData.comp_e_dt, formData.COMP_S_DT, formData.COMP_E_DT]);
+
+  useEffect(() => {
+    if (!sDate) return;
+    const monthEnd = monthEndYmd(sDate);
+    if (monthEnd && monthEnd !== eDate) setEDate(monthEnd);
+  }, [sDate]);
 
   useEffect(() => {
     if (!compCode || !compUid) return;
