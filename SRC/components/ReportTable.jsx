@@ -1415,11 +1415,14 @@ export default function ReportTable({
                 );
               }
               if (item.kind === 'broker-total') {
+                const bCode = brokerOsBCodeOf(item) || '—';
+                const bName = String(item.BK_NAME ?? item.bk_name ?? '').trim();
+                const brokerLabel = bName ? `${bCode} — ${bName}` : bCode;
                 return (
                   <tr key={`bt-${i}`} className="broker-os-broker-total">
                     <td colSpan={8}>
                       <strong>
-                        Broker total — {brokerOsBCodeOf(item) || '—'}
+                        Broker total — {brokerLabel}
                       </strong>
                     </td>
                     {brokerOsCrFirst ? (
@@ -1453,9 +1456,14 @@ export default function ReportTable({
               const vrDt = row.VR_DATE ?? row.vr_date;
               const runB = parseFloat(row.RUN_BAL ?? row.run_bal ?? 0) || 0;
               const finB = parseFloat(row.FINAL_BAL ?? row.final_bal ?? 0) || 0;
+              const bCode = brokerOsBCodeOf(row) || '—';
+              const bName = String(row.BK_NAME ?? row.bk_name ?? '').trim();
               return (
                 <tr key={`d-${i}`}>
-                  <td className="bill-code">{brokerOsBCodeOf(row) || '—'}</td>
+                  <td className="bill-code" title={bName ? `${bCode} — ${bName}` : bCode}>
+                    {bCode}
+                    {bName ? ` — ${bName}` : ''}
+                  </td>
                   <td>{row.CODE ?? row.code ?? '—'}</td>
                   <td className="ledger-detail">{row.NAME ?? row.name ?? '—'}</td>
                   <td>{row.BILL_NO ?? row.bill_no ?? '—'}</td>

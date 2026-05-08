@@ -52,6 +52,9 @@ function codeOf(row) {
 function nameOf(row) {
   return String(row.NAME ?? row.name ?? '').trim();
 }
+function brokerNameOf(row) {
+  return String(row.BK_NAME ?? row.bk_name ?? '').trim();
+}
 function billNoOf(row) {
   return String(row.BILL_NO ?? row.bill_no ?? '').trim();
 }
@@ -122,6 +125,7 @@ export function buildBrokerOsDisplayRows(rawRows) {
   const n = sorted.length;
   while (i < n) {
     const bk = bCodeOf(sorted[i]);
+    const brokerName = brokerNameOf(sorted[i]);
     let brokerDr = 0;
     let brokerCr = 0;
 
@@ -210,6 +214,7 @@ export function buildBrokerOsDisplayRows(rawRows) {
     displayRows.push({
       kind: 'broker-total',
       B_CODE: bk,
+      BK_NAME: brokerName,
       DR_AMT: brokerDr,
       CR_AMT: brokerCr,
       FINAL_BAL: brokerDr - brokerCr,

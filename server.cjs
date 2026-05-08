@@ -3270,9 +3270,17 @@ app.get('/api/broker-outstanding', async (req, res) => {
     const partyFilter = partyBind !== undefined ? 'AND A.CODE = :party_code' : '';
 
     const sql = `
-      SELECT *
+      SELECT
+        x.*,
+        (
+          SELECT MAX(BM.NAME)
+          FROM MASTER BM
+          WHERE BM.COMP_CODE = x.COMP_CODE
+            AND BM.CODE = x.B_CODE
+        ) AS BK_NAME
       FROM (
         SELECT
+          A.COMP_CODE,
           MAX(A.B_CODE) OVER (
             PARTITION BY A.COMP_CODE, A.CODE, A.BILL_NO, TRUNC(A.BILL_DATE)
           ) AS B_CODE,
