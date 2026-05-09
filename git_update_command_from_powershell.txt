@@ -1,6 +1,7 @@
 cd E:\WINDAL\APPTEST
 .\push-all-to-git.ps1 -CommitMessage "your message here"
 
+
 on client machine
 cd\windal\apptest
 1.  Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -like '*E:\WINDAL\APPTEST*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
