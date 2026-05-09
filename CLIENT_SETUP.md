@@ -3,7 +3,7 @@
 Use this same software for every client. Only `connection.config.json` changes per client.
 For a new client, you normally change only:
 
-- `clientName` (example: `dal-rgind`)
+- `clientName` (example: `dal-platinum`)
 - Oracle connect/user/password fields
 
 ## 1) What to copy to client machine
@@ -50,7 +50,7 @@ Example folder layout:
 
 3. Run setup:
 
-`powershell -ExecutionPolicy Bypass -File .\setup-client.ps1 -ClientKey dal-rgind -OracleConnectString "XE" -OraclePrimaryUser DAL -OraclePrimaryPassword DAL -OracleSecondaryUser DAL -OracleSecondaryPassword DAL -AutoStartMode task`
+`powershell -ExecutionPolicy Bypass -File .\setup-client.ps1 -ClientKey dal-platinum -OracleConnectString "XE" -OraclePrimaryUser DAL -OraclePrimaryPassword DAL -OracleSecondaryUser DAL -OracleSecondaryPassword DAL -AutoStartMode task`
 
 4. Wait for completion. Script will:
 
@@ -63,7 +63,7 @@ Example folder layout:
 
 5. Verify service/log:
 
-- Task Scheduler task name: `FAS-dal-rgind-API`
+- Task Scheduler task name: `FAS-dal-platinum-API`
 - Log file: `<APP_ROOT>\logs\server.log`
 
 ## 4) Auto start on every restart

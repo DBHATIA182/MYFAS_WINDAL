@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $false)]
-    [string]$ClientKey = "dal-rgind",
+    [string]$ClientKey = "dal-platinum",
 
     [Parameter(Mandatory = $false)]
     [string]$OraclePrimaryUser = "DAL",

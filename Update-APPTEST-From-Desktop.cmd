@@ -3,10 +3,12 @@ setlocal EnableExtensions EnableDelayedExpansion
 title APPTEST One-Click Update
 
 REM ------------------------------------------------------------
-REM Edit APP_ROOT only if your app folder is different.
-REM Keep quotes because path may contain spaces.
+REM APP_ROOT = this file's folder (keep Update-APPTEST-From-Desktop.cmd inside APPTEST).
+REM Override only if you moved this .cmd outside the app folder:
+REM   set "APP_ROOT=F:\WINDAL\APPTEST"
 REM ------------------------------------------------------------
-set "APP_ROOT=E:\WINDAL\APPTEST"
+set "APP_ROOT=%~dp0"
+set "APP_ROOT=%APP_ROOT:~0,-1%"
 set "BRANCH=main"
 
 if not exist "%APP_ROOT%" (

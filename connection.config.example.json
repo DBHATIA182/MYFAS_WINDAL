@@ -7,12 +7,12 @@
     "rootDomain": "fasaccountingsoftware.in",
     "apiSubdomainSuffix": "-api"
   },
-  "clientName": "dal-rgind",
-  "defaultClientKey": "dal-rgind",
+  "clientName": "dal-platinum",
+  "defaultClientKey": "dal-platinum",
   "local": {
     "webOrigin": "http://localhost:5174",
     "apiBase": "http://localhost:5001",
-    "connectingLabel": "dal-rgind.fasaccountingsoftware.in"
+    "connectingLabel": "dal-platinum.fasaccountingsoftware.in"
   },
   "oracle": {
     "dualHubEnabled": false,

@@ -74,7 +74,7 @@ cd E:\WINDAL\APPTEST
 .\start-apptest-services.ps1
 (or your Task Scheduler / NSSM jobs if you use those instead)
 
-Open https://dal-rgind.fasaccountingsoftware.in in a browser and confirm login and reports work.
+Open https://dal-platinum.fasaccountingsoftware.in in a browser and confirm login and reports work.
 
 When everything is OK, you can keep APPTEST_OLD as backup for a few days, then delete or zip it.
 

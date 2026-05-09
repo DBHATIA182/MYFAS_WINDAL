@@ -1,0 +1,16 @@
+powershell -ExecutionPolicy Bypass -File .\setup-client.ps1 -ClientKey dal-platinum -OracleConnectString "XE" -OraclePrimaryUser DAL -OraclePrimaryPassword DAL -OracleSecondaryUser DAL -OracleSecondaryPassword DAL -AutoStartMode task
+cd D:\WINDAL
+git clone https://github.com/DBHATIA182/MYFAS_WINDAL.git APPTEST
+Then copy client-specific files from old folder:
+
+Copy-Item D:\WINDAL\APPTEST_OLD\connection.config.json D:\WINDAL\APPTEST\ -Force
+Copy-Item D:\WINDAL\APPTEST_OLD\config.dal-platinum.yml D:\WINDAL\APPTEST\ -Force
+Copy-Item D:\WINDAL\APPTEST_OLD\d13b5ec9-2520-4aa5-96e6-ff1b4cb75126.json D:\WINDAL\APPTEST\ -Force
+Then install/build:
+
+cd D:\WINDAL\APPTEST
+npm ci
+npm run build
+After this, run your stack (server + dev + tunnel with config.dal-platinum.yml).
+
+If any copy file says “not found”, tell me and I’ll give fallback for that exact file.

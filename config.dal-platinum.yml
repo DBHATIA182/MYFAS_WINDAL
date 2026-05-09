@@ -1,0 +1,9 @@
+tunnel: d13b5ec9-2520-4aa5-96e6-ff1b4cb75126
+credentials-file: ./d13b5ec9-2520-4aa5-96e6-ff1b4cb75126.json
+
+ingress:
+  - hostname: dal-platinum.fasaccountingsoftware.in
+    service: http://localhost:5174
+  - hostname: dal-platinum-api.fasaccountingsoftware.in
+    service: http://localhost:5001
+  - service: http_status:404
