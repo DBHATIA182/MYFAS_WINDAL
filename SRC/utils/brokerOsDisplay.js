@@ -87,10 +87,12 @@ function drFlag(row) {
   return parseFloat(row.DR_CR_FLAG ?? row.dr_cr_flag ?? 2) || 2;
 }
 
-/** Broker → party name (A–Z) → party code → bill / voucher order */
+/** Broker name (A–Z) → broker code (tie-break) → party name → party code → bill / voucher order */
 export function sortBrokerOsRawRows(rows) {
   const r = [...(rows || [])];
   r.sort((a, b) => {
+    const byBrokerName = brokerNameOf(a).localeCompare(brokerNameOf(b), 'en', { sensitivity: 'base', numeric: true });
+    if (byBrokerName !== 0) return byBrokerName;
     const c1 = bCodeOf(a).localeCompare(bCodeOf(b), undefined, { numeric: true });
     if (c1 !== 0) return c1;
     const c2 = nameOf(a).localeCompare(nameOf(b), 'en', { sensitivity: 'base', numeric: true });
@@ -99,8 +101,8 @@ export function sortBrokerOsRawRows(rows) {
     if (c3 !== 0) return c3;
     const bd = ts(a.BILL_DATE ?? a.bill_date) - ts(b.BILL_DATE ?? b.bill_date);
     if (bd !== 0) return bd;
-    const bn = billNoOf(a).localeCompare(billNoOf(b), undefined, { numeric: true });
-    if (bn !== 0) return bn;
+    const byBillNo = billNoOf(a).localeCompare(billNoOf(b), undefined, { numeric: true });
+    if (byBillNo !== 0) return byBillNo;
     const bt = bTypeOf(a).localeCompare(bTypeOf(b));
     if (bt !== 0) return bt;
     const vd = ts(a.VR_DATE ?? a.vr_date) - ts(b.VR_DATE ?? b.vr_date);
@@ -113,7 +115,34 @@ export function sortBrokerOsRawRows(rows) {
 }
 
 /**
- * @returns {{ displayRows: Array<{kind:'detail',row}|{kind:'party-total',...}|{kind:'broker-total',...}>, grandDr: number, grandCr: number }}
+ * Split display rows into one block per broker: `{ header, rows }[]`.
+ * Header rows stay out of `rows` so the banner can render outside the horizontal scroll container (mobile Safari).
+ */
+export function segmentBrokerOsByHeader(displayRows) {
+  const rows = Array.isArray(displayRows) ? displayRows : [];
+  const segments = [];
+  let cur = null;
+  for (const item of rows) {
+    if (!item) continue;
+    if (item.kind === 'broker-header') {
+      if (cur) segments.push(cur);
+      cur = { header: item, rows: [] };
+    } else if (cur) {
+      cur.rows.push(item);
+    }
+  }
+  if (cur) segments.push(cur);
+  return segments;
+}
+
+/**
+ * @returns {{ displayRows: Array<
+ *   | { kind: 'broker-header', B_CODE: string, BK_NAME: string }
+ *   | { kind: 'detail', row }
+ *   | { kind: 'party-total', ... }
+ *   | { kind: 'bill-total', ... }
+ *   | { kind: 'broker-total', ... }
+ * >, grandDr: number, grandCr: number }}
  */
 export function buildBrokerOsDisplayRows(rawRows) {
   const sorted = sortBrokerOsRawRows(rawRows);
@@ -126,6 +155,11 @@ export function buildBrokerOsDisplayRows(rawRows) {
   while (i < n) {
     const bk = bCodeOf(sorted[i]);
     const brokerName = brokerNameOf(sorted[i]);
+    displayRows.push({
+      kind: 'broker-header',
+      B_CODE: bk,
+      BK_NAME: brokerName,
+    });
     let brokerDr = 0;
     let brokerCr = 0;
 

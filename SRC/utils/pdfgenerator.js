@@ -6,6 +6,7 @@ import { rupeesToWords } from './rupeesInWords';
 import { saleBillStatusUnitLabel } from './saleBillDocTitle';
 import { rowFieldCI, rowFieldAny, saleBillEinvoiceText, stripLeadingRegistrationJunk } from './rowFieldCI';
 import { ageingCurBalDisplay } from './ageingDisplay';
+import { sortTrialBalanceRows } from './trialBalanceSort';
 
 function safeFilenamePart(name) {
   return String(name || 'report').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '');
@@ -507,7 +508,7 @@ function buildTrialBalanceReportHtml(data, metadata) {
   const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
 
   const grouped = {};
-  (data || []).forEach((row) => {
+  sortTrialBalanceRows(data || []).forEach((row) => {
     const sch = row.SCHEDULE ?? row.schedule ?? 0;
     if (!grouped[sch]) grouped[sch] = [];
     grouped[sch].push(row);
@@ -529,13 +530,14 @@ function buildTrialBalanceReportHtml(data, metadata) {
   let bodyRows = '';
   sortedSchedules.forEach((sch) => {
     const rows = grouped[sch];
+    const sortedRows = sortTrialBalanceRows(rows);
     const totals = calculateTotals(rows);
     gdr += totals.dr;
     gcr += totals.cr;
     gcdr += totals.cdr;
     gccr += totals.ccr;
 
-    rows.forEach((row) => {
+    sortedRows.forEach((row) => {
       const name = row.NAME ?? row.name ?? '';
       bodyRows += `
             <tr>
@@ -1092,8 +1094,19 @@ function buildBrokerOsReportHtml(data, metadata) {
   const filt = escHtml(metadata.filterLabel ?? '');
   const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
 
+  const brokerOsLabelColspan = 8;
   let bodyRows = '';
   displayRows.forEach((item) => {
+    if (item.kind === 'broker-header') {
+      const bkCode = escHtml(brokerOsBCodeOf(item));
+      const bkNm = escHtml(String(item.BK_NAME ?? item.bk_name ?? '').trim());
+      const line = bkNm ? `Broker ${bkCode} — ${bkNm}` : `Broker ${bkCode}`;
+      bodyRows += `
+            <tr class="broker-os-pdf-broker-section-head">
+              <td colspan="12" class="col-name"><strong>${line}</strong></td>
+            </tr>`;
+      return;
+    }
     if (item.kind === 'bill-total') {
       const code = escHtml(item.CODE ?? '');
       const billDt = escHtml(formatLedgerDateDisplay(item.BILL_DATE ?? item.bill_date));
@@ -1106,7 +1119,7 @@ function buildBrokerOsReportHtml(data, metadata) {
               <td class="amount"><strong>${formatAmtPdf(item.CR_AMT)}</strong></td>`;
       bodyRows += `
             <tr class="broker-os-pdf-bill-total">
-              <td colspan="8" class="col-name"><strong>Bill total — ${code} / ${billDt} / ${billNo} / ${bType}</strong></td>
+              <td colspan="${brokerOsLabelColspan}" class="col-name"><strong>Bill total — ${code} / ${billDt} / ${billNo} / ${bType}</strong></td>
               ${billDrCr}
               <td class="amount">—</td>
               <td class="amount"><strong>${formatAmtPdf(item.FINAL_BAL ?? ((item.DR_AMT ?? 0) - (item.CR_AMT ?? 0)))}</strong></td>
@@ -1122,7 +1135,7 @@ function buildBrokerOsReportHtml(data, metadata) {
               <td class="amount"><strong>${formatAmtPdf(item.CR_AMT)}</strong></td>`;
       bodyRows += `
             <tr class="subtotal-row">
-              <td colspan="8" class="col-name"><strong>${label}</strong></td>
+              <td colspan="${brokerOsLabelColspan}" class="col-name"><strong>${label}</strong></td>
               ${partyDrCr}
               <td class="amount">—</td>
               <td class="amount">—</td>
@@ -1130,7 +1143,9 @@ function buildBrokerOsReportHtml(data, metadata) {
       return;
     }
     if (item.kind === 'broker-total') {
-      const bk = escHtml(brokerOsBCodeOf(item));
+      const bkCode = escHtml(brokerOsBCodeOf(item));
+      const bkNm = escHtml(String(item.BK_NAME ?? item.bk_name ?? '').trim());
+      const bk = bkNm ? `${bkCode} — ${bkNm}` : bkCode;
       const brkDrCr = crFirst
         ? `<td class="amount"><strong>${formatAmtPdf(item.CR_AMT)}</strong></td>
               <td class="amount"><strong>${formatAmtPdf(item.DR_AMT)}</strong></td>`
@@ -1138,7 +1153,7 @@ function buildBrokerOsReportHtml(data, metadata) {
               <td class="amount"><strong>${formatAmtPdf(item.CR_AMT)}</strong></td>`;
       bodyRows += `
             <tr class="broker-os-pdf-broker-total">
-              <td colspan="8" class="col-name"><strong>Broker total — ${bk}</strong></td>
+              <td colspan="${brokerOsLabelColspan}" class="col-name"><strong>Broker total — ${bk}</strong></td>
               ${brkDrCr}
               <td class="amount">—</td>
               <td class="amount">—</td>
@@ -1153,9 +1168,9 @@ function buildBrokerOsReportHtml(data, metadata) {
               <td class="amount">${formatAmtPdf(row.DR_AMT ?? row.dr_amt)}</td>`
       : `<td class="amount">${formatAmtPdf(row.DR_AMT ?? row.dr_amt)}</td>
               <td class="amount">${formatAmtPdf(row.CR_AMT ?? row.cr_amt)}</td>`;
+    const det = escHtml(String(row.DETAIL ?? row.detail ?? '').trim());
     bodyRows += `
             <tr>
-              <td class="col-code">${escHtml(brokerOsBCodeOf(row))}</td>
               <td class="col-code">${escHtml(row.CODE ?? row.code ?? '')}</td>
               <td class="col-name">${escHtml(row.NAME ?? row.name ?? '')}</td>
               <td class="col-vr">${escHtml(row.BILL_NO ?? row.bill_no ?? '')}</td>
@@ -1163,6 +1178,7 @@ function buildBrokerOsReportHtml(data, metadata) {
               <td class="col-type">${escHtml(row.VR_TYPE ?? row.vr_type ?? '')}</td>
               <td class="col-date">${vrDt}</td>
               <td class="col-vr">${escHtml(row.VR_NO ?? row.vr_no ?? '')}</td>
+              <td class="col-detail">${det || '—'}</td>
               ${rowDrCr}
               <td class="amount bal">${formatAmtPdf(row.RUN_BAL ?? row.run_bal)}</td>
               <td class="amount">${formatAmtPdf(row.FINAL_BAL ?? row.final_bal)}</td>
@@ -1171,7 +1187,10 @@ function buildBrokerOsReportHtml(data, metadata) {
 
   return `
     <div class="report-doc">
-      <style>${PDF_REPORT_STYLES}</style>
+      <style>${PDF_REPORT_STYLES}
+        table.broker-os-pdf-table .col-detail { max-width: 200px; word-wrap: break-word; overflow-wrap: break-word; font-size: 8px; line-height: 1.25; }
+        tr.broker-os-pdf-broker-section-head td { background: #e0e7ff !important; font-weight: 700; color: #1e3a8a; border-top: 2px solid #6366f1; }
+      </style>
       <div class="report-topbar">
         <div class="kicker">ACCOUNTING REPORT</div>
         <h1>BROKER-WISE OUTSTANDING</h1>
@@ -1185,10 +1204,9 @@ function buildBrokerOsReportHtml(data, metadata) {
         <div class="report-period"><strong>Generated:</strong> ${generated}</div>
       </div>
 
-      <table class="table-report">
+      <table class="table-report broker-os-pdf-table">
         <thead>
           <tr>
-            <th>B code</th>
             <th>Code</th>
             <th>Party</th>
             <th>Bill</th>
@@ -1196,6 +1214,7 @@ function buildBrokerOsReportHtml(data, metadata) {
             <th>Vr typ</th>
             <th>Vr dt</th>
             <th>Vr no</th>
+            <th>Detail</th>
             ${crFirst ? '<th class="amount">Cr</th><th class="amount">Dr</th>' : '<th class="amount">Dr</th><th class="amount">Cr</th>'}
             <th class="amount">Run</th>
             <th class="amount">Final</th>
@@ -1204,7 +1223,7 @@ function buildBrokerOsReportHtml(data, metadata) {
         <tbody>
           ${bodyRows}
           <tr class="report-grand-total">
-            <td colspan="8" class="lbl-total">GRAND TOTAL (all detail lines)</td>
+            <td colspan="${brokerOsLabelColspan}" class="lbl-total">GRAND TOTAL (all detail lines)</td>
             ${
               crFirst
                 ? `<td class="amount">${formatAmtPdf(grandCr)}</td>
@@ -1219,7 +1238,7 @@ function buildBrokerOsReportHtml(data, metadata) {
       </table>
 
       <div class="report-foot">
-        Grouped by broker, then party name (A–Z) and code. Party and broker subtotals precede each group close. Bills included only when BILLS has numeric B_CODE in range with VR_TYPE S, SE, or PU. Credits after payment ending date count as zero.
+        Broker code and name appear above each broker block. Ordered by broker name (then broker code), then party name (A–Z) and code. Bills included only when BILLS has numeric B_CODE in range with VR_TYPE S, SE, or PU. Credits after payment ending date count as zero.
         <br />
         Computer-generated report — no signature required.
       </div>
@@ -3187,7 +3206,8 @@ export function buildReportHtml(reportType, data, metadata) {
   return buildTrialBalanceReportHtml(data, metadata);
 }
 
-function getPdfOptions(metadata, reportType) {
+function getPdfOptions(metadata, reportType, data) {
+  const rowCount = Array.isArray(data) ? data.length : 0;
   const stamp = new Date().toISOString().split('T')[0];
   const inv = safeFilenamePart(metadata.invoiceNo || metadata.saleInvNo || '');
   const pbKey = safeFilenamePart(metadata.purchaseBillKey || '');
@@ -3227,7 +3247,13 @@ function getPdfOptions(metadata, reportType) {
               scrollX: 0,
               scrollY: 0,
             }
-      : { scale: 2, useCORS: true };
+      : reportType === 'broker-os'
+        ? {
+            scale: rowCount > 550 ? 1.1 : rowCount > 350 ? 1.25 : rowCount > 180 ? 1.45 : rowCount > 90 ? 1.7 : 2,
+            useCORS: true,
+            logging: false,
+          }
+        : { scale: 2, useCORS: true };
 
   return {
     margin: reportType === 'sale-bill' || reportType === 'purchase-bill' ? 8 : reportType === 'balance-sheet' ? 6 : 10,
@@ -3247,7 +3273,7 @@ function getPdfOptions(metadata, reportType) {
  */
 export async function getPdfBlob(reportType, data, metadata) {
   const htmlContent = buildReportHtml(reportType, data, metadata);
-  const options = getPdfOptions(metadata, reportType);
+  const options = getPdfOptions(metadata, reportType, data);
   const blob = await html2pdf().set(options).from(htmlContent).outputPdf('blob');
   return { blob, filename: options.filename };
 }
@@ -3387,9 +3413,12 @@ export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText
     ? `Send to +${waDigits}\nOpen chat: https://wa.me/${waDigits}\n\n`
     : '';
 
-  const attachHint = hasTargetPhone
-    ? `\n\nPDF saved as: ${filename}\nTap Attach (paperclip), choose this PDF from Downloads, then send.`
-    : `\n\nPDF saved as: ${filename}\nIn WhatsApp, tap Attach (paperclip) and select this file from your Downloads folder.`;
+  const attachHintLong = hasTargetPhone
+    ? `\n\nPDF: ${filename}\nTap Attach (paperclip) and pick this PDF from Downloads/Files, then send.`
+    : `\n\nPDF: ${filename}\nIn WhatsApp, tap Attach (paperclip) and select this file from Downloads or Files.`;
+  const attachHintShort = `\n\n📎 ${filename}\nAttach via paperclip in WhatsApp.`;
+  const preferShortHint = String(text ?? '').length > 700;
+  const attachHint = preferShortHint ? attachHintShort : attachHintLong;
   const body = text + attachHint;
 
   /**

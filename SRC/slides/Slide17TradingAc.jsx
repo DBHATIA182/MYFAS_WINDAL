@@ -7,6 +7,7 @@ import { toDisplayDate, toInputDateString, toOracleDate } from '../utils/dateFor
 import { downloadExcelWorkbook, downloadExcelRows } from '../utils/excelExport';
 import { generatePDF, sharePdfWithWhatsApp, buildLedgerStatementPdfMetadata } from '../utils/pdfgenerator';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
+import { sortTrialBalanceRows } from '../utils/trialBalanceSort';
 
 function num(v) {
   const n = Number(v);
@@ -711,7 +712,7 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
         withCredentials: true,
         timeout: 180000,
       });
-      setCatTrialRows(Array.isArray(data) ? data : []);
+      setCatTrialRows(sortTrialBalanceRows(Array.isArray(data) ? data : []));
       setCatTrialTitle(`Category ${cat} — linked ledger codes (${linked.length}) [Sale: >12<13, Purchase: >14<15]`);
       setScreen('cat-trial');
     } catch (err) {
@@ -751,7 +752,7 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
         withCredentials: true,
         timeout: 180000,
       });
-      setCatTrialRows(Array.isArray(data) ? data : []);
+      setCatTrialRows(sortTrialBalanceRows(Array.isArray(data) ? data : []));
       setCatTrialTitle(`All linked ledger codes (${linked.length}) [Sale: >12<13, Purchase: >14<15]`);
       setScreen('cat-trial');
     } catch (err) {

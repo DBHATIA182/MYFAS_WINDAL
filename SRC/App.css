@@ -754,6 +754,41 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Broker OS: banner sits outside horizontal scroll so code+name stay visible on iOS */
+.broker-os-report-root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.broker-os-segment {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.broker-os-band {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 12px;
+  background: #eef2ff;
+  color: #1e3a8a;
+  font-weight: 700;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.broker-os-grand-wrap {
+  min-width: 0;
+}
+
 /** Sale Bill Printing list — overrides bill-ledger fixed/100% squeeze (globally enforced) */
 .slide-13-report .report-display {
   max-width: 100%;
@@ -1063,7 +1098,15 @@ body {
 }
 
 .report-table--broker-os {
-  min-width: 1080px;
+  min-width: 1220px;
+}
+
+.report-table--broker-os .broker-os-detail-col {
+  max-width: 320px;
+  min-width: 100px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  vertical-align: top;
 }
 
 .report-table--ledger,

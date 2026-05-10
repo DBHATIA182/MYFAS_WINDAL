@@ -1,8 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { formatLedgerDateDisplay } from '../utils/dateFormat';
-import { buildBrokerOsDisplayRows, brokerOsBCodeOf, brokerOsCrFirstFromSchedule } from '../utils/brokerOsDisplay';
+import {
+  buildBrokerOsDisplayRows,
+  brokerOsBCodeOf,
+  brokerOsCrFirstFromSchedule,
+  segmentBrokerOsByHeader,
+} from '../utils/brokerOsDisplay';
 import { buildSaleListDisplayRows, saleListMeas, isSaleListCn } from '../utils/saleListDisplay';
 import { ageingCurBalDisplay } from '../utils/ageingDisplay';
+import { sortTrialBalanceRows } from '../utils/trialBalanceSort';
 
 const LEDGER_SALE_VR_TYPES = new Set(['SL', 'SE', 'CN']);
 
@@ -147,11 +153,12 @@ export default function ReportTable({
 
   // --- TRIAL BALANCE VIEW (full grid + grand total; scrolls horizontally on small screens) ---
   if (type === 'trial-balance') {
+    const trialDisplayRows = sortTrialBalanceRows(data);
     let gDr = 0;
     let gCr = 0;
     let gCdr = 0;
     let gCcr = 0;
-    data.forEach((row) => {
+    trialDisplayRows.forEach((row) => {
       gDr += parseFloat(row.DR_AMT ?? row.dr_amt ?? 0) || 0;
       gCr += parseFloat(row.CR_AMT ?? row.cr_amt ?? 0) || 0;
       gCdr += parseFloat(row.CLOSING_DR ?? row.closing_dr ?? 0) || 0;
@@ -182,7 +189,7 @@ export default function ReportTable({
             </tr>
           </thead>
           <tbody>
-            {data.map((row, idx) => {
+            {trialDisplayRows.map((row, idx) => {
               const codeVal = row.CODE ?? row.code;
               const nameVal = row.NAME ?? row.name;
               const cityVal = row.CITY ?? row.city;
@@ -193,11 +200,11 @@ export default function ReportTable({
               const drAmt = parseFloat(row.DR_AMT ?? row.dr_amt ?? 0) || 0;
               const crAmt = parseFloat(row.CR_AMT ?? row.cr_amt ?? 0) || 0;
 
+              const nameUpper = String(nameVal ?? '').toUpperCase();
               const isTotal =
                 codeVal == null ||
                 codeVal === '' ||
-                (nameVal && String(nameVal).toUpperCase().includes('TOTAL'));
-              const nameUpper = String(nameVal ?? '').toUpperCase();
+                (nameVal && nameUpper.includes('TOTAL'));
               const isGrandTotal = nameUpper.includes('GRAND TOTAL');
               const isScheduleTotal = isTotal && !isGrandTotal;
               const rowClassName = isGrandTotal
@@ -1300,234 +1307,263 @@ export default function ReportTable({
   if (type === 'broker-os') {
     const { displayRows, grandDr, grandCr } = buildBrokerOsDisplayRows(data);
     const brokerOsCrFirst = brokerOsCrFirstFromSchedule(meta?.schedule);
+    const brokerOsDataColSpan = 8;
+    const segments = segmentBrokerOsByHeader(displayRows);
+
+    const brokerOsThead = (
+      <thead>
+        <tr>
+          <th scope="col">Code</th>
+          <th scope="col">Party</th>
+          <th scope="col">Bill no</th>
+          <th scope="col">Bill date</th>
+          <th scope="col">Vr type</th>
+          <th scope="col">Vr date</th>
+          <th scope="col">Vr no</th>
+          <th scope="col">Detail</th>
+          {brokerOsCrFirst ? (
+            <>
+              <th className="text-right" scope="col">
+                Cr amt
+              </th>
+              <th className="text-right" scope="col">
+                Dr amt
+              </th>
+            </>
+          ) : (
+            <>
+              <th className="text-right" scope="col">
+                Dr amt
+              </th>
+              <th className="text-right" scope="col">
+                Cr amt
+              </th>
+            </>
+          )}
+          <th className="text-right" scope="col">
+            Run bal
+          </th>
+          <th className="text-right" scope="col">
+            Final bal
+          </th>
+        </tr>
+      </thead>
+    );
+
+    const renderBrokerOsRow = (item, rowKey) => {
+      if (item.kind === 'bill-total') {
+        const code = item.CODE || '—';
+        const billDt = formatLedgerDateDisplay(item.BILL_DATE ?? item.bill_date);
+        const billNo = item.BILL_NO || '—';
+        const bType = item.B_TYPE || '—';
+        return (
+          <tr key={`blt-${rowKey}`} className="broker-os-bill-total">
+            <td colSpan={brokerOsDataColSpan}>
+              <strong>
+                Bill total — {code} / {billDt} / {billNo} / {bType}
+              </strong>
+            </td>
+            {brokerOsCrFirst ? (
+              <>
+                <td className="text-right cr-amt">
+                  <strong>{fmtAlways(item.CR_AMT)}</strong>
+                </td>
+                <td className="text-right dr-amt">
+                  <strong>{fmtAlways(item.DR_AMT)}</strong>
+                </td>
+              </>
+            ) : (
+              <>
+                <td className="text-right dr-amt">
+                  <strong>{fmtAlways(item.DR_AMT)}</strong>
+                </td>
+                <td className="text-right cr-amt">
+                  <strong>{fmtAlways(item.CR_AMT)}</strong>
+                </td>
+              </>
+            )}
+            <td className="text-right">—</td>
+            <td className="text-right">
+              <strong>{fmtAlways(item.FINAL_BAL ?? ((item.DR_AMT ?? 0) - (item.CR_AMT ?? 0)))}</strong>
+            </td>
+          </tr>
+        );
+      }
+      if (item.kind === 'party-total') {
+        const label = `Party total — ${item.NAME || '—'} (${item.CODE})`;
+        return (
+          <tr key={`pt-${rowKey}`} className="broker-os-party-total">
+            <td colSpan={brokerOsDataColSpan}>
+              <strong>{label}</strong>
+            </td>
+            {brokerOsCrFirst ? (
+              <>
+                <td className="text-right cr-amt">
+                  <strong>{fmtAlways(item.CR_AMT)}</strong>
+                </td>
+                <td className="text-right dr-amt">
+                  <strong>{fmtAlways(item.DR_AMT)}</strong>
+                </td>
+              </>
+            ) : (
+              <>
+                <td className="text-right dr-amt">
+                  <strong>{fmtAlways(item.DR_AMT)}</strong>
+                </td>
+                <td className="text-right cr-amt">
+                  <strong>{fmtAlways(item.CR_AMT)}</strong>
+                </td>
+              </>
+            )}
+            <td className="text-right">—</td>
+            <td className="text-right">
+              <strong>{fmtAlways(item.FINAL_BAL ?? ((item.DR_AMT ?? 0) - (item.CR_AMT ?? 0)))}</strong>
+            </td>
+          </tr>
+        );
+      }
+      if (item.kind === 'broker-total') {
+        const bCode = brokerOsBCodeOf(item) || '—';
+        const bName = String(item.BK_NAME ?? item.bk_name ?? '').trim();
+        const brokerLabel = bName ? `${bCode} — ${bName}` : bCode;
+        return (
+          <tr key={`bt-${rowKey}`} className="broker-os-broker-total">
+            <td colSpan={brokerOsDataColSpan}>
+              <strong>Broker total — {brokerLabel}</strong>
+            </td>
+            {brokerOsCrFirst ? (
+              <>
+                <td className="text-right cr-amt">
+                  <strong>{fmtAlways(item.CR_AMT)}</strong>
+                </td>
+                <td className="text-right dr-amt">
+                  <strong>{fmtAlways(item.DR_AMT)}</strong>
+                </td>
+              </>
+            ) : (
+              <>
+                <td className="text-right dr-amt">
+                  <strong>{fmtAlways(item.DR_AMT)}</strong>
+                </td>
+                <td className="text-right cr-amt">
+                  <strong>{fmtAlways(item.CR_AMT)}</strong>
+                </td>
+              </>
+            )}
+            <td className="text-right">—</td>
+            <td className="text-right">
+              <strong>{fmtAlways(item.FINAL_BAL ?? ((item.DR_AMT ?? 0) - (item.CR_AMT ?? 0)))}</strong>
+            </td>
+          </tr>
+        );
+      }
+      const row = item.row;
+      const billDt = row.BILL_DATE ?? row.bill_date;
+      const vrDt = row.VR_DATE ?? row.vr_date;
+      const runB = parseFloat(row.RUN_BAL ?? row.run_bal ?? 0) || 0;
+      const finB = parseFloat(row.FINAL_BAL ?? row.final_bal ?? 0) || 0;
+      const detailText = String(row.DETAIL ?? row.detail ?? '').trim();
+      return (
+        <tr key={`d-${rowKey}`}>
+          <td>{row.CODE ?? row.code ?? '—'}</td>
+          <td className="ledger-detail">{row.NAME ?? row.name ?? '—'}</td>
+          <td>{row.BILL_NO ?? row.bill_no ?? '—'}</td>
+          <td style={{ whiteSpace: 'nowrap' }}>{formatLedgerDateDisplay(billDt)}</td>
+          <td>
+            <span className={`badge-type ${row.VR_TYPE ?? row.vr_type ?? ''}`}>{row.VR_TYPE ?? row.vr_type ?? '—'}</span>
+          </td>
+          <td style={{ whiteSpace: 'nowrap' }}>{formatLedgerDateDisplay(vrDt)}</td>
+          <td>{row.VR_NO ?? row.vr_no ?? '—'}</td>
+          <td className="ledger-detail broker-os-detail-col" title={detailText || undefined}>
+            {detailText || '—'}
+          </td>
+          {brokerOsCrFirst ? (
+            <>
+              <td className="text-right cr-amt">{fmt(row.CR_AMT ?? row.cr_amt)}</td>
+              <td className="text-right dr-amt">{fmt(row.DR_AMT ?? row.dr_amt)}</td>
+            </>
+          ) : (
+            <>
+              <td className="text-right dr-amt">{fmt(row.DR_AMT ?? row.dr_amt)}</td>
+              <td className="text-right cr-amt">{fmt(row.CR_AMT ?? row.cr_amt)}</td>
+            </>
+          )}
+          <td className="text-right" style={{ fontWeight: 700, color: '#2c7a7b' }}>
+            {fmtAlways(runB)}
+          </td>
+          <td className="text-right" style={{ fontWeight: 600, color: '#1e3a5f' }}>
+            {fmtAlways(finB)}
+          </td>
+        </tr>
+      );
+    };
 
     return (
-      <div className="table-responsive table-responsive--broker-os">
-        <table className="report-table report-table--broker-os">
-          <thead>
-            <tr>
-              <th scope="col">Broker</th>
-              <th scope="col">Code</th>
-              <th scope="col">Party</th>
-              <th scope="col">Bill no</th>
-              <th scope="col">Bill date</th>
-              <th scope="col">Vr type</th>
-              <th scope="col">Vr date</th>
-              <th scope="col">Vr no</th>
-              {brokerOsCrFirst ? (
-                <>
-                  <th className="text-right" scope="col">
-                    Cr amt
-                  </th>
-                  <th className="text-right" scope="col">
-                    Dr amt
-                  </th>
-                </>
-              ) : (
-                <>
-                  <th className="text-right" scope="col">
-                    Dr amt
-                  </th>
-                  <th className="text-right" scope="col">
-                    Cr amt
-                  </th>
-                </>
-              )}
-              <th className="text-right" scope="col">
-                Run bal
-              </th>
-              <th className="text-right" scope="col">
-                Final bal
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {displayRows.map((item, i) => {
-              if (item.kind === 'bill-total') {
-                const code = item.CODE || '—';
-                const billDt = formatLedgerDateDisplay(item.BILL_DATE ?? item.bill_date);
-                const billNo = item.BILL_NO || '—';
-                const bType = item.B_TYPE || '—';
-                return (
-                  <tr key={`blt-${i}`} className="broker-os-bill-total">
-                    <td colSpan={8}>
-                      <strong>
-                        Bill total — {code} / {billDt} / {billNo} / {bType}
-                      </strong>
-                    </td>
-                    {brokerOsCrFirst ? (
-                      <>
-                        <td className="text-right cr-amt">
-                          <strong>{fmtAlways(item.CR_AMT)}</strong>
-                        </td>
-                        <td className="text-right dr-amt">
-                          <strong>{fmtAlways(item.DR_AMT)}</strong>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="text-right dr-amt">
-                          <strong>{fmtAlways(item.DR_AMT)}</strong>
-                        </td>
-                        <td className="text-right cr-amt">
-                          <strong>{fmtAlways(item.CR_AMT)}</strong>
-                        </td>
-                      </>
-                    )}
-                    <td className="text-right">—</td>
-                    <td className="text-right">
-                      <strong>{fmtAlways(item.FINAL_BAL ?? ((item.DR_AMT ?? 0) - (item.CR_AMT ?? 0)))}</strong>
-                    </td>
-                  </tr>
-                );
-              }
-              if (item.kind === 'party-total') {
-                const label = `Party total — ${item.NAME || '—'} (${item.CODE})`;
-                return (
-                  <tr key={`pt-${i}`} className="broker-os-party-total">
-                    <td colSpan={8}>
-                      <strong>{label}</strong>
-                    </td>
-                    {brokerOsCrFirst ? (
-                      <>
-                        <td className="text-right cr-amt">
-                          <strong>{fmtAlways(item.CR_AMT)}</strong>
-                        </td>
-                        <td className="text-right dr-amt">
-                          <strong>{fmtAlways(item.DR_AMT)}</strong>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="text-right dr-amt">
-                          <strong>{fmtAlways(item.DR_AMT)}</strong>
-                        </td>
-                        <td className="text-right cr-amt">
-                          <strong>{fmtAlways(item.CR_AMT)}</strong>
-                        </td>
-                      </>
-                    )}
-                    <td className="text-right">—</td>
-                    <td className="text-right">
-                      <strong>{fmtAlways(item.FINAL_BAL ?? ((item.DR_AMT ?? 0) - (item.CR_AMT ?? 0)))}</strong>
-                    </td>
-                  </tr>
-                );
-              }
-              if (item.kind === 'broker-total') {
-                const bCode = brokerOsBCodeOf(item) || '—';
-                const bName = String(item.BK_NAME ?? item.bk_name ?? '').trim();
-                const brokerLabel = bName ? `${bCode} — ${bName}` : bCode;
-                return (
-                  <tr key={`bt-${i}`} className="broker-os-broker-total">
-                    <td colSpan={8}>
-                      <strong>
-                        Broker total — {brokerLabel}
-                      </strong>
-                    </td>
-                    {brokerOsCrFirst ? (
-                      <>
-                        <td className="text-right cr-amt">
-                          <strong>{fmtAlways(item.CR_AMT)}</strong>
-                        </td>
-                        <td className="text-right dr-amt">
-                          <strong>{fmtAlways(item.DR_AMT)}</strong>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="text-right dr-amt">
-                          <strong>{fmtAlways(item.DR_AMT)}</strong>
-                        </td>
-                        <td className="text-right cr-amt">
-                          <strong>{fmtAlways(item.CR_AMT)}</strong>
-                        </td>
-                      </>
-                    )}
-                    <td className="text-right">—</td>
-                    <td className="text-right">
-                      <strong>{fmtAlways(item.FINAL_BAL ?? ((item.DR_AMT ?? 0) - (item.CR_AMT ?? 0)))}</strong>
-                    </td>
-                  </tr>
-                );
-              }
-              const row = item.row;
-              const billDt = row.BILL_DATE ?? row.bill_date;
-              const vrDt = row.VR_DATE ?? row.vr_date;
-              const runB = parseFloat(row.RUN_BAL ?? row.run_bal ?? 0) || 0;
-              const finB = parseFloat(row.FINAL_BAL ?? row.final_bal ?? 0) || 0;
-              const bCode = brokerOsBCodeOf(row) || '—';
-              const bName = String(row.BK_NAME ?? row.bk_name ?? '').trim();
-              return (
-                <tr key={`d-${i}`}>
-                  <td className="bill-code" title={bName ? `${bCode} — ${bName}` : bCode}>
-                    {bCode}
-                    {bName ? ` — ${bName}` : ''}
+      <div className="broker-os-report-root">
+        {segments.map((seg, si) => {
+          const hdr = seg.header;
+          const bc = brokerOsBCodeOf(hdr) || '—';
+          const bn = String(hdr.BK_NAME ?? hdr.bk_name ?? '').trim();
+          return (
+            <div key={`bos-seg-${si}`} className="broker-os-segment">
+              <div className="broker-os-band" role="group" aria-label={`Broker ${bc}`}>
+                <strong>Broker</strong> <span className="bill-code">{bc}</span>
+                {bn ? (
+                  <>
+                    {' '}
+                    — <span className="name-text">{bn}</span>
+                  </>
+                ) : null}
+              </div>
+              <div className="table-responsive table-responsive--broker-os">
+                <table className="report-table report-table--broker-os">
+                  {brokerOsThead}
+                  <tbody>{seg.rows.map((item, ri) => renderBrokerOsRow(item, `${si}-${ri}`))}</tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })}
+        <div className="broker-os-grand-wrap">
+          <div className="table-responsive table-responsive--broker-os">
+            <table className="report-table report-table--broker-os">
+              {brokerOsThead}
+              <tbody>
+                <tr className="bill-ledger-grand-total">
+                  <td colSpan={brokerOsDataColSpan}>
+                    <strong>GRAND TOTAL</strong>
+                    <span className="bill-ledger-grand-note"> (all detail lines)</span>
                   </td>
-                  <td>{row.CODE ?? row.code ?? '—'}</td>
-                  <td className="ledger-detail">{row.NAME ?? row.name ?? '—'}</td>
-                  <td>{row.BILL_NO ?? row.bill_no ?? '—'}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{formatLedgerDateDisplay(billDt)}</td>
-                  <td>
-                    <span className={`badge-type ${row.VR_TYPE ?? row.vr_type ?? ''}`}>
-                      {row.VR_TYPE ?? row.vr_type ?? '—'}
-                    </span>
-                  </td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{formatLedgerDateDisplay(vrDt)}</td>
-                  <td>{row.VR_NO ?? row.vr_no ?? '—'}</td>
                   {brokerOsCrFirst ? (
                     <>
-                      <td className="text-right cr-amt">{fmt(row.CR_AMT ?? row.cr_amt)}</td>
-                      <td className="text-right dr-amt">{fmt(row.DR_AMT ?? row.dr_amt)}</td>
+                      <td className="text-right">
+                        <strong>{fmtAlways(grandCr)}</strong>
+                      </td>
+                      <td className="text-right">
+                        <strong>{fmtAlways(grandDr)}</strong>
+                      </td>
                     </>
                   ) : (
                     <>
-                      <td className="text-right dr-amt">{fmt(row.DR_AMT ?? row.dr_amt)}</td>
-                      <td className="text-right cr-amt">{fmt(row.CR_AMT ?? row.cr_amt)}</td>
+                      <td className="text-right">
+                        <strong>{fmtAlways(grandDr)}</strong>
+                      </td>
+                      <td className="text-right">
+                        <strong>{fmtAlways(grandCr)}</strong>
+                      </td>
                     </>
                   )}
-                  <td className="text-right" style={{ fontWeight: 700, color: '#2c7a7b' }}>
-                    {fmtAlways(runB)}
+                  <td className="text-right">
+                    <strong>—</strong>
                   </td>
-                  <td className="text-right" style={{ fontWeight: 600, color: '#1e3a5f' }}>
-                    {fmtAlways(finB)}
+                  <td className="text-right">
+                    <strong>{fmtAlways(grandDr - grandCr)}</strong>
                   </td>
                 </tr>
-              );
-            })}
-            <tr className="bill-ledger-grand-total">
-              <td colSpan={8}>
-                <strong>GRAND TOTAL</strong>
-                <span className="bill-ledger-grand-note"> (all detail lines)</span>
-              </td>
-              {brokerOsCrFirst ? (
-                <>
-                  <td className="text-right">
-                    <strong>{fmtAlways(grandCr)}</strong>
-                  </td>
-                  <td className="text-right">
-                    <strong>{fmtAlways(grandDr)}</strong>
-                  </td>
-                </>
-              ) : (
-                <>
-                  <td className="text-right">
-                    <strong>{fmtAlways(grandDr)}</strong>
-                  </td>
-                  <td className="text-right">
-                    <strong>{fmtAlways(grandCr)}</strong>
-                  </td>
-                </>
-              )}
-              <td className="text-right">
-                <strong>—</strong>
-              </td>
-              <td className="text-right">
-                <strong>{fmtAlways(grandDr - grandCr)}</strong>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     );
   }

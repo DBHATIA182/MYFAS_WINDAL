@@ -7,6 +7,7 @@ import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFor
 import { generatePDF, sharePdfWithWhatsApp, buildLedgerStatementPdfMetadata } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
+import { sortTrialBalanceRows } from '../utils/trialBalanceSort';
 
 const VIEW = { FORM: 'form', TRIAL: 'trial', LEDGER: 'ledger', VOUCHER: 'voucher' };
 
@@ -91,7 +92,7 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
           comp_uid: compUid,
         },
       });
-      setTrialRows(Array.isArray(data) ? data : []);
+      setTrialRows(sortTrialBalanceRows(Array.isArray(data) ? data : []));
       setViewMode(VIEW.TRIAL);
     } catch (err) {
       alert('Error: ' + (err.response?.data?.error || err.message));

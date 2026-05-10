@@ -53,6 +53,7 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
   const [listHighlight, setListHighlight] = useState(0);
   /** Dr/Cr column order: blank or ≠11.10 → Dr then Cr; 11.10 (creditors) → Cr then Dr. */
   const [brokerOsSchedule, setBrokerOsSchedule] = useState('');
+  const [whatsAppBusy, setWhatsAppBusy] = useState(false);
 
   const compCode = formData.comp_code ?? formData.COMP_CODE;
   const compUid = formData.comp_uid ?? formData.COMP_UID;
@@ -199,6 +200,12 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
     return `${brokStart.trim()} – ${brokEnd.trim()}`;
   }, [brokStart, brokEnd]);
 
+  const selectedBrokerName = String(singleBrokerRow?.NAME ?? singleBrokerRow?.name ?? '').trim();
+  /** Range + broker name when one broker is selected (for PDF, WhatsApp, and report header). */
+  const brokerRangeWithName = selectedBrokerName
+    ? `${brokerRangeLabel} — ${selectedBrokerName}`
+    : brokerRangeLabel;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!brokStart.trim() || !brokEnd.trim()) {
@@ -227,7 +234,7 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
       const { data } = await axios.get(`${apiBase}/api/broker-outstanding`, {
         params,
         withCredentials: true,
-        timeout: 120000,
+        timeout: 600000,
       });
       const rows = Array.isArray(data) ? data : [];
       if (rows.length === 0) {
@@ -253,7 +260,7 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
     year: compYear,
     endDate: `${toDisplayDate(startDate)} – ${toDisplayDate(endDate)}`,
     payEndDate: toDisplayDate(payEndDate),
-    brokerRange: brokerRangeLabel,
+    brokerRange: brokerRangeWithName,
     partyLabel: selectedParty
       ? `${selectedParty} — ${selectedPartyRow?.NAME ?? ''}`
       : 'All parties (C/S)',
@@ -263,15 +270,24 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
 
   const downloadPDF = () => generatePDF('broker-os', reportData, pdfMeta);
 
-  const shareWhatsApp = () => {
+  const shareWhatsApp = async () => {
+    const brokerHeadline = selectedBrokerName
+      ? `Broker: ${String(singleBrokerRow.CODE ?? singleBrokerRow.code ?? '').trim()} — ${selectedBrokerName}`
+      : `Brokers: ${brokerRangeLabel}`;
     const shareText = [
       `Broker-wise outstanding — ${compName}`,
-      `${compYear} | Brokers ${brokerRangeLabel}`,
+      brokerHeadline,
+      compYear,
       pdfMeta.partyLabel,
       `Dates ${toDisplayDate(startDate)} – ${toDisplayDate(endDate)} | Pay to ${toDisplayDate(payEndDate)}`,
       mco === 'O' ? 'Filter: Outstanding' : 'Filter: All',
     ].join('\n');
-    return sharePdfWithWhatsApp('broker-os', reportData, pdfMeta, shareText);
+    setWhatsAppBusy(true);
+    try {
+      await sharePdfWithWhatsApp('broker-os', reportData, pdfMeta, shareText);
+    } finally {
+      setWhatsAppBusy(false);
+    }
   };
 
   if (showReport && reportData.length > 0) {
@@ -306,16 +322,17 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
             <button
               type="button"
               className="btn btn-whatsapp"
+              disabled={whatsAppBusy}
               onClick={() => shareWhatsApp().catch((err) => alert(err?.message || String(err)))}
             >
-              💬 WhatsApp
+              {whatsAppBusy ? 'Preparing…' : '💬 WhatsApp'}
             </button>
           </div>
         </div>
 
         <div className="report-info">
           <p>
-            <strong>Brokers</strong> {brokerRangeLabel}
+            <strong>Brokers</strong> {brokerRangeWithName}
             {selectedParty ? (
               <>
                 {' '}

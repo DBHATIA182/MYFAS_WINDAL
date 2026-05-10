@@ -2329,8 +2329,9 @@ app.get('/api/trial-balance', async (req, res) => {
     }
 
     // ROLLUP creates the sub-aggregates automatically
+    // GROUPING(a.code)=0 detail rows (sort by account name); =1 schedule subtotal then grand total
     sql += ` GROUP BY ROLLUP(b.schedule, a.code) 
-             ORDER BY b.schedule NULLS LAST, a.code NULLS LAST`;
+             ORDER BY b.schedule NULLS LAST, GROUPING(a.code), MAX(b.name) NULLS LAST`;
 
     const rows = await runQuery(sql, bindParams, comp_uid);
     res.json(rows);
@@ -2385,7 +2386,7 @@ app.get('/api/trial-balance-by-codes', async (req, res) => {
       WHERE B.COMP_CODE = :comp_code
         AND B.CODE IN (${inSql})
       GROUP BY B.SCHEDULE, B.CODE
-      ORDER BY B.SCHEDULE NULLS LAST, B.CODE
+      ORDER BY B.SCHEDULE NULLS LAST, MAX(B.NAME)
     `;
 
     const rows = await runQuery(sql, bindParams, comp_uid);
@@ -3291,6 +3292,7 @@ app.get('/api/broker-outstanding', async (req, res) => {
           A.VR_TYPE,
           A.VR_DATE,
           A.VR_NO,
+          NVL(A.DETAIL,'') AS DETAIL,
           NVL(A.DR_AMT,0) AS DR_AMT,
           CASE
             WHEN A.VR_DATE <= TO_DATE(:p_edt,'DD-MM-YYYY') THEN NVL(A.CR_AMT,0)
@@ -3339,7 +3341,7 @@ app.get('/api/broker-outstanding', async (req, res) => {
           AND A.BILL_DATE BETWEEN TO_DATE(:s_date,'DD-MM-YYYY') AND TO_DATE(:e_date,'DD-MM-YYYY')
       ) x
       WHERE :mco = 'A' OR (:mco = 'O' AND NVL(x.FINAL_BAL,0) <> 0)
-      ORDER BY x.B_CODE, x.NAME, x.CODE, x.BILL_DATE, x.VR_DATE, x.DR_CR_FLAG, x.VR_NO`;
+      ORDER BY UPPER(NVL(TRIM(BK_NAME), CHR(0))), x.B_CODE, x.NAME, x.CODE, x.BILL_DATE, x.VR_DATE, x.DR_CR_FLAG, x.VR_NO`;
 
     const binds = {
       comp_code,
