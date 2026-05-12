@@ -58,8 +58,17 @@ if ($LASTEXITCODE -ne 0) { throw "git fetch failed." }
 git checkout $Branch
 if ($LASTEXITCODE -ne 0) { throw "git checkout $Branch failed." }
 
-git pull origin $Branch
-if ($LASTEXITCODE -ne 0) { throw "git pull failed. Resolve conflicts, then run this script again." }
+# Stash local edits (e.g. old hardcoded APP_ROOT in Update-APPTEST-From-Desktop.cmd), pull, then re-apply.
+# Requires Git for Windows 2.27+; avoids "would be overwritten by merge" when the desktop launcher was modified.
+git pull origin $Branch --autostash
+if ($LASTEXITCODE -ne 0) {
+    throw @"
+git pull failed.
+
+If the error mentions unknown option 'autostash', upgrade Git for Windows (2.27+), then run this script again.
+Otherwise: open a terminal in this folder, run  git status , fix conflicts or run  git stash -u  then  git pull origin $Branch  then  git stash pop , and run this script again.
+"@
+}
 
 Write-Host ""
 Write-Host "==> npm ci (exact deps from package-lock.json)" -ForegroundColor Cyan

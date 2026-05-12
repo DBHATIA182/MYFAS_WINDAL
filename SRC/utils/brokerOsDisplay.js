@@ -87,6 +87,53 @@ function drFlag(row) {
   return parseFloat(row.DR_CR_FLAG ?? row.dr_cr_flag ?? 2) || 2;
 }
 
+/** Normalize bill date for grouping keys (matches server: TRUNC(BILL_DATE)). */
+function brokerOsBillDateKey(raw) {
+  if (raw == null || raw === '') return '';
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const t = new Date(raw).getTime();
+  if (Number.isNaN(t)) return s;
+  return new Date(t).toISOString().slice(0, 10);
+}
+
+function brokerOsBillGroupKey(row) {
+  if (!row) return '';
+  const comp = String(row.COMP_CODE ?? row.comp_code ?? '').trim();
+  const code = String(row.CODE ?? row.code ?? '').trim();
+  const billNo = String(row.BILL_NO ?? row.bill_no ?? '').trim();
+  const dk = brokerOsBillDateKey(row.BILL_DATE ?? row.bill_date);
+  return `${comp}|${code}|${billNo}|${dk}`;
+}
+
+/**
+ * Drop entire bills whose closing balance (FINAL_BAL on API rows — bill total / "final bal")
+ * has absolute value strictly below `minAmount` (e.g. min 100 hides balance 99).
+ * Blank, zero, or invalid min → no filtering.
+ */
+export function filterBrokerOsRawRowsByMinClosingAbs(rows, minAmountRaw) {
+  const list = Array.isArray(rows) ? rows : [];
+  const minAmount = parseFloat(String(minAmountRaw ?? '').replace(/,/g, '').trim());
+  if (!Number.isFinite(minAmount) || minAmount <= 0) return list;
+
+  const billFinalAbs = new Map();
+  for (const row of list) {
+    if (!row) continue;
+    const key = brokerOsBillGroupKey(row);
+    if (!key || billFinalAbs.has(key)) continue;
+    const fin = parseFloat(row.FINAL_BAL ?? row.final_bal ?? 0) || 0;
+    billFinalAbs.set(key, Math.abs(fin));
+  }
+
+  const excluded = new Set();
+  for (const [key, absFin] of billFinalAbs) {
+    if (absFin < minAmount) excluded.add(key);
+  }
+  if (excluded.size === 0) return list;
+
+  return list.filter((row) => !excluded.has(brokerOsBillGroupKey(row)));
+}
+
 /** Broker name (A–Z) → broker code (tie-break) → party name → party code → bill / voucher order */
 export function sortBrokerOsRawRows(rows) {
   const r = [...(rows || [])];

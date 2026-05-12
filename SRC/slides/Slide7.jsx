@@ -5,7 +5,7 @@ import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
-import { parseBrokerOsRangeForUi } from '../utils/brokerOsDisplay';
+import { filterBrokerOsRawRowsByMinClosingAbs, parseBrokerOsRangeForUi } from '../utils/brokerOsDisplay';
 
 const DEFAULT_HISTORY_START_DATE = '2001-04-01';
 
@@ -53,6 +53,8 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
   const [listHighlight, setListHighlight] = useState(0);
   /** Dr/Cr column order: blank or ≠11.10 → Dr then Cr; 11.10 (creditors) → Cr then Dr. */
   const [brokerOsSchedule, setBrokerOsSchedule] = useState('');
+  /** Bills with |final / closing balance| below this are omitted from the list (PDF, Excel, screen). */
+  const [brokerOsMinIgnore, setBrokerOsMinIgnore] = useState('');
   const [whatsAppBusy, setWhatsAppBusy] = useState(false);
 
   const compCode = formData.comp_code ?? formData.COMP_CODE;
@@ -206,6 +208,11 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
     ? `${brokerRangeLabel} — ${selectedBrokerName}`
     : brokerRangeLabel;
 
+  const brokerOsFilteredReportData = useMemo(
+    () => filterBrokerOsRawRowsByMinClosingAbs(reportData, brokerOsMinIgnore),
+    [reportData, brokerOsMinIgnore],
+  );
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!brokStart.trim() || !brokEnd.trim()) {
@@ -264,11 +271,18 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
     partyLabel: selectedParty
       ? `${selectedParty} — ${selectedPartyRow?.NAME ?? ''}`
       : 'All parties (C/S)',
-    filterLabel: mco === 'O' ? 'Outstanding only (FINAL_BAL ≠ 0)' : 'All bills',
+    filterLabel: (() => {
+      const base = mco === 'O' ? 'Outstanding only (FINAL_BAL ≠ 0)' : 'All bills';
+      const n = parseFloat(String(brokerOsMinIgnore ?? '').replace(/,/g, '').trim());
+      if (Number.isFinite(n) && n > 0) {
+        return `${base}; hide bills with |final bal| < ${n}`;
+      }
+      return base;
+    })(),
     schedule: brokerOsSchedule,
   };
 
-  const downloadPDF = () => generatePDF('broker-os', reportData, pdfMeta);
+  const downloadPDF = () => generatePDF('broker-os', brokerOsFilteredReportData, pdfMeta);
 
   const shareWhatsApp = async () => {
     const brokerHeadline = selectedBrokerName
@@ -284,13 +298,44 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
     ].join('\n');
     setWhatsAppBusy(true);
     try {
-      await sharePdfWithWhatsApp('broker-os', reportData, pdfMeta, shareText);
+      await sharePdfWithWhatsApp('broker-os', brokerOsFilteredReportData, pdfMeta, shareText);
     } finally {
       setWhatsAppBusy(false);
     }
   };
 
   if (showReport && reportData.length > 0) {
+    const minIgnoreNum = parseFloat(String(brokerOsMinIgnore ?? '').replace(/,/g, '').trim());
+    const minIgnoreActive = Number.isFinite(minIgnoreNum) && minIgnoreNum > 0;
+
+    if (brokerOsFilteredReportData.length === 0) {
+      return (
+        <div className="slide slide-report">
+          <div className="report-toolbar">
+            <h2>Broker outstanding</h2>
+            <div className="toolbar-actions">
+              <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
+                ← Back
+              </button>
+            </div>
+          </div>
+          <div className="report-info" role="status">
+            <p>
+              <strong>No bills to show.</strong>{' '}
+              {minIgnoreActive
+                ? `Every bill had |final balance| below your minimum (${minIgnoreNum}). Use ← Back, lower or clear “Minimum amount to ignore”, then Run again.`
+                : 'Try widening dates or broker range.'}
+            </p>
+          </div>
+          <div className="button-group">
+            <button type="button" className="btn btn-secondary" onClick={() => setShowReport(false)}>
+              ← Back
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="slide slide-report">
         <div className="report-toolbar">
@@ -311,7 +356,7 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
               className="btn btn-excel"
               onClick={() => {
                 try {
-                  downloadExcelRows(reportData, 'BrokerOS', `${compName}_BrokerOutstanding`);
+                  downloadExcelRows(brokerOsFilteredReportData, 'BrokerOS', `${compName}_BrokerOutstanding`);
                 } catch (e) {
                   alert(String(e?.message || e));
                 }
@@ -347,11 +392,17 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
             <br />
             Bills {toDisplayDate(startDate)} – {toDisplayDate(endDate)} · Payment cut-off {toDisplayDate(payEndDate)} ·{' '}
             {mco === 'O' ? 'Outstanding only' : 'All'}
+            {minIgnoreActive ? (
+              <>
+                {' '}
+                · Hiding bills whose |final bal| is below <strong>{minIgnoreNum}</strong>
+              </>
+            ) : null}
           </p>
         </div>
 
         <div className="report-display">
-          <ReportTable data={reportData} type="broker-os" meta={{ schedule: brokerOsSchedule }} />
+          <ReportTable data={brokerOsFilteredReportData} type="broker-os" meta={{ schedule: brokerOsSchedule }} />
         </div>
 
         <div className="button-group">
@@ -637,6 +688,28 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
               Outstanding only (O) — FINAL_BAL ≠ 0
             </label>
           </div>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="bo-min-ignore">Minimum amount to ignore (optional)</label>
+          <input
+            id="bo-min-ignore"
+            name="broker-os-min-ignore"
+            type="text"
+            inputMode="decimal"
+            className="form-input"
+            style={{ maxWidth: '12rem' }}
+            value={brokerOsMinIgnore}
+            onChange={(e) => setBrokerOsMinIgnore(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="e.g. 100"
+          />
+          <p className="form-hint" style={{ marginTop: '0.35rem' }}>
+            Bills whose <strong>final balance</strong> (closing total for the bill — same as the <strong>Final bal</strong>{' '}
+            column) has absolute value <strong>strictly below</strong> this amount are omitted from the on-screen list, PDF,
+            and Excel. Leave blank for no extra filter.
+          </p>
         </div>
 
         <div className="form-group">
