@@ -24,6 +24,28 @@ export function rowFieldAny(row, logicalNames) {
   return '';
 }
 
+/**
+ * Sale print (PDF / preview): tax column headers use one CGST/SGST/IGST % label. Oracle rows are ordered by
+ * bill keys; a first line with zero % (e.g. charges row) should not hide rates on later lines.
+ */
+export function saleBillTaxPercentForHeader(lines, firstRow, logicalName) {
+  const readPer = (row) => {
+    if (!row) return NaN;
+    const raw = rowFieldCI(row, logicalName);
+    if (raw === '' || raw == null) return NaN;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : NaN;
+  };
+  const head = readPer(firstRow);
+  if (Number.isFinite(head) && Math.abs(head) > 0.0001) return head;
+  for (const row of lines || []) {
+    const n = readPer(row);
+    if (Number.isFinite(n) && Math.abs(n) > 0.0001) return n;
+  }
+  const fb = readPer(firstRow);
+  return Number.isFinite(fb) ? fb : 0;
+}
+
 /** compdet / legacy fields sometimes store stray leading punctuation (e.g. “-UDY11111”, “-123455”). */
 export function stripLeadingRegistrationJunk(raw) {
   if (raw == null) return '';

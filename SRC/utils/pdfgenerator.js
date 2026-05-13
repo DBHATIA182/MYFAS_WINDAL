@@ -4,7 +4,13 @@ import { buildBrokerOsDisplayRows, brokerOsBCodeOf, brokerOsCrFirstFromSchedule 
 import { buildSaleListDisplayRows, saleListMeas, isSaleListCn } from './saleListDisplay';
 import { rupeesToWords } from './rupeesInWords';
 import { saleBillStatusUnitLabel } from './saleBillDocTitle';
-import { rowFieldCI, rowFieldAny, saleBillEinvoiceText, stripLeadingRegistrationJunk } from './rowFieldCI';
+import {
+  rowFieldCI,
+  rowFieldAny,
+  saleBillEinvoiceText,
+  stripLeadingRegistrationJunk,
+  saleBillTaxPercentForHeader,
+} from './rowFieldCI';
 import { ageingCurBalDisplay } from './ageingDisplay';
 import { sortTrialBalanceRows } from './trialBalanceSort';
 
@@ -1609,9 +1615,9 @@ function buildSaleBillReportHtml(data, metadata) {
     const clean = Number.isInteger(per) ? String(per) : per.toFixed(2).replace(/\.?0+$/, '');
     return `${name} (${clean}%)`;
   };
-  const cgstLabel = taxLabel('CGST', rowFieldCI(f, 'cgst_per'));
-  const sgstLabel = taxLabel('SGST', rowFieldCI(f, 'sgst_per'));
-  const igstLabel = taxLabel('IGST', rowFieldCI(f, 'igst_per'));
+  const cgstLabel = taxLabel('CGST', saleBillTaxPercentForHeader(lines, f, 'cgst_per'));
+  const sgstLabel = taxLabel('SGST', saleBillTaxPercentForHeader(lines, f, 'sgst_per'));
+  const igstLabel = taxLabel('IGST', saleBillTaxPercentForHeader(lines, f, 'igst_per'));
   const taxSumPdf = Math.abs(Number(t.sumC || 0)) + Math.abs(Number(t.sumS || 0)) + Math.abs(Number(t.sumI || 0));
   const docUpper = String(docTitle || '').toUpperCase();
   const isCreditNotePdf = docUpper === 'CREDIT NOTE';

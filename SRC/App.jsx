@@ -19,6 +19,7 @@ import Slide16 from './slides/Slide16';
 import Slide17TradingAc from './slides/Slide17TradingAc';
 import Slide18PlProfitLoss from './slides/Slide18PlProfitLoss';
 import Slide19BalanceSheet from './slides/Slide19BalanceSheet';
+import Slide21SaleBill from './slides/Slide21SaleBill';
 import { exitApp, performExitWindow } from './utils/exitApp';
 import connectionConfig from '../connection.config.json';
 import './App.css';
@@ -169,7 +170,7 @@ const API_BASE = import.meta.env.DEV
   : isLocalHost
     ? connectionConfig.local?.apiBase || 'http://localhost:5001'
     : remoteApiBase;
-const TOTAL_STEPS = 20;
+const TOTAL_STEPS = 21;
 const VIEW_MODE_STORAGE_KEY = 'gfas_view_mode';
 const AUTH_STORAGE_KEY = 'gfas_auth_state_v1';
 
@@ -543,6 +544,7 @@ function App() {
     else if (reportType === 'trading-ac') setCurrentSlide(18);
     else if (reportType === 'pl-profit-loss') setCurrentSlide(19);
     else if (reportType === 'balance-sheet') setCurrentSlide(20);
+    else if (reportType === 'sale-bill-entry') setCurrentSlide(21);
     else setCurrentSlide(4);
   };
 
@@ -617,6 +619,12 @@ function App() {
         { phrases: ['open trading account', 'trading account', 'open trading a c', 'trading a c'], reportType: 'trading-ac', slideNo: 18, title: 'Trading Account' },
         { phrases: ['open p and l', 'p and l', 'open profit and loss', 'profit and loss', 'open p l', 'p l'], reportType: 'pl-profit-loss', slideNo: 19, title: 'P&L' },
         { phrases: ['open balance sheet', 'balance sheet'], reportType: 'balance-sheet', slideNo: 20, title: 'Balance Sheet' },
+        {
+          phrases: ['open sale bill entry', 'sale bill entry', 'new sale bill', 'sale bill add'],
+          reportType: 'sale-bill-entry',
+          slideNo: 21,
+          title: 'Sale bill entry',
+        },
       ];
 
       for (const cmd of voiceCommands) {
@@ -926,6 +934,15 @@ function App() {
         )}
         {currentSlide === 20 && (
           <Slide19BalanceSheet apiBase={API_BASE} formData={formData} onPrev={() => setCurrentSlide(3)} onReset={handleReset} />
+        )}
+        {currentSlide === 21 && (
+          <Slide21SaleBill
+            apiBase={API_BASE}
+            formData={formData}
+            userName={loginUserName}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+          />
         )}
       </main>
     </div>

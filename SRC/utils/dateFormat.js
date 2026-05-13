@@ -54,6 +54,14 @@ export function toDisplayDate(yyyyMmDd) {
   return `${d}/${m}/${y}`;
 }
 
+/** Keep only a valid yyyy-mm-dd for `<input type="date">` (rejects pasted dd/mm/yyyy garbage). */
+export function normalizeHtmlDateValue(raw) {
+  if (raw == null || raw === '') return '';
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  return toInputDateString(raw);
+}
+
 /** Ledger VR_DATE (ISO, Oracle, etc.) → dd/mm/yyyy */
 export function formatLedgerDateDisplay(raw) {
   if (raw == null || raw === '') return '';

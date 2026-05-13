@@ -10,7 +10,13 @@ import {
 import { signedQrCodeToDataUrl, dataUrlToObjectUrl } from '../utils/qrDataUrl';
 import { buildReportHtml, generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelWorkbook } from '../utils/excelExport';
-import { rowFieldCI, rowFieldAny, saleBillEinvoiceText, stripLeadingRegistrationJunk } from '../utils/rowFieldCI';
+import {
+  rowFieldCI,
+  rowFieldAny,
+  saleBillEinvoiceText,
+  stripLeadingRegistrationJunk,
+  saleBillTaxPercentForHeader,
+} from '../utils/rowFieldCI';
 
 function signedQrRaw(row) {
   if (!row) return null;
@@ -626,9 +632,9 @@ export default function SaleBillPrintModal({
     const clean = Number.isInteger(per) ? String(per) : per.toFixed(2).replace(/\.?0+$/, '');
     return `${name} (${clean}%)`;
   };
-  const cgstLabel = formatTaxLabel('CGST', first?.CGST_PER ?? first?.cgst_per);
-  const sgstLabel = formatTaxLabel('SGST', first?.SGST_PER ?? first?.sgst_per);
-  const igstLabel = formatTaxLabel('IGST', first?.IGST_PER ?? first?.igst_per);
+  const cgstLabel = formatTaxLabel('CGST', saleBillTaxPercentForHeader(lines, first, 'cgst_per'));
+  const sgstLabel = formatTaxLabel('SGST', saleBillTaxPercentForHeader(lines, first, 'sgst_per'));
+  const igstLabel = formatTaxLabel('IGST', saleBillTaxPercentForHeader(lines, first, 'igst_per'));
 
   return (
     <div

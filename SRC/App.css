@@ -4892,3 +4892,495 @@ body.force-desktop-view {
 body.force-desktop-view .app--desktop {
   min-width: 1100px;
 }
+
+/* —— Sale bill entry (slide 21) —— */
+.slide.slide-21-sale-bill {
+  max-width: min(1080px, calc(100vw - 2rem));
+  padding: 1.35rem 1.5rem 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+  overflow-x: hidden;
+}
+
+.sale-bill-page__header {
+  margin-bottom: 1.1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.sale-bill-page__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.sale-bill-page__title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.sale-bill-page__badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #4338ca;
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+  border: 1px solid #c7d2fe;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+}
+
+.sale-bill-page__perms {
+  margin: 0.35rem 0 0;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #334155;
+  line-height: 1.4;
+}
+
+.sale-bill-page__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.85rem;
+  font-size: 0.88rem;
+  color: #475569;
+}
+
+.sale-bill-page__meta-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.sale-bill-page__meta-k {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+}
+
+.sale-bill-page__meta-item--warn {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.sale-bill-page__context {
+  margin-top: 0.55rem;
+  font-size: 0.8rem;
+  color: #64748b;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sale-bill-page__dot {
+  color: #cbd5e1;
+  user-select: none;
+}
+
+.sale-bill-page__alert {
+  border-radius: 10px;
+  padding: 0.65rem 0.85rem !important;
+  margin-bottom: 0.75rem !important;
+}
+
+.sale-bill-page__alert--ok {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+/* Centered save / update / delete confirmation (viewport; above print modal) */
+.sale-bill-save-toast-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  box-sizing: border-box;
+  background: rgba(15, 23, 42, 0.45);
+  cursor: pointer;
+}
+
+.sale-bill-save-toast-card {
+  cursor: default;
+  max-width: min(28rem, calc(100vw - 2rem));
+  width: 100%;
+  padding: 1.35rem 1.5rem 1.15rem;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  border: 1px solid #e2e8f0;
+  text-align: center;
+}
+
+.sale-bill-save-toast-text {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+  line-height: 1.45;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.sale-bill-save-toast-ok {
+  min-width: 6.5rem;
+}
+
+.sale-bill-section {
+  margin-top: 1.15rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f1f5f9;
+}
+
+.sale-bill-section:first-of-type,
+.sale-bill-section--toolbar {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.sale-bill-section__title {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #334155;
+  letter-spacing: 0.02em;
+}
+
+.sale-bill-section__hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.82rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.sale-bill-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+}
+
+.sale-bill-toolbar__refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.sale-bill-ref-pill {
+  font-size: 0.82rem;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 0.35rem 0.65rem;
+  border-radius: 8px;
+}
+
+.sale-bill-ref-pill strong {
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.sale-bill-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.sale-bill-field--block {
+  width: 100%;
+}
+
+.sale-bill-field--grow {
+  flex: 1;
+  min-width: 140px;
+}
+
+.sale-bill-field--narrow {
+  max-width: 5.5rem;
+}
+
+.sale-bill-field__label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.slide-21-sale-bill .sale-bill-field input,
+.slide-21-sale-bill .sale-bill-field select {
+  min-height: 2.35rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  font-size: 0.9rem;
+  color: #0f172a;
+  background: #fff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.slide-21-sale-bill .sale-bill-field--block select,
+.slide-21-sale-bill .sale-bill-field--block input {
+  width: 100%;
+  max-width: 100%;
+}
+
+.slide-21-sale-bill .sale-bill-field input:disabled,
+.slide-21-sale-bill .sale-bill-field select:disabled {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.sale-bill-input-readonly {
+  background: #f8fafc !important;
+  color: #334155 !important;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.sale-bill-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.sale-bill-filter-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.sale-bill-select-wide {
+  width: 100%;
+  max-width: 100%;
+}
+
+.sale-bill-party-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  min-width: 0;
+}
+
+.sale-bill-party-col {
+  min-width: 0;
+  overflow: hidden;
+}
+
+@media (max-width: 720px) {
+  .sale-bill-party-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.sale-bill-party-card {
+  margin-top: 0.55rem;
+  padding: 0.65rem 0.85rem;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.sale-bill-party-card__name {
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 0.35rem;
+  font-size: 0.92rem;
+}
+
+.sale-bill-party-card__row {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  border-top: 1px dashed #e2e8f0;
+  padding-top: 0.3rem;
+  margin-top: 0.3rem;
+}
+
+.sale-bill-party-card__row:first-of-type {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.sale-bill-party-card__k {
+  color: #64748b;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sale-bill-broker-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: flex-end;
+}
+
+.sale-bill-lines-wrap {
+  overflow-x: auto;
+  margin-bottom: 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fafafa;
+}
+
+.sale-bill-lines-table {
+  margin: 0;
+  min-width: 720px;
+}
+
+.sale-bill-lines-table th {
+  background: #1e293b;
+  color: #f8fafc;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  padding: 0.5rem 0.4rem;
+  white-space: nowrap;
+}
+
+.sale-bill-lines-table td {
+  background: #fff;
+  vertical-align: middle;
+}
+
+.slide-21-sale-bill .sale-bill-lines-table input,
+.slide-21-sale-bill .sale-bill-lines-table select {
+  min-height: 2rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0.28rem 0.45rem;
+  font-size: 0.84rem;
+  background: #fff;
+}
+
+.slide-21-sale-bill .sale-bill-lines-table input:focus,
+.slide-21-sale-bill .sale-bill-lines-table select:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.18);
+}
+
+.slide-21-sale-bill .sale-bill-rate-input {
+  width: 100%;
+  min-width: 9.5ch;
+  max-width: 11rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.slide-21-sale-bill .sale-bill-rate-input--narrow {
+  max-width: 8.5rem;
+  min-width: 7.5ch;
+}
+
+.slide-21-sale-bill .sale-bill-rate-input::-webkit-outer-spin-button,
+.slide-21-sale-bill .sale-bill-rate-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.slide-21-sale-bill .sale-bill-rate-input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.sale-bill-lines-table tbody tr:hover td {
+  background: #f8fafc;
+}
+
+.sale-bill-add-line {
+  margin-top: 0.25rem;
+}
+
+.sale-bill-totals-summary {
+  margin: 0 0 0.85rem;
+  font-size: 0.86rem;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.sale-bill-totals-summary strong {
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.sale-bill-totals-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem 0.85rem;
+}
+
+@media (max-width: 640px) {
+  .sale-bill-totals-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.sale-bill-net-payable {
+  margin: 1rem 0 0;
+  padding: 0.65rem 0.9rem;
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border: 1px solid #6ee7b7;
+  border-radius: 10px;
+  font-size: 0.92rem;
+  color: #065f46;
+  font-weight: 600;
+}
+
+.sale-bill-net-payable span {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  margin-left: 0.35rem;
+}
+
+.sale-bill-transport-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+@media (max-width: 640px) {
+  .sale-bill-transport-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sale-bill-footer {
+  margin-top: 1.35rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.sale-bill-footer .btn-primary {
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+}

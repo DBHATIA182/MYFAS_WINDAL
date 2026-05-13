@@ -22,6 +22,7 @@ export default function Slide3({ onPrev, onNext, formData }) {
     'trading-ac',
     'pl-profit-loss',
     'balance-sheet',
+    'sale-bill-entry',
   ];
 
   const moveReportSelection = (delta) => {
@@ -376,6 +377,23 @@ export default function Slide3({ onPrev, onNext, formData }) {
             <p>Gross from Trading A/C (schedule 12.10 style) plus schedule ≥ 16 ledger balances as on date (VFP PLACT)</p>
           </label>
         </div>
+        <div
+          className={`report-option ${reportType === 'sale-bill-entry' ? 'selected' : ''}`}
+          onClick={() => setReportType('sale-bill-entry')}
+        >
+          <input
+            type="radio"
+            name="reportType"
+            value="sale-bill-entry"
+            checked={reportType === 'sale-bill-entry'}
+            onChange={(e) => setReportType(e.target.value)}
+          />
+          <label>
+            <h3>Sale bill entry</h3>
+            <p>Add, edit, or delete sale bills; posts SALE, LEDGER, STOCK, and BILLS (Fox-style subset). Print from this screen after save.</p>
+          </label>
+        </div>
+
         <div
           className={`report-option ${reportType === 'balance-sheet' ? 'selected' : ''}`}
           onClick={() => setReportType('balance-sheet')}
