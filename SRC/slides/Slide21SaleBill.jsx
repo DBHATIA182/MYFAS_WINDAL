@@ -449,10 +449,11 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
     const any = !!(p.canOpen || p.canAdd || p.canEdit || p.canDelete);
     if (!any) return 'Sale bill: no access (F1).';
     const ok = [];
+    if (p.canOpen) ok.push('Access');
     if (p.canAdd) ok.push('Add');
     if (p.canEdit) ok.push('Edit');
     if (p.canDelete) ok.push('Delete');
-    if (ok.length === 0) return 'Sale bill: screen only — you cannot add, edit, or delete.';
+    if (ok.length === 0) return 'Sale bill: no access (F1).';
     return `Your rights: ${ok.join(', ')}.`;
   }, [perm]);
 
@@ -939,7 +940,12 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         setPostedNewBill(false);
         if (p.canEdit) setMode('edit');
         else if (p.canDelete) setMode('delete');
-        else setPostedNewBill(true);
+        else if (p.canAdd) {
+          setMode('new');
+          setPostedNewBill(true);
+        } else {
+          setMode('new');
+        }
       } catch (e) {
         setErr(e?.response?.data?.error || e.message || 'Load bill failed');
       }
@@ -1183,15 +1189,19 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
   }
 
   const can = perm || {};
-  /** Prev/Next bill slot navigation: new-entry flow, or moving between saved bills while in Edit. */
+  /** ACCESS only (F1 bit 0): browse and print, no add/edit/delete. */
+  const accessOnlyBrowse = !!can.canOpen && !can.canAdd && !can.canEdit && !can.canDelete;
+  /** Prev/Next bill slot navigation: new entry, edit/delete workflows, or ACCESS-only viewing. */
   const showBillSlotNav =
-    (mode === 'new' && !!can.canAdd) || (mode === 'edit' && !!can.canEdit) || (mode === 'delete' && !!can.canDelete);
-  const canPickMode = !!(can.canOpen || can.canAdd || can.canEdit || can.canDelete);
-  const canEditSaleBillFields =
-    !!can.canOpen ||
-    (mode === 'new' && !!can.canAdd) ||
+    (mode === 'new' && (!!can.canAdd || accessOnlyBrowse)) ||
     (mode === 'edit' && !!can.canEdit) ||
     (mode === 'delete' && !!can.canDelete);
+  const canPickMode = !!(can.canOpen || can.canAdd || can.canEdit || can.canDelete);
+  const canEditSaleBillFields =
+    !accessOnlyBrowse &&
+    ((mode === 'new' && !!can.canAdd) ||
+      (mode === 'edit' && !!can.canEdit) ||
+      (mode === 'delete' && !!can.canDelete));
 
   return (
     <div className="slide slide-21-sale-bill sale-bill-page" onKeyDown={handleEnterAsTab} role="presentation">
@@ -1211,7 +1221,39 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         <div className="sale-bill-page__title-row">
           <h2 className="sale-bill-page__title">Sale bill</h2>
           <span className="sale-bill-page__badge" title={permSummary}>
-            {perm && (perm.canOpen || perm.canAdd || perm.canEdit || perm.canDelete) ? 'F1 access' : 'No access'}
+            {perm && (perm.canOpen || perm.canAdd || perm.canEdit || perm.canDelete)
+              ? accessOnlyBrowse
+                ? 'View only'
+                : 'F1 access'
+              : 'No access'}
+          </span>
+        </div>
+        <div className="sale-bill-page__user-power" role="status" aria-label="User and sale bill F1 rights">
+          <span className="sale-bill-page__user-power-user">
+            <span className="sale-bill-page__user-power-k">USER</span>
+            <span className="sale-bill-page__user-power-colon">:</span>
+            <strong className="sale-bill-page__user-power-name">{userName || '—'}</strong>
+          </span>
+          <span className="sale-bill-page__user-power-vsep" aria-hidden>
+            |
+          </span>
+          <span className="sale-bill-page__user-power-rights" aria-label="F1 rights; X means not permitted">
+            <span className={can.canOpen ? 'sale-bill-power sale-bill-power--on' : 'sale-bill-power sale-bill-power--off'}>
+              ACCESS
+              {!can.canOpen ? <span className="sale-bill-power__x">X</span> : null}
+            </span>
+            <span className={can.canAdd ? 'sale-bill-power sale-bill-power--on' : 'sale-bill-power sale-bill-power--off'}>
+              ADD
+              {!can.canAdd ? <span className="sale-bill-power__x">X</span> : null}
+            </span>
+            <span className={can.canEdit ? 'sale-bill-power sale-bill-power--on' : 'sale-bill-power sale-bill-power--off'}>
+              EDIT
+              {!can.canEdit ? <span className="sale-bill-power__x">X</span> : null}
+            </span>
+            <span className={can.canDelete ? 'sale-bill-power sale-bill-power--on' : 'sale-bill-power sale-bill-power--off'}>
+              DELETE
+              {!can.canDelete ? <span className="sale-bill-power__x">X</span> : null}
+            </span>
           </span>
         </div>
         <p className="sale-bill-page__perms" role="status">
@@ -1223,9 +1265,6 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
           </span>
           <span className="sale-bill-page__meta-item">
             <span className="sale-bill-page__meta-k">FY</span> {formData.comp_year ?? '—'}
-          </span>
-          <span className="sale-bill-page__meta-item">
-            <span className="sale-bill-page__meta-k">User</span> {userName || '—'}
           </span>
           {!can.canOpen && !can.canAdd && !can.canEdit && !can.canDelete ? (
             <span className="sale-bill-page__meta-item sale-bill-page__meta-item--warn">Access denied (F1)</span>
@@ -2270,6 +2309,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
               inputMode="decimal"
               value={dispNum(tdsOnAmt)}
               onChange={(e) => setTdsOnAmt(parseNumInput(e.target.value))}
+              disabled={!canEditSaleBillFields}
               onFocus={(e) => {
                 if ((Number(tdsOnAmt) || 0) === 0 && Number(billAmtRounded) !== 0) {
                   setTdsOnAmt(billAmtRounded);
@@ -2285,7 +2325,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
           </label>
           <label className="sale-bill-field sale-bill-field--block">
             <span className="sale-bill-field__label">TDS %</span>
-            <input type="text" inputMode="decimal" value={dispNum(tdsPer)} onChange={(e) => setTdsPer(parseNumInput(e.target.value))} />
+            <input type="text" inputMode="decimal" value={dispNum(tdsPer)} onChange={(e) => setTdsPer(parseNumInput(e.target.value))} disabled={!canEditSaleBillFields} />
           </label>
           <label className="sale-bill-field sale-bill-field--block">
             <span className="sale-bill-field__label">TDS amt</span>
@@ -2298,15 +2338,15 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         <div className="sale-bill-transport-row">
           <label className="sale-bill-field sale-bill-field--block">
             <span className="sale-bill-field__label">Truck</span>
-            <input value={truckNo} onChange={(e) => setTruckNo(e.target.value)} />
+            <input value={truckNo} onChange={(e) => setTruckNo(e.target.value)} disabled={!canEditSaleBillFields} />
           </label>
           <label className="sale-bill-field sale-bill-field--block">
             <span className="sale-bill-field__label">TPT</span>
-            <input value={tpt} onChange={(e) => setTpt(e.target.value)} />
+            <input value={tpt} onChange={(e) => setTpt(e.target.value)} disabled={!canEditSaleBillFields} />
           </label>
           <label className="sale-bill-field sale-bill-field--block">
             <span className="sale-bill-field__label">GR</span>
-            <input value={grNo} onChange={(e) => setGrNo(e.target.value)} />
+            <input value={grNo} onChange={(e) => setGrNo(e.target.value)} disabled={!canEditSaleBillFields} />
           </label>
         </div>
       </section>

@@ -4971,6 +4971,95 @@ body.force-desktop-view .app--desktop {
   font-weight: 600;
 }
 
+.sale-bill-page__user-power {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.85rem;
+  margin: 0.45rem 0 0.2rem;
+  padding: 0.45rem 0.6rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: #334155;
+}
+
+.sale-bill-page__user-power-user {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.15rem;
+  flex-wrap: wrap;
+}
+
+.sale-bill-page__user-power-k {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #64748b;
+}
+
+.sale-bill-page__user-power-colon {
+  font-weight: 700;
+  color: #475569;
+}
+
+.sale-bill-page__user-power-name {
+  font-size: 0.9rem;
+  color: #0f172a;
+}
+
+.sale-bill-page__user-power-vsep {
+  color: #cbd5e1;
+  font-weight: 600;
+  user-select: none;
+}
+
+.sale-bill-page__user-power-rights {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.55rem;
+}
+
+.sale-bill-power {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.12rem;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  padding: 0.12rem 0.35rem;
+  border-radius: 4px;
+}
+
+.sale-bill-power--on {
+  color: #14532d;
+  background: #dcfce7;
+  border: 1px solid #86efac;
+}
+
+.sale-bill-power--off {
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+}
+
+.sale-bill-power__x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  margin-left: 0.08rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #b91c1c;
+  background: #fee2e2;
+  border-radius: 3px;
+  line-height: 1;
+}
+
 .sale-bill-page__context {
   margin-top: 0.55rem;
   font-size: 0.8rem;
