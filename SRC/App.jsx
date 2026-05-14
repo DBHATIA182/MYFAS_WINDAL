@@ -608,6 +608,18 @@ function App() {
         { phrases: ['open customer ledger', 'customer ledger'], reportType: 'customer-ledger', slideNo: 6, title: 'Customer Ledger' },
         { phrases: ['open supplier ledger', 'supplier ledger'], reportType: 'supplier-ledger', slideNo: 6, title: 'Supplier Ledger' },
         { phrases: ['open broker wise outstanding', 'broker wise outstanding', 'open broker outstanding', 'broker outstanding'], reportType: 'broker-os', slideNo: 7, title: 'Broker Wise Outstanding' },
+        {
+          phrases: [
+            'open sale bill entry',
+            'sale bill entry',
+            'sale bill entry screen',
+            'new sale bill',
+            'sale bill add',
+          ],
+          reportType: 'sale-bill-entry',
+          slideNo: 21,
+          title: 'Sale bill entry',
+        },
         { phrases: ['open sale bill printing', 'sale bill printing', 'open sale bill'], reportType: 'sale-bill-printing', slideNo: 13, title: 'Sale Bill Printing' },
         { phrases: ['open stock summary', 'stock summary', 'open stock sum', 'stock sum'], reportType: 'stock-sum', slideNo: 9, title: 'Stock Summary' },
         { phrases: ['open ageing report', 'ageing report', 'aging report', 'open aging report'], reportType: 'ageing', slideNo: 12, title: 'Ageing Report' },
@@ -619,12 +631,6 @@ function App() {
         { phrases: ['open trading account', 'trading account', 'open trading a c', 'trading a c'], reportType: 'trading-ac', slideNo: 18, title: 'Trading Account' },
         { phrases: ['open p and l', 'p and l', 'open profit and loss', 'profit and loss', 'open p l', 'p l'], reportType: 'pl-profit-loss', slideNo: 19, title: 'P&L' },
         { phrases: ['open balance sheet', 'balance sheet'], reportType: 'balance-sheet', slideNo: 20, title: 'Balance Sheet' },
-        {
-          phrases: ['open sale bill entry', 'sale bill entry', 'new sale bill', 'sale bill add'],
-          reportType: 'sale-bill-entry',
-          slideNo: 21,
-          title: 'Sale bill entry',
-        },
       ];
 
       for (const cmd of voiceCommands) {

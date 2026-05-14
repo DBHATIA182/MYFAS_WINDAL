@@ -378,23 +378,6 @@ export default function Slide3({ onPrev, onNext, formData }) {
           </label>
         </div>
         <div
-          className={`report-option ${reportType === 'sale-bill-entry' ? 'selected' : ''}`}
-          onClick={() => setReportType('sale-bill-entry')}
-        >
-          <input
-            type="radio"
-            name="reportType"
-            value="sale-bill-entry"
-            checked={reportType === 'sale-bill-entry'}
-            onChange={(e) => setReportType(e.target.value)}
-          />
-          <label>
-            <h3>Sale bill entry</h3>
-            <p>Add, edit, or delete sale bills; posts SALE, LEDGER, STOCK, and BILLS (Fox-style subset). Print from this screen after save.</p>
-          </label>
-        </div>
-
-        <div
           className={`report-option ${reportType === 'balance-sheet' ? 'selected' : ''}`}
           onClick={() => setReportType('balance-sheet')}
         >
@@ -408,6 +391,23 @@ export default function Slide3({ onPrev, onNext, formData }) {
           <label>
             <h3>Balance Sheet</h3>
             <p>Liabilities vs Assets tree (NO&lt;12) with profit/loss and closing stock adjustments as of date</p>
+          </label>
+        </div>
+
+        <div
+          className={`report-option ${reportType === 'sale-bill-entry' ? 'selected' : ''}`}
+          onClick={() => setReportType('sale-bill-entry')}
+        >
+          <input
+            type="radio"
+            name="reportType"
+            value="sale-bill-entry"
+            checked={reportType === 'sale-bill-entry'}
+            onChange={(e) => setReportType(e.target.value)}
+          />
+          <label>
+            <h3>Sale bill entry</h3>
+            <p>Add, edit, or delete sale bills; posts SALE, LEDGER, STOCK, and BILLS (Fox-style subset). Print from this screen after save.</p>
           </label>
         </div>
       </div>

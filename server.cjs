@@ -15,6 +15,7 @@ const PORT = Number(process.env.PORT) || 5001;
  * Oracle `callTimeout` for /api/sale-bill-print probes (ms). Set SALE_BILL_PRINT_QUERY_TIMEOUT_MS=0 to disable.
  * Prevents a single bad plan from hanging the UI indefinitely (retries still apply on ORA-00904).
  * Probing order: Nano tries each QR-column variant until one parses; skips the heavy Matrix when Oracle returns 0 rows (same filters as Matrix).
+ * After any successful execute (including 0 rows), probe errors are cleared so a stale ORA-00904 on SIGNED_QR_CODE is not rethrown.
  */
 function saleBillPrintCallTimeoutOpts() {
   const raw = process.env.SALE_BILL_PRINT_QUERY_TIMEOUT_MS;
@@ -847,6 +848,13 @@ function clampSaleBillWeightSql(n) {
 function clampSaleBillChargeSql(n) {
   const x = Number(n) || 0;
   const c = Math.max(0, Math.min(SALE_BILL_MAX_CHARGE, x));
+  return Math.round(c * 100) / 100;
+}
+
+/** OTH / round-off may be negative (adjust to whole rupees). */
+function clampSaleBillOthSignedSql(n) {
+  const x = Number(n) || 0;
+  const c = Math.max(-SALE_BILL_MAX_CHARGE, Math.min(SALE_BILL_MAX_CHARGE, x));
   return Math.round(c * 100) / 100;
 }
 
@@ -1840,9 +1848,12 @@ function saleBillQrFragmentsForTypeNum(saleTypeNum, taxNonZero, signedColAttempt
   const stn = Number(saleTypeNum);
   const useQr = stn === 3 || stn === 6 || stn === 9;
   if (!useQr) return ['CAST(NULL AS VARCHAR2(4000)) AS SIGNED_QR_CODE'];
-  return signedColAttempts.map(
+  const nullOnly = 'CAST(NULL AS VARCHAR2(4000)) AS SIGNED_QR_CODE';
+  /** Oracle validates columns in CASE at parse time — DBs without SIGNED_QR_CODE need a no-column fallback last. */
+  const mapped = signedColAttempts.map(
     (col) => `CASE WHEN ${taxNonZero} THEN ${col} ELSE CAST(NULL AS VARCHAR2(4000)) END AS SIGNED_QR_CODE`
   );
+  return [...mapped, nullOnly];
 }
 
 /**
@@ -2188,11 +2199,15 @@ async function runSaleBillPrintRows(binds, comp_uid) {
   const varcharType = typ && /^[A-Z]{1,4}$/.test(typ) ? typ : '';
 
   function qrFragmentsVarchar(typUpper) {
+    const nullOnly = 'CAST(NULL AS VARCHAR2(4000)) AS SIGNED_QR_CODE';
     return typUpper === 'SL' || typUpper === 'SE'
-      ? signedColAttempts.map(
-          (col) => `CASE WHEN ${taxNonZero} THEN ${col} ELSE CAST(NULL AS VARCHAR2(4000)) END AS SIGNED_QR_CODE`
-        )
-      : ['CAST(NULL AS VARCHAR2(4000)) AS SIGNED_QR_CODE'];
+      ? [
+          ...signedColAttempts.map(
+            (col) => `CASE WHEN ${taxNonZero} THEN ${col} ELSE CAST(NULL AS VARCHAR2(4000)) END AS SIGNED_QR_CODE`
+          ),
+          nullOnly,
+        ]
+      : [nullOnly];
   }
 
   let lastErr;
@@ -2209,6 +2224,8 @@ async function runSaleBillPrintRows(binds, comp_uid) {
           suppressDbErrorLog: true,
           ...timeoutOpts,
         });
+        /** Statement parsed and ran — do not rethrow earlier ORA-00904 from signed-QR column probes. */
+        lastErr = null;
         if (Array.isArray(rows) && rows.length > 0) return rows;
       } catch (e) {
         lastErr = e;
@@ -2236,6 +2253,7 @@ async function runSaleBillPrintRows(binds, comp_uid) {
               suppressDbErrorLog: true,
               ...timeoutOpts,
             });
+            lastErr = null;
             if (Array.isArray(rows) && rows.length > 0) return rows;
             break probeVariants;
           } catch (e) {
@@ -3095,6 +3113,7 @@ function parseOraGetintReturn(raw) {
 
 /**
  * Bill-wise ledger from BILLS; optional interest from GETINT (customer) or GETINT_SUP (supplier).
+ * Customer sale vouchers: VR_TYPE S and Y (and W/SL/…); payments CV/BV/JV by payment end date.
  * Query:
  * - ledger_kind=customer|supplier (default customer)
  * - include_interest=Y, int_indt (DD-MM-YYYY), gs_days, ged_days, group_cd, bombay_dhara
@@ -3146,7 +3165,7 @@ app.get('/api/bill-ledger', async (req, res) => {
             OR (
               NVL(A.DR_AMT,0) > 0
               AND TRIM(A.VR_TYPE) IN (
-                'S','W','SL','SW','SI','SR',
+                'S','Y','W','SL','SW','SI','SR',
                 'DN','DR','DI',
                 'PU','PI','PR'
               )
@@ -3157,7 +3176,7 @@ app.get('/api/bill-ledger', async (req, res) => {
             (B.SCHEDULE >= 8 AND B.SCHEDULE < 9 AND
               (
                 (TRIM(A.VR_TYPE) IN (
-                  'S','W','SL','SW','SI','SR',
+                  'S','Y','W','SL','SW','SI','SR',
                   'DN','DR','DI',
                   'PU','PI','PR'
                 ) AND (
@@ -4013,24 +4032,36 @@ app.get('/api/sale-bill', async (req, res) => {
   }
 });
 
-/** Full SALE rows for one bill (no joins) — sale bill add/edit screen. */
+/** Full SALE rows for one bill (no joins) — sale bill add/edit screen.
+ *  Default: match TRUNC(BILL_DATE) to bill_date (DD-MM-YYYY).
+ *  relax_bill_date=1: omit date filter (same bill_no/type/b_type in year schema); ORDER BY BILL_DATE DESC so latest wins. */
 app.get('/api/sale-bill-raw', async (req, res) => {
   try {
     const { comp_code, comp_uid, type, bill_no, bill_date, b_type } = req.query;
-    if (!comp_code || comp_uid == null || !type || bill_no == null || !bill_date) {
-      return res.status(400).json({ error: 'comp_code, comp_uid, type, bill_no, bill_date are required' });
+    const relaxRaw = String(req.query.relax_bill_date ?? '').trim().toLowerCase();
+    const relaxBillDate = relaxRaw === '1' || relaxRaw === 'y' || relaxRaw === 'true';
+    if (!comp_code || comp_uid == null || !type || bill_no == null) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, type, and bill_no are required' });
+    }
+    if (!relaxBillDate && !bill_date) {
+      return res.status(400).json({ error: 'bill_date is required unless relax_bill_date=1' });
     }
     const bt = b_type != null ? String(b_type).trim() : '';
+    const dateClause = relaxBillDate
+      ? ''
+      : `AND TRUNC(A.BILL_DATE) = TRUNC(TO_DATE(:bill_date, 'DD-MM-YYYY'))`;
+    const orderClause = relaxBillDate ? 'ORDER BY A.BILL_DATE DESC, A.TRN_NO' : 'ORDER BY A.TRN_NO';
     const sql = `
       SELECT A.*
       FROM SALE A
       WHERE A.COMP_CODE = :comp_code
         AND TRIM(TO_CHAR(A.TYPE)) = TRIM(TO_CHAR(:type))
         AND TRIM(TO_CHAR(A.BILL_NO)) = TRIM(TO_CHAR(:bill_no))
-        AND TRUNC(A.BILL_DATE) = TRUNC(TO_DATE(:bill_date, 'DD-MM-YYYY'))
+        ${dateClause}
         ${bt ? `AND NVL(TRIM(A.B_TYPE), ' ') = NVL(TRIM(:b_type), ' ')` : ''}
-      ORDER BY A.TRN_NO`;
-    const binds = { comp_code, type: String(type).trim(), bill_no: String(bill_no).trim(), bill_date };
+      ${orderClause}`;
+    const binds = { comp_code, type: String(type).trim(), bill_no: String(bill_no).trim() };
+    if (!relaxBillDate) binds.bill_date = bill_date;
     if (bt) binds.b_type = bt;
     const rows = await runQuery(sql, binds, comp_uid);
     res.json(rows || []);
@@ -4304,7 +4335,8 @@ async function saleBillDeleteSatelliteRows(conn, { comp_code, comp_year, vr_type
 }
 
 /**
- * Fox-style follow-up: LEDGER (taxable Cr per line + party Dr bill + TDS split on party/TDS_CODE + expense Cr), STOCK, BILLS.
+ * Fox-style follow-up: LEDGER (taxable Cr per line + party Dr bill + TDS split on party/TDS_CODE +
+ *   expense Cr + CGST/SGST/IGST Cr from line sums on COMPDET codes), STOCK, BILLS.
  */
 async function saleBillPostSatelliteRows(conn, ctx) {
   const {
@@ -4333,6 +4365,9 @@ async function saleBillPostSatelliteRows(conn, ctx) {
     ins_code = null,
     add_code = null,
     tds_code = null,
+    cgst_code = null,
+    sgst_code = null,
+    igst_code = null,
   } = ctx;
   const cy = Number(comp_year) || 0;
   const bn = String(bill_no).trim();
@@ -4512,6 +4547,21 @@ async function saleBillPostSatelliteRows(conn, ctx) {
   await pushCrExpense(fgtcd, freight, 'Freight');
   await pushCrExpense(ins_code, ins, 'Insurance');
   await pushCrExpense(add_code, oth_exp, 'Oth/Add');
+
+  let sumCgst = 0;
+  let sumSgst = 0;
+  let sumIgst = 0;
+  for (const r of bindRows) {
+    sumCgst += Number(r.cgst_amt ?? r.CGST_AMT ?? 0) || 0;
+    sumSgst += Number(r.sgst_amt ?? r.SGST_AMT ?? 0) || 0;
+    sumIgst += Number(r.igst_amt ?? r.IGST_AMT ?? 0) || 0;
+  }
+  sumCgst = Math.round(sumCgst * 100) / 100;
+  sumSgst = Math.round(sumSgst * 100) / 100;
+  sumIgst = Math.round(sumIgst * 100) / 100;
+  await pushCrExpense(cgst_code, sumCgst, 'CGST');
+  await pushCrExpense(sgst_code, sumSgst, 'SGST');
+  await pushCrExpense(igst_code, sumIgst, 'IGST');
 
   const stkSql = `
     INSERT INTO STOCK (
@@ -4779,7 +4829,7 @@ app.post('/api/sale-bill-save', async (req, res) => {
     const labour = clampSaleBillChargeSql(header.labour ?? 0);
     const freight = clampSaleBillChargeSql(header.freight ?? 0);
     const ins = clampSaleBillChargeSql(header.ins ?? 0);
-    const oth_exp = clampSaleBillChargeSql(header.oth_exp ?? header.addexp ?? 0);
+    const oth_exp = clampSaleBillOthSignedSql(header.oth_exp ?? header.addexp ?? 0);
     const add_code = parseMasterCodeForSql(header.add_code);
     const bill_amt = Number(header.bill_amt ?? 0) || 0;
     const tds_on_amt = Number(header.tds_on_amt ?? 0) || 0;
@@ -4800,6 +4850,24 @@ app.post('/api/sale-bill-save', async (req, res) => {
       'tds_ac',
       'tds_gl',
       'tds_gl_code',
+    ]);
+    const cgst_code_gl = resolveFirstGlCodeFromCompdet(compdet, [
+      'cgst_code',
+      'g_cgst_code',
+      'CGST_CODE',
+      'G_CGST_CODE',
+    ]);
+    const sgst_code_gl = resolveFirstGlCodeFromCompdet(compdet, [
+      'sgst_code',
+      'g_sgst_code',
+      'SGST_CODE',
+      'G_SGST_CODE',
+    ]);
+    const igst_code_gl = resolveFirstGlCodeFromCompdet(compdet, [
+      'igst_code',
+      'g_igst_code',
+      'IGST_CODE',
+      'G_IGST_CODE',
     ]);
 
     const linesFiltered = linesIn.filter((raw) => {
@@ -4978,6 +5046,9 @@ app.post('/api/sale-bill-save', async (req, res) => {
       ins_code: ins_code !== undefined ? ins_code : null,
       add_code: add_code !== undefined ? add_code : null,
       tds_code: tds_code_gl !== undefined ? tds_code_gl : null,
+      cgst_code: cgst_code_gl !== undefined ? cgst_code_gl : null,
+      sgst_code: sgst_code_gl !== undefined ? sgst_code_gl : null,
+      igst_code: igst_code_gl !== undefined ? igst_code_gl : null,
     });
 
     await conn.commit();
@@ -4987,7 +5058,7 @@ app.post('/api/sale-bill-save', async (req, res) => {
       bill_no: bill_no_use,
       sale_inv_no,
       lines: bindRows.length,
-      note: 'SALE saved; LEDGER (sales Cr + party Dr bill + TDS Dr/Cr on TDS_CODE/party + charges), STOCK, and BILLS posted for this bill.',
+      note: 'SALE saved; LEDGER (sales Cr + party Dr + CGST/SGST/IGST Cr on COMPDET codes + TDS + charges), STOCK, and BILLS posted for this bill.',
     });
   } catch (err) {
     if (conn) {
