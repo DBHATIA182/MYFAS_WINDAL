@@ -20,6 +20,7 @@ import Slide17TradingAc from './slides/Slide17TradingAc';
 import Slide18PlProfitLoss from './slides/Slide18PlProfitLoss';
 import Slide19BalanceSheet from './slides/Slide19BalanceSheet';
 import Slide21SaleBill from './slides/Slide21SaleBill';
+import Slide22DispatchChallan from './slides/Slide22DispatchChallan';
 import { exitApp, performExitWindow } from './utils/exitApp';
 import connectionConfig from '../connection.config.json';
 import './App.css';
@@ -545,6 +546,7 @@ function App() {
     else if (reportType === 'pl-profit-loss') setCurrentSlide(19);
     else if (reportType === 'balance-sheet') setCurrentSlide(20);
     else if (reportType === 'sale-bill-entry') setCurrentSlide(21);
+    else if (reportType === 'dispatch-challan-entry') setCurrentSlide(22);
     else setCurrentSlide(4);
   };
 
@@ -619,6 +621,12 @@ function App() {
           reportType: 'sale-bill-entry',
           slideNo: 21,
           title: 'Sale bill entry',
+        },
+        {
+          phrases: ['open dispatch challan', 'dispatch challan', 'dispatch challan entry'],
+          reportType: 'dispatch-challan-entry',
+          slideNo: 22,
+          title: 'Dispatch challan entry',
         },
         { phrases: ['open sale bill printing', 'sale bill printing', 'open sale bill'], reportType: 'sale-bill-printing', slideNo: 13, title: 'Sale Bill Printing' },
         { phrases: ['open stock summary', 'stock summary', 'open stock sum', 'stock sum'], reportType: 'stock-sum', slideNo: 9, title: 'Stock Summary' },
@@ -943,6 +951,15 @@ function App() {
         )}
         {currentSlide === 21 && (
           <Slide21SaleBill
+            apiBase={API_BASE}
+            formData={formData}
+            userName={loginUserName}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+          />
+        )}
+        {currentSlide === 22 && (
+          <Slide22DispatchChallan
             apiBase={API_BASE}
             formData={formData}
             userName={loginUserName}

@@ -187,6 +187,20 @@ function focusNextInForm(rootEl, currentEl) {
   }
 }
 
+/** After ch_no / so_no pick, move focus to Qty on the same line. */
+function focusSaleBillLineQnty(lineIdx) {
+  window.requestAnimationFrame(() => {
+    const root = document.querySelector('.slide-21-sale-bill');
+    if (!root) return;
+    const el = root.querySelector(`input[data-sale-line-qty="${lineIdx}"]`);
+    if (!el || el.disabled) return;
+    try {
+      el.focus();
+      if (typeof el.select === 'function') el.select();
+    } catch (_) {}
+  });
+}
+
 function handleEnterAsTab(e) {
   if (e.key !== 'Enter') return;
   const t = e.target;
@@ -197,6 +211,148 @@ function handleEnterAsTab(e) {
   e.preventDefault();
   const root = t.closest('.slide-21-sale-bill');
   if (root) focusNextInForm(root, t);
+}
+
+/** Line grid N(6): challan no / SO no. */
+function parseLineInt6Input(raw) {
+  const s = String(raw ?? '').replace(/\D/g, '').slice(0, 6);
+  if (!s) return '';
+  const n = Number(s);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  return String(Math.min(999999, Math.floor(n)));
+}
+
+function displayLineInt6(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x) || x <= 0) return '';
+  return String(Math.min(999999, Math.floor(x)));
+}
+
+function formatPickDate(d) {
+  if (!d) return '—';
+  return toDisplayDate(toInputDateString(d));
+}
+
+function SaleBillLinePickModal({ open, title, hint, emptyMessage, loading, rows, columns, hi, onHi, onClose, onPick }) {
+  const cardRef = useRef(null);
+  const rowRefs = useRef([]);
+
+  const safeHi = Math.min(Math.max(0, hi), Math.max(0, rows.length - 1));
+
+  useEffect(() => {
+    if (!open) return;
+    const id = window.requestAnimationFrame(() => {
+      try {
+        cardRef.current?.focus();
+      } catch (_) {}
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [open, loading, rows.length]);
+
+  useEffect(() => {
+    if (!open || loading || rows.length === 0) return;
+    const el = rowRefs.current[safeHi];
+    if (el?.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+  }, [open, loading, rows.length, safeHi]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (loading || rows.length === 0) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        onHi(Math.min(safeHi + 1, rows.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        e.stopPropagation();
+        onHi(Math.max(safeHi - 1, 0));
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        const row = rows[safeHi];
+        if (row) onPick(row);
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [open, loading, rows, safeHi, onHi, onPick, onClose]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div
+      className="sale-bill-pick-overlay slide-21-sale-bill-ignore-enter"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        ref={cardRef}
+        className="sale-bill-pick-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sale-bill-pick-title"
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="sale-bill-pick-card__head">
+          <h3 id="sale-bill-pick-title">{title}</h3>
+          {hint ? <p className="sale-bill-pick-card__hint">{hint}</p> : null}
+          <button type="button" className="btn btn-secondary sale-bill-pick-card__close" onClick={onClose}>
+            Close
+          </button>
+        </header>
+        {loading ? (
+          <p className="sale-bill-pick-card__loading">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="sale-bill-pick-card__empty">{emptyMessage || 'No pending rows.'}</p>
+        ) : (
+          <div className="sale-bill-pick-table-wrap">
+            <table className="report-table sale-bill-pick-table">
+              <thead>
+                <tr>
+                  {columns.map((c) => (
+                    <th key={c.key}>{c.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => (
+                  <tr
+                    key={i}
+                    ref={(el) => {
+                      rowRefs.current[i] = el;
+                    }}
+                    className={i === safeHi ? 'sale-bill-pick-row--hi' : 'sale-bill-pick-row-clickable'}
+                    onMouseEnter={() => onHi(i)}
+                    onClick={() => onPick(row)}
+                  >
+                    {columns.map((c) => (
+                      <td key={c.key}>{c.render(row)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="sale-bill-pick-card__foot">
+          Tap a row to select · ↑ ↓ move (keyboard) · Enter · Esc to close
+        </p>
+      </div>
+    </div>,
+    document.body
+  );
 }
 
 function highlightMatch(text, q) {
@@ -220,6 +376,9 @@ function emptyLine(defaultPlant = '') {
   const pc = String(defaultPlant ?? '').trim();
   return {
     trn_no: 1,
+    ch_no: '',
+    ch_type: '',
+    so_no: '',
     item_code: '',
     item_name: '',
     s_code: '',
@@ -351,6 +510,8 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
   const [pickListBillNo, setPickListBillNo] = useState('');
   const [printOpen, setPrintOpen] = useState(false);
   const [billPrintParams, setBillPrintParams] = useState(null);
+  const [challanPick, setChallanPick] = useState({ open: false, lineIdx: -1, rows: [], loading: false, hi: 0 });
+  const [soPick, setSoPick] = useState({ open: false, lineIdx: -1, rows: [], loading: false, hi: 0, brokerMode: '' });
 
   const billDateOracle = useMemo(() => toOracleDate(billDateYmd), [billDateYmd]);
   const compYear = String(formData.comp_year ?? formData.COMP_YEAR ?? '').trim();
@@ -667,13 +828,41 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
     });
   };
 
+  const showSaleBillNotice = useCallback((text) => {
+    setErr('');
+    setMsg(text);
+  }, []);
+
   const recalcLine = (idx, patch) => {
     setLines((prev) => {
       const next = [...prev];
       const L = { ...next[idx], ...patch };
+      if (patch && Object.prototype.hasOwnProperty.call(patch, 'weight_manual')) {
+        L.weight_manual = !!patch.weight_manual;
+      }
       if (patch && Object.prototype.hasOwnProperty.call(patch, 'weight')) {
         L.weight = clampSaleWeight(patch.weight);
-        L.weight_manual = true;
+        if (!Object.prototype.hasOwnProperty.call(patch, 'weight_manual')) {
+          L.weight_manual = Number(patch.weight) > 0;
+        }
+      }
+      if (patch && Object.prototype.hasOwnProperty.call(patch, 'qnty')) {
+        const refQ = Number(L._so_ref_qty) || 0;
+        const refW = Number(L._so_ref_wgt) || 0;
+        const newQ = Number(patch.qnty) || 0;
+        if (String(L.so_no ?? '').trim() && refQ > 0 && refW > 0) {
+          L.weight = clampSaleWeight((refW / refQ) * newQ);
+          L.weight_manual = false;
+        } else if (!Object.prototype.hasOwnProperty.call(patch, 'weight')) {
+          L.weight_manual = false;
+        }
+      } else if (
+        patch &&
+        (Object.prototype.hasOwnProperty.call(patch, 'status') ||
+          Object.prototype.hasOwnProperty.call(patch, 'item_code')) &&
+        !Object.prototype.hasOwnProperty.call(patch, 'weight')
+      ) {
+        L.weight_manual = false;
       }
       L.cgst_per = clampTaxPer(L.cgst_per);
       L.sgst_per = clampTaxPer(L.sgst_per);
@@ -706,6 +895,164 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
       return next;
     });
   };
+
+  const canEditLines = useMemo(() => {
+    const c = perm || {};
+    const accessOnlyBrowse = !!c.canOpen && !c.canAdd && !c.canEdit && !c.canDelete;
+    return (
+      !accessOnlyBrowse &&
+      ((mode === 'new' && !!c.canAdd) ||
+        (mode === 'edit' && !!c.canEdit) ||
+        (mode === 'delete' && !!c.canDelete))
+    );
+  }, [mode, perm]);
+
+  const challanPickColumns = useMemo(
+    () => [
+      { key: 'ch', label: 'Ch no', render: (r) => displayLineInt6(r.CH_NO) },
+      { key: 'tp', label: 'Tp', render: (r) => String(r.CH_TYPE ?? '').trim() },
+      { key: 'dt', label: 'Ch date', render: (r) => formatPickDate(r.CH_DATE) },
+      { key: 'it', label: 'Item', render: (r) => String(r.ITEM_CODE ?? '').trim() },
+      { key: 'mk', label: 'Marka', render: (r) => String(r.MARKA ?? '').trim() },
+      { key: 'st', label: 'BKH', render: (r) => String(r.STATUS ?? '').trim() },
+      { key: 'rt', label: 'Rate', render: (r) => Number(r.RATE ?? 0).toFixed(2) },
+      { key: 'dq', label: 'Disp', render: (r) => Number(r.D_QNTY ?? 0) },
+      { key: 'bq', label: 'Billd', render: (r) => Number(r.B_QNTY ?? 0) },
+      { key: 'bal', label: 'Bal', render: (r) => Number(r.BAL_QNTY ?? 0) },
+      { key: 'pl', label: 'Plant', render: (r) => String(r.PLANT_CODE ?? '').trim() },
+    ],
+    []
+  );
+
+  const soPickColumns = useMemo(
+    () => [
+      { key: 'so', label: 'SO no', render: (r) => displayLineInt6(r.SO_NO) },
+      { key: 'dt', label: 'SO date', render: (r) => formatPickDate(r.SO_DATE) },
+      { key: 'it', label: 'Item', render: (r) => String(r.ITEM_CODE ?? '').trim() },
+      { key: 'st', label: 'BKH', render: (r) => String(r.STATUS ?? '').trim() },
+      { key: 'rt', label: 'Rate', render: (r) => Number(r.RATE ?? 0).toFixed(2) },
+      { key: 'mk', label: 'Marka', render: (r) => String(r.MARKA ?? '').trim() },
+      { key: 'bq', label: 'Bal qty', render: (r) => Number(r.BQTY ?? 0) },
+      { key: 'bw', label: 'Bal wgt', render: (r) => Number(r.BWGT ?? 0).toFixed(3) },
+      { key: 'rm', label: 'Remarks', render: (r) => String(r.REMARKS ?? '').trim() },
+    ],
+    []
+  );
+
+  const applyChallanPick = useCallback(
+    (lineIdx, row) => {
+      const ic = String(row.ITEM_CODE ?? '').trim();
+      applyItemToLine(lineIdx, ic);
+      window.setTimeout(() => {
+        recalcLine(lineIdx, {
+          ch_no: displayLineInt6(row.CH_NO),
+          ch_type: String(row.CH_TYPE ?? '').trim().slice(0, 1),
+          marka: String(row.MARKA ?? '').trim(),
+          plant_code: String(row.PLANT_CODE ?? '').trim(),
+          qnty: Number(row.BAL_QNTY ?? 0) || 0,
+          status: String(row.STATUS ?? 'B').trim().slice(0, 1) || 'B',
+          rate: roundRate2(Number(row.RATE ?? 0) || 0),
+        });
+        window.setTimeout(() => focusSaleBillLineQnty(lineIdx), 20);
+      }, 0);
+      setChallanPick((p) => ({ ...p, open: false }));
+    },
+    [ctx?.G_AMT_CAL, compGst, lookups.items, partyGst]
+  );
+
+  const applySoPick = useCallback(
+    (lineIdx, row) => {
+      const ic = String(row.ITEM_CODE ?? '').trim();
+      const bqty = Number(row.BQTY ?? 0) || 0;
+      const bwgt = Number(row.BWGT ?? 0) || 0;
+      applyItemToLine(lineIdx, ic);
+      window.setTimeout(() => {
+        const patch = {
+          so_no: displayLineInt6(row.SO_NO),
+          marka: String(row.MARKA ?? '').trim(),
+          qnty: bqty,
+          status: String(row.STATUS ?? 'B').trim().slice(0, 1) || 'B',
+          rate: roundRate2(Number(row.RATE ?? 0) || 0),
+          weight_manual: false,
+          _so_ref_qty: bqty,
+          _so_ref_wgt: bwgt,
+        };
+        if (bwgt > 0) {
+          patch.weight = bwgt;
+          patch.weight_manual = true;
+        }
+        recalcLine(lineIdx, patch);
+        window.setTimeout(() => focusSaleBillLineQnty(lineIdx), 20);
+      }, 0);
+      setSoPick((p) => ({ ...p, open: false }));
+    },
+    [ctx?.G_AMT_CAL, compGst, lookups.items, partyGst]
+  );
+
+  const openChallanPick = useCallback(
+    async (lineIdx) => {
+      if (!canEditLines) return;
+      const bc = String(bCode ?? '').trim();
+      if (!bc) {
+        setErr('Select broker (B code) before pending challan (F1).');
+        return;
+      }
+      setChallanPick({ open: true, lineIdx, rows: [], loading: true, hi: 0 });
+      try {
+        const { data } = await axios.get(`${apiBase}/api/sale-bill-pending-challans`, {
+          params: { comp_code: compCode, comp_uid: compUid, b_code: bc },
+          ...reqOpts,
+        });
+        setChallanPick((p) => ({ ...p, rows: Array.isArray(data) ? data : [], loading: false }));
+      } catch (e) {
+        setChallanPick((p) => ({ ...p, open: false, loading: false }));
+        setErr(e?.response?.data?.error || e.message || 'Pending challan load failed');
+      }
+    },
+    [apiBase, bCode, canEditLines, compCode, compUid]
+  );
+
+  const openSoPick = useCallback(
+    async (lineIdx) => {
+      if (!canEditLines) return;
+      const brokerMode = String(ctx?.G_SO_CODE_BROKER ?? '').trim().toUpperCase();
+      if (brokerMode === 'B' && !String(bCode ?? '').trim()) {
+        setErr('Select broker before pending order (F1).');
+        return;
+      }
+      if (brokerMode === 'C' && !String(code ?? '').trim()) {
+        setErr('Select billed-to party before pending order (F1).');
+        return;
+      }
+      if (!brokerMode && !String(code ?? '').trim() && !String(bCode ?? '').trim()) {
+        setErr('Select party and/or broker before pending order (F1).');
+        return;
+      }
+      setSoPick({ open: true, lineIdx, rows: [], loading: true, hi: 0 });
+      try {
+        const partyCode = String(code ?? '').trim();
+        const { data } = await axios.get(`${apiBase}/api/sale-bill-pending-orders`, {
+          params: {
+            comp_code: compCode,
+            comp_uid: compUid,
+            code: partyCode || undefined,
+            b_code: String(bCode ?? '').trim() || undefined,
+          },
+          ...reqOpts,
+        });
+        const rows = Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
+        const brokerModeApi = String(data?.so_code_broker ?? brokerMode).trim().toUpperCase();
+        setSoPick((p) => ({ ...p, rows, loading: false, brokerMode: brokerModeApi }));
+        if (rows.length === 0 && brokerModeApi === 'C' && !partyCode) {
+          setErr('Select billed-to party — pending SO uses customer code (SO_CODE_BROKER = C).');
+        }
+      } catch (e) {
+        setSoPick((p) => ({ ...p, open: false, loading: false }));
+        setErr(e?.response?.data?.error || e.message || 'Pending order load failed');
+      }
+    },
+    [apiBase, bCode, canEditLines, code, compCode, compUid, ctx?.G_SO_CODE_BROKER]
+  );
 
   const totals = useMemo(() => {
     let amount = 0;
@@ -872,6 +1219,9 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
           const uw = Number(it?.UNIT_WGT ?? it?.unit_wgt ?? 0) || 0;
           return {
             trn_no: Number(r.TRN_NO ?? r.trn_no ?? i + 1) || i + 1,
+            ch_no: displayLineInt6(r.CH_NO ?? r.ch_no),
+            ch_type: String(r.CH_TYPE ?? r.ch_type ?? '').trim().slice(0, 1),
+            so_no: displayLineInt6(r.SO_NO ?? r.so_no),
             item_code: ic,
             item_name: '',
             s_code: r.S_CODE != null ? String(r.S_CODE) : '',
@@ -1044,15 +1394,21 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
     setMsg('');
     setErr('');
     if (!userName) {
-      setErr('User name missing — sign in again.');
+      showSaleBillNotice('User name missing — sign in again.');
       return;
     }
     if (!code) {
-      setErr('Select billed-to party.');
+      showSaleBillNotice('Select billed-to party.');
+      return;
+    }
+    if (!String(bCode ?? '').trim()) {
+      showSaleBillNotice('Broker (B code) is required. Select broker from schedule 11.2.');
       return;
     }
     if (fyMinYmd && fyMaxYmd && billDateYmd && (billDateYmd < fyMinYmd || billDateYmd > fyMaxYmd)) {
-      setErr(`Bill date must be between ${toDisplayDate(fyMinYmd)} and ${toDisplayDate(fyMaxYmd)} (financial year).`);
+      showSaleBillNotice(
+        `Bill date must be between ${toDisplayDate(fyMinYmd)} and ${toDisplayDate(fyMaxYmd)} (financial year).`
+      );
       return;
     }
     try {
@@ -1087,6 +1443,9 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         header,
         lines: lines.map((L, i) => ({
           trn_no: i + 1,
+          ch_no: parseLineInt6Input(L.ch_no) || undefined,
+          ch_type: String(L.ch_type ?? '').trim().slice(0, 1) || undefined,
+          so_no: parseLineInt6Input(L.so_no) || undefined,
           item_code: L.item_code,
           s_code: L.s_code !== '' && L.s_code != null && !Number.isNaN(Number(L.s_code)) ? Number(L.s_code) : undefined,
           marka: L.marka,
@@ -1197,11 +1556,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
     (mode === 'edit' && !!can.canEdit) ||
     (mode === 'delete' && !!can.canDelete);
   const canPickMode = !!(can.canOpen || can.canAdd || can.canEdit || can.canDelete);
-  const canEditSaleBillFields =
-    !accessOnlyBrowse &&
-    ((mode === 'new' && !!can.canAdd) ||
-      (mode === 'edit' && !!can.canEdit) ||
-      (mode === 'delete' && !!can.canDelete));
+  const canEditSaleBillFields = canEditLines;
 
   return (
     <div className="slide slide-21-sale-bill sale-bill-page" onKeyDown={handleEnterAsTab} role="presentation">
@@ -1346,6 +1701,18 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
               min={fyMinYmd || undefined}
               max={fyMaxYmd || undefined}
               onChange={(e) => setBillDateYmd(normalizeHtmlDateValue(e.target.value))}
+              onBlur={() => {
+                if (
+                  fyMinYmd &&
+                  fyMaxYmd &&
+                  billDateYmd &&
+                  (billDateYmd < fyMinYmd || billDateYmd > fyMaxYmd)
+                ) {
+                  showSaleBillNotice(
+                    `Bill date must be between ${toDisplayDate(fyMinYmd)} and ${toDisplayDate(fyMaxYmd)} (financial year).`
+                  );
+                }
+              }}
               disabled={!canEditSaleBillFields}
             />
           </label>
@@ -1742,7 +2109,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         <div className="sale-bill-broker-row">
           <label className="sale-bill-field sale-bill-field--grow">
             <span className="sale-bill-field__label" id="sb-broker-search-lbl">
-              Broker (schedule 11.2)
+              Broker (schedule 11.2) <span className="sale-bill-field__req">*</span>
             </span>
             {bCode && !brokerFinderOpen ? (
               <div className="sale-bill-broker-summary">
@@ -1752,18 +2119,6 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                   <span className="sale-bill-search-current-hint"> — click Change broker to search again.</span>
                 </p>
                 <div className="sale-bill-picker-actions">
-                  <button
-                    type="button"
-                    className="btn-text-clear"
-                    disabled={!canEditSaleBillFields}
-                    onClick={() => {
-                      setBCode('');
-                      setBrokerSearch('');
-                      setBrokerFinderOpen(false);
-                    }}
-                  >
-                    No broker
-                  </button>
                   <button
                     type="button"
                     className="btn btn-secondary"
@@ -1789,7 +2144,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                     setBrokerSearch('');
                   }}
                 >
-                  Add broker (optional)
+                  Select broker (required)
                 </button>
               </div>
             ) : null}
@@ -1899,6 +2254,9 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
           <thead>
             <tr>
               <th>#</th>
+              <th title="Tap Pick or F1 (PC) — pending challan">Ch no</th>
+              <th>Ch tp</th>
+              <th title="Tap Pick or F1 (PC) — pending order">SO no</th>
               <th>Item</th>
               <th>Marka</th>
               <th>Plant</th>
@@ -1924,6 +2282,81 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
             {lines.map((L, idx) => (
               <tr key={idx}>
                 <td>{idx + 1}</td>
+                <td>
+                  <div className="sale-bill-line-pick-cell">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      className="sale-bill-line-ch-so sale-bill-line-pick-cell__input"
+                      title="Challan no — tap Pick (mobile) or F1 on PC for pending challans"
+                      value={displayLineInt6(L.ch_no)}
+                      onChange={(e) => recalcLine(idx, { ch_no: parseLineInt6Input(e.target.value) })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'F1') {
+                          e.preventDefault();
+                          void openChallanPick(idx);
+                        }
+                      }}
+                      disabled={!canEditSaleBillFields}
+                    />
+                    <button
+                      type="button"
+                      className="sale-bill-line-pick-btn slide-21-sale-bill-ignore-enter"
+                      title="Pending challans"
+                      aria-label="Open pending challans"
+                      disabled={!canEditSaleBillFields}
+                      onClick={() => void openChallanPick(idx)}
+                    >
+                      Pick
+                    </button>
+                  </div>
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    inputMode="text"
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="sale-bill-line-ch-type"
+                    maxLength={1}
+                    value={L.ch_type}
+                    onChange={(e) => {
+                      const c = singleCharFromInput(e.target.value);
+                      recalcLine(idx, { ch_type: c.slice(0, 1) });
+                    }}
+                    onFocus={selectAllOnFocus}
+                    disabled={!canEditSaleBillFields}
+                  />
+                </td>
+                <td>
+                  <div className="sale-bill-line-pick-cell">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      className="sale-bill-line-ch-so sale-bill-line-pick-cell__input"
+                      title="SO no — tap Pick (mobile) or F1 on PC for pending orders"
+                      value={displayLineInt6(L.so_no)}
+                      onChange={(e) => recalcLine(idx, { so_no: parseLineInt6Input(e.target.value) })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'F1') {
+                          e.preventDefault();
+                          void openSoPick(idx);
+                        }
+                      }}
+                      disabled={!canEditSaleBillFields}
+                    />
+                    <button
+                      type="button"
+                      className="sale-bill-line-pick-btn slide-21-sale-bill-ignore-enter"
+                      title="Pending sale orders"
+                      aria-label="Open pending sale orders"
+                      disabled={!canEditSaleBillFields}
+                      onClick={() => void openSoPick(idx)}
+                    >
+                      Pick
+                    </button>
+                  </div>
+                </td>
                 <td>
                   <select
                     value={L.item_code}
@@ -1976,6 +2409,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                     type="text"
                     inputMode="decimal"
                     style={{ width: '4.5rem' }}
+                    data-sale-line-qty={idx}
                     value={dispNum(L.qnty)}
                     onChange={(e) => recalcLine(idx, { qnty: parseNumInput(e.target.value) })}
                     disabled={!canEditSaleBillFields}
@@ -2417,6 +2851,43 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         ) : null}
         </div>
       </footer>
+      <SaleBillLinePickModal
+        open={challanPick.open}
+        title="Pending challans"
+        hint="Broker challan balance (ISSUE disp − SALE billed). Tap Pick beside Ch no (mobile) or F1 on PC."
+        loading={challanPick.loading}
+        rows={challanPick.rows}
+        columns={challanPickColumns}
+        hi={challanPick.hi}
+        onHi={(i) => setChallanPick((p) => ({ ...p, hi: i }))}
+        onClose={() => setChallanPick((p) => ({ ...p, open: false }))}
+        onPick={(row) => applyChallanPick(challanPick.lineIdx, row)}
+      />
+      <SaleBillLinePickModal
+        open={soPick.open}
+        title="Pending sale orders"
+        hint={
+          soPick.brokerMode === 'C'
+            ? `Open SO for billed-to party [${code || '—'}] (SO_CODE_BROKER = C). Tap Pick beside SO no (mobile) or F1 on PC.`
+            : soPick.brokerMode === 'B'
+              ? `Open SO for broker [${bCode || '—'}] (SO_CODE_BROKER = B). Tap Pick beside SO no (mobile) or F1 on PC.`
+              : 'Open SO balance (SORDER − SALE billed). Tap Pick beside SO no (mobile) or F1 on PC.'
+        }
+        loading={soPick.loading}
+        rows={soPick.rows}
+        columns={soPickColumns}
+        hi={soPick.hi}
+        onHi={(i) => setSoPick((p) => ({ ...p, hi: i }))}
+        onClose={() => setSoPick((p) => ({ ...p, open: false }))}
+        onPick={(row) => applySoPick(soPick.lineIdx, row)}
+        emptyMessage={
+          soPick.brokerMode === 'C'
+            ? `No open SO for billed-to [${code || '—'}]. Choose the same party as on the order (e.g. AMAN KUMAR in sopnd).`
+            : soPick.brokerMode === 'B'
+              ? `No open SO for broker [${bCode || '—'}].`
+              : undefined
+        }
+      />
       {createPortal(
         msg ? (
           <div

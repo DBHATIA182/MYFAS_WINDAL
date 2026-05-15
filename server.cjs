@@ -4123,6 +4123,9 @@ app.get('/api/sale-bill-form-context', async (req, res) => {
       G_DEF_DAYS: numVal(tv('def_days')),
       G_FIN_YEAR_YN: String(tv('fin_year_yn') ?? 'N').trim() || 'N',
       G_BROK_TRF: String(tv('brok_trf') ?? 'Y').trim() || 'Y',
+      G_RATE_CHK: String(tv('rate_chk') ?? 'N').trim().toUpperCase() || 'N',
+      G_MARKA_CHK_IN_DISP_CHALLAN: String(tv('marka_chk_in_disp_challan') ?? 'N').trim().toUpperCase() || 'N',
+      G_SO_CODE_BROKER: String(tv('so_code_broker') ?? '').trim().toUpperCase() || '',
       COMP_S_DT: tv('comp_s_dt'),
       COMP_E_DT: tv('comp_e_dt'),
     });
@@ -4200,6 +4203,1132 @@ app.get('/api/sale-bill-next-bill-no', async (req, res) => {
   } catch (err) {
     console.error('❌ sale-bill-next-bill-no error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+function saleBillLineInt6(n) {
+  const x = Math.floor(Number(n) || 0);
+  if (!Number.isFinite(x) || x <= 0) return null;
+  return Math.min(999999, x);
+}
+
+function compdetYn(row, key) {
+  return String(rowValueCI(row, key) ?? '').trim().toUpperCase() === 'Y';
+}
+
+/** Fox MYCUR → x3 pending challan rows for sale bill line F1 (ISSUE disp vs SALE billed). */
+async function fetchSaleBillPendingChallans(comp_code, comp_uid, b_code, rateChk, markaChk) {
+  const bc = parseMasterCodeForSql(b_code);
+  if (bc === undefined) return [];
+  const binds = { comp_code, b_code: bc };
+  let x1;
+  if (rateChk) {
+    const sql = `
+      SELECT REF_NO AS CH_NO, NVL(REF_CH_TYPE, ' ') AS CH_TYPE, R_DATE AS CH_DATE, ITEM_CODE, MARKA, STATUS, RATE,
+        MAX(PLANT_CODE) AS PLANT_CODE,
+        SUM(CASE WHEN TRIM(TO_CHAR(TYPE)) IN ('S','R') THEN NVL(QNTY,0) ELSE NVL(QNTY,0) * -1 END) AS D_QNTY
+      FROM ISSUE
+      WHERE COMP_CODE = :comp_code AND TRIM(TO_CHAR(TYPE)) IN ('S','R','Y') AND CODE = :b_code
+      GROUP BY REF_NO, REF_CH_TYPE, R_DATE, ITEM_CODE, MARKA, STATUS, RATE`;
+    x1 = await runQuery(sql, binds, comp_uid);
+  } else {
+    const sql = `
+      SELECT REF_NO AS CH_NO, NVL(REF_CH_TYPE, ' ') AS CH_TYPE, R_DATE AS CH_DATE, ITEM_CODE, MARKA, STATUS,
+        MAX(RATE) AS RATE, MAX(PLANT_CODE) AS PLANT_CODE,
+        SUM(CASE WHEN TRIM(TO_CHAR(TYPE)) IN ('S','R') THEN NVL(QNTY,0) ELSE NVL(QNTY,0) * -1 END) AS D_QNTY
+      FROM ISSUE
+      WHERE COMP_CODE = :comp_code AND TRIM(TO_CHAR(TYPE)) IN ('S','R','Y') AND CODE = :b_code
+      GROUP BY REF_NO, REF_CH_TYPE, R_DATE, ITEM_CODE, MARKA, STATUS`;
+    x1 = await runQuery(sql, binds, comp_uid);
+  }
+
+  let x2;
+  if (rateChk) {
+    const sqlPap = `
+      SELECT CH_NO, NVL(CH_TYPE, ' ') AS CH_TYPE, ITEM_CODE, MARKA, STATUS,
+        NVL(RATE,0) - NVL(PAPLOO,0) AS RATE, MAX(PLANT_CODE) AS PLANT_CODE,
+        SUM(CASE WHEN TO_NUMBER(TRIM(TO_CHAR(TYPE))) IN (4,5) THEN NVL(QNTY,0) * -1 ELSE NVL(QNTY,0) END) AS B_QNTY
+      FROM SALE
+      WHERE COMP_CODE = :comp_code AND B_CODE = :b_code AND NVL(CH_NO,0) <> 0
+      GROUP BY CH_NO, CH_TYPE, ITEM_CODE, MARKA, STATUS, NVL(RATE,0) - NVL(PAPLOO,0)`;
+    try {
+      x2 = await runQuery(sqlPap, binds, comp_uid);
+    } catch (e) {
+      if (!String(e?.message || '').includes('ORA-00904')) throw e;
+      const sql = `
+        SELECT CH_NO, NVL(CH_TYPE, ' ') AS CH_TYPE, ITEM_CODE, MARKA, STATUS, RATE,
+          MAX(PLANT_CODE) AS PLANT_CODE,
+          SUM(CASE WHEN TO_NUMBER(TRIM(TO_CHAR(TYPE))) IN (4,5) THEN NVL(QNTY,0) * -1 ELSE NVL(QNTY,0) END) AS B_QNTY
+        FROM SALE
+        WHERE COMP_CODE = :comp_code AND B_CODE = :b_code AND NVL(CH_NO,0) <> 0
+        GROUP BY CH_NO, CH_TYPE, ITEM_CODE, MARKA, STATUS, RATE`;
+      x2 = await runQuery(sql, binds, comp_uid);
+    }
+  } else {
+    const sql = `
+      SELECT CH_NO, NVL(CH_TYPE, ' ') AS CH_TYPE, ITEM_CODE, MARKA, STATUS, MAX(RATE) AS RATE,
+        SUM(NVL(QNTY,0)) AS B_QNTY, MAX(PLANT_CODE) AS PLANT_CODE
+      FROM SALE
+      WHERE COMP_CODE = :comp_code AND B_CODE = :b_code AND NVL(CH_NO,0) <> 0
+      GROUP BY CH_NO, CH_TYPE, ITEM_CODE, MARKA, STATUS`;
+    x2 = await runQuery(sql, binds, comp_uid);
+  }
+
+  const mycur = [];
+  for (const r of x1 || []) {
+    mycur.push({
+      ch_no: numVal(r.CH_NO ?? r.ch_no),
+      ch_type: String(r.CH_TYPE ?? r.ch_type ?? '').trim().slice(0, 1),
+      ch_date: r.CH_DATE ?? r.ch_date,
+      item_code: String(r.ITEM_CODE ?? r.item_code ?? '').trim(),
+      marka: String(r.MARKA ?? r.marka ?? '').trim(),
+      status: String(r.STATUS ?? r.status ?? '').trim(),
+      rate: numVal(r.RATE ?? r.rate),
+      plant_code: String(r.PLANT_CODE ?? r.plant_code ?? '').trim(),
+      d_qnty: numVal(r.D_QNTY ?? r.d_qnty),
+      b_qnty: 0,
+    });
+  }
+  for (const r of x2 || []) {
+    mycur.push({
+      ch_no: numVal(r.CH_NO ?? r.ch_no),
+      ch_type: String(r.CH_TYPE ?? r.ch_type ?? '').trim().slice(0, 1),
+      ch_date: null,
+      item_code: String(r.ITEM_CODE ?? r.item_code ?? '').trim(),
+      marka: String(r.MARKA ?? r.marka ?? '').trim(),
+      status: String(r.STATUS ?? r.status ?? '').trim(),
+      rate: numVal(r.RATE ?? r.rate),
+      plant_code: String(r.PLANT_CODE ?? r.plant_code ?? '').trim(),
+      d_qnty: 0,
+      b_qnty: numVal(r.B_QNTY ?? r.b_qnty),
+    });
+  }
+
+  const groupKey = (row) => {
+    const base = `${row.ch_no}|${row.ch_type}|${row.item_code}|${row.status}`;
+    if (markaChk) return `${base}|${row.marka}|${rateChk ? row.rate : ''}`;
+    return `${base}|${rateChk ? row.rate : ''}`;
+  };
+
+  const agg = new Map();
+  for (const row of mycur) {
+    const k = groupKey(row);
+    let g = agg.get(k);
+    if (!g) {
+      g = {
+        CH_NO: row.ch_no,
+        CH_TYPE: row.ch_type,
+        CH_DATE: row.ch_date,
+        ITEM_CODE: row.item_code,
+        MARKA: markaChk ? row.marka : '',
+        STATUS: row.status,
+        RATE: row.rate,
+        D_QNTY: 0,
+        B_QNTY: 0,
+        PLANT_CODE: row.plant_code,
+        _markaParts: markaChk ? [] : [row.marka],
+        _dateParts: row.ch_date ? [row.ch_date] : [],
+      };
+      agg.set(k, g);
+    }
+    g.D_QNTY += row.d_qnty;
+    g.B_QNTY += row.b_qnty;
+    if (!markaChk && row.marka) g._markaParts.push(row.marka);
+    if (row.ch_date) g._dateParts.push(row.ch_date);
+    if (row.plant_code) g.PLANT_CODE = row.plant_code;
+  }
+
+  const out = [];
+  for (const g of agg.values()) {
+    const bal = g.D_QNTY - g.B_QNTY;
+    if (bal <= 0) continue;
+    let chDate = g.CH_DATE;
+    if (g._dateParts.length) {
+      const best = g._dateParts.reduce((a, b) => {
+        const da = parseDateOnly(a);
+        const db = parseDateOnly(b);
+        if (!da) return b;
+        if (!db) return a;
+        return da > db ? a : b;
+      });
+      chDate = best;
+    }
+    out.push({
+      CH_NO: g.CH_NO,
+      CH_TYPE: g.CH_TYPE,
+      CH_DATE: chDate,
+      ITEM_CODE: g.ITEM_CODE,
+      MARKA: markaChk ? g.MARKA : (g._markaParts.sort().pop() || ''),
+      STATUS: g.STATUS,
+      RATE: Math.round(g.RATE * 100) / 100,
+      D_QNTY: g.D_QNTY,
+      B_QNTY: g.B_QNTY,
+      BAL_QNTY: bal,
+      PLANT_CODE: g.PLANT_CODE,
+    });
+  }
+  out.sort((a, b) => numVal(a.CH_NO) - numVal(b.CH_NO));
+  return out;
+}
+
+/** SO_CODE_BROKER from COMPDET (Fox G_SO_CODE_BROKER). */
+function saleBillSoCodeBrokerMode(compdet) {
+  const raw = String(
+    rowValueCI(compdet, 'so_code_broker') ??
+      rowValueCI(compdet, 'SO_CODE_BROKER') ??
+      rowValueCI(compdet, 'so_code_brok') ??
+      ''
+  )
+    .trim()
+    .toUpperCase();
+  if (raw === 'C' || raw === 'B') return raw;
+  return '';
+}
+
+/** Fox pending SO browse for sale bill line F1 (SORDER vs SALE billed). */
+async function fetchSaleBillPendingOrders(comp_code, comp_uid, code, b_code, compdet) {
+  const rateChk = compdetYn(compdet, 'rate_chk');
+  const soBroker = saleBillSoCodeBrokerMode(compdet);
+  const binds = { comp_code };
+  let sorderWhere;
+  let saleWhere;
+  if (soBroker === 'C') {
+    const c = parseMasterCodeForSql(code);
+    if (c === undefined) return [];
+    binds.party_code = c;
+    sorderWhere = 'TRIM(TO_CHAR(A.CODE)) = TRIM(TO_CHAR(:party_code))';
+    saleWhere = 'TRIM(TO_CHAR(A.CODE)) = TRIM(TO_CHAR(:party_code))';
+  } else if (soBroker === 'B') {
+    const b = parseMasterCodeForSql(b_code);
+    if (b === undefined) return [];
+    binds.party_code = b;
+    sorderWhere = 'TRIM(TO_CHAR(A.B_CODE)) = TRIM(TO_CHAR(:party_code))';
+    saleWhere = 'TRIM(TO_CHAR(A.B_CODE)) = TRIM(TO_CHAR(:party_code))';
+  } else {
+    const c1 = parseMasterCodeForSql(code);
+    const c2 = parseMasterCodeForSql(b_code);
+    if (c1 === undefined && c2 === undefined) return [];
+    binds.code1 = c1 ?? c2;
+    binds.code2 = c2 ?? c1;
+    sorderWhere =
+      '(TRIM(TO_CHAR(A.CODE)) = TRIM(TO_CHAR(:code1)) OR TRIM(TO_CHAR(A.B_CODE)) = TRIM(TO_CHAR(:code2)))';
+    saleWhere =
+      '(TRIM(TO_CHAR(A.CODE)) = TRIM(TO_CHAR(:code1)) OR TRIM(TO_CHAR(A.B_CODE)) = TRIM(TO_CHAR(:code2)))';
+  }
+
+  const sorderTypeClause = `UPPER(TRIM(NVL(TO_CHAR(A.TYPE), 'SO'))) = 'SO'`;
+  const x0Sql = `
+    SELECT A.SO_NO, A.SO_DATE, A.ITEM_CODE, A.MARKA, A.STATUS, A.QNTY, A.WEIGHT, A.RATE, A.TYPE, A.REMARKS
+    FROM SORDER A
+    WHERE A.COMP_CODE = :comp_code AND ${sorderTypeClause} AND ${sorderWhere}`;
+  const x0 = await runQuery(x0Sql, binds, comp_uid);
+
+  const x1Map = new Map();
+  const x1Key = (r) => {
+    const so = numVal(r.SO_NO ?? r.so_no);
+    const ic = String(r.ITEM_CODE ?? r.item_code ?? '').trim();
+    const st = String(r.STATUS ?? r.status ?? '').trim();
+    const rt = rateChk ? numVal(r.RATE ?? r.rate) : 0;
+    return `${so}|${ic}|${st}|${rateChk ? rt : ''}`;
+  };
+  for (const r of x0 || []) {
+    const k = x1Key(r);
+    let g = x1Map.get(k);
+    if (!g) {
+      g = {
+        TYPE: String(r.TYPE ?? r.type ?? '').trim(),
+        SO_NO: numVal(r.SO_NO ?? r.so_no),
+        SO_DATE: r.SO_DATE ?? r.so_date,
+        ITEM_CODE: String(r.ITEM_CODE ?? r.item_code ?? '').trim(),
+        STATUS: String(r.STATUS ?? r.status ?? '').trim(),
+        RATE: rateChk ? numVal(r.RATE ?? r.rate) : 0,
+        MARKA: String(r.MARKA ?? r.marka ?? '').trim(),
+        SOQTY: 0,
+        SOWGT: 0,
+        REMARKS: String(r.REMARKS ?? r.remarks ?? '').trim(),
+        _markaParts: [],
+        _dateParts: [],
+      };
+      x1Map.set(k, g);
+    }
+    g.SOQTY += numVal(r.QNTY ?? r.qnty);
+    g.SOWGT += numVal(r.WEIGHT ?? r.weight);
+    if (!rateChk) {
+      g.RATE = Math.max(g.RATE, numVal(r.RATE ?? r.rate));
+      if (String(r.MARKA ?? r.marka ?? '').trim()) g._markaParts.push(String(r.MARKA ?? r.marka).trim());
+    }
+    if (r.SO_DATE) g._dateParts.push(r.SO_DATE);
+    if (String(r.REMARKS ?? r.remarks ?? '').trim()) g.REMARKS = String(r.REMARKS ?? r.remarks).trim();
+  }
+  if (!rateChk) {
+    for (const g of x1Map.values()) {
+      if (g._markaParts.length) g.MARKA = g._markaParts.sort().pop();
+    }
+  }
+
+  let x0Sale;
+  const saleBinds = { ...binds };
+  const saleSqlPap = `
+    SELECT A.SO_NO, A.ITEM_CODE, A.STATUS, A.QNTY, NVL(A.RATE,0) - NVL(A.PAPLOO,0) AS RATE, A.WEIGHT, A.TYPE
+    FROM SALE A
+    WHERE A.COMP_CODE = :comp_code AND ${saleWhere} AND NVL(A.SO_NO,0) <> 0`;
+  try {
+    x0Sale = await runQuery(saleSqlPap, saleBinds, comp_uid);
+  } catch (e) {
+    if (!String(e?.message || '').includes('ORA-00904')) throw e;
+    const saleSql = `
+      SELECT A.SO_NO, A.ITEM_CODE, A.STATUS, A.QNTY, A.RATE, A.WEIGHT, A.TYPE
+      FROM SALE A
+      WHERE A.COMP_CODE = :comp_code AND ${saleWhere} AND NVL(A.SO_NO,0) <> 0`;
+    x0Sale = await runQuery(saleSql, saleBinds, comp_uid);
+  }
+
+  const x2Map = new Map();
+  const x2Key = (r) => {
+    const so = numVal(r.SO_NO ?? r.so_no);
+    const ic = String(r.ITEM_CODE ?? r.item_code ?? '').trim();
+    const st = String(r.STATUS ?? r.status ?? '').trim();
+    const rt = rateChk ? numVal(r.RATE ?? r.rate) : 0;
+    return `${so}|${ic}|${st}|${rateChk ? rt : ''}`;
+  };
+  for (const r of x0Sale || []) {
+    const tpRaw = String(r.TYPE ?? r.type ?? '').trim();
+    const tp = numVal(tpRaw);
+    /** Fox: IIF(TYPE<>4, qty, qty*-1) — treat credit/return sale types as negative billed. */
+    const sign = tp === 4 || tpRaw.toUpperCase() === 'CN' ? -1 : 1;
+    const k = x2Key(r);
+    let g = x2Map.get(k);
+    if (!g) {
+      g = { SO_NO: numVal(r.SO_NO), ITEM_CODE: String(r.ITEM_CODE ?? '').trim(), STATUS: String(r.STATUS ?? '').trim(), RATE: rateChk ? numVal(r.RATE) : 0, SLQTY: 0, SLWGT: 0 };
+      x2Map.set(k, g);
+    }
+    g.SLQTY += numVal(r.QNTY) * sign;
+    g.SLWGT += numVal(r.WEIGHT) * sign;
+    if (!rateChk) g.RATE = Math.max(g.RATE, numVal(r.RATE));
+  }
+
+  const merged = new Map();
+  for (const [k, a] of x1Map) {
+    merged.set(k, { ...a, SLQTY: 0, SLWGT: 0 });
+  }
+  for (const [k, b] of x2Map) {
+    let row = merged.get(k);
+    if (!row) {
+      row = {
+        SO_NO: b.SO_NO,
+        SO_DATE: null,
+        ITEM_CODE: b.ITEM_CODE,
+        STATUS: b.STATUS,
+        RATE: b.RATE,
+        MARKA: '',
+        SOQTY: 0,
+        SOWGT: 0,
+        REMARKS: '',
+        _dateParts: [],
+      };
+      merged.set(k, row);
+    }
+    row.SLQTY = (row.SLQTY || 0) + b.SLQTY;
+    row.SLWGT = (row.SLWGT || 0) + b.SLWGT;
+  }
+
+  const x4Map = new Map();
+  const x4Key = (r) => {
+    const so = numVal(r.SO_NO);
+    const ic = String(r.ITEM_CODE ?? '').trim();
+    const st = String(r.STATUS ?? '').trim();
+    const rt = rateChk ? numVal(r.RATE) : 0;
+    return `${so}|${ic}|${st}|${rateChk ? rt : ''}`;
+  };
+  for (const r of merged.values()) {
+    const k = x4Key(r);
+    let g = x4Map.get(k);
+    if (!g) {
+      g = {
+        SO_NO: r.SO_NO,
+        SO_DATE: r.SO_DATE,
+        ITEM_CODE: r.ITEM_CODE,
+        STATUS: r.STATUS,
+        RATE: r.RATE,
+        MARKA: r.MARKA,
+        SOQTY: 0,
+        SOWGT: 0,
+        SLQTY: 0,
+        SLWGT: 0,
+        REMARKS: r.REMARKS,
+        _dateParts: r._dateParts || (r.SO_DATE ? [r.SO_DATE] : []),
+        _markaParts: [],
+      };
+      x4Map.set(k, g);
+    }
+    g.SOQTY += numVal(r.SOQTY);
+    g.SOWGT += numVal(r.SOWGT);
+    g.SLQTY += numVal(r.SLQTY);
+    g.SLWGT += numVal(r.SLWGT);
+    if (r._dateParts?.length) g._dateParts.push(...r._dateParts);
+    if (r.MARKA) g._markaParts.push(r.MARKA);
+  }
+  if (!rateChk) {
+    for (const g of x4Map.values()) {
+      if (g._markaParts.length) g.MARKA = g._markaParts.sort().pop();
+    }
+  }
+
+  const out = [];
+  for (const g of x4Map.values()) {
+    const bqty = Math.round((g.SOQTY - g.SLQTY) * 1000) / 1000;
+    const bwgt = Math.round((g.SOWGT - g.SLWGT) * 1000) / 1000;
+    if (numVal(g.SO_NO) < 1) continue;
+    /** Fox F1 uses BWGT>0; sopnd / qty-only SO lines need BQTY>0 (report shows Oqty/BQty). */
+    if (bqty <= 0 && bwgt <= 0) continue;
+    let soDate = g.SO_DATE;
+    if (g._dateParts?.length) {
+      soDate = g._dateParts.reduce((a, b) => {
+        const da = parseDateOnly(a);
+        const db = parseDateOnly(b);
+        if (!da) return b;
+        if (!db) return a;
+        return da > db ? a : b;
+      });
+    }
+    out.push({
+      SO_NO: g.SO_NO,
+      SO_DATE: soDate,
+      ITEM_CODE: g.ITEM_CODE,
+      STATUS: g.STATUS,
+      RATE: Math.round(numVal(g.RATE) * 100) / 100,
+      MARKA: g.MARKA,
+      BQTY: bqty,
+      BWGT: bwgt,
+      REMARKS: g.REMARKS,
+    });
+  }
+  out.sort((a, b) => numVal(a.SO_NO) - numVal(b.SO_NO));
+  return out;
+}
+
+app.get('/api/sale-bill-pending-challans', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, b_code } = req.query;
+    if (!comp_code || comp_uid == null || String(comp_uid).trim() === '') {
+      return res.status(400).json({ error: 'comp_code, comp_uid, and b_code are required' });
+    }
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid);
+    const rateChk = compdetYn(compdet, 'rate_chk');
+    const markaChk = compdetYn(compdet, 'marka_chk_in_disp_challan');
+    const rows = await fetchSaleBillPendingChallans(comp_code, comp_uid, b_code, rateChk, markaChk);
+    res.json(rows);
+  } catch (err) {
+    console.error('❌ sale-bill-pending-challans error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/sale-bill-pending-orders', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, code, b_code } = req.query;
+    if (!comp_code || comp_uid == null || String(comp_uid).trim() === '') {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid);
+    if (!compdet) return res.status(404).json({ error: 'compdet not found' });
+    const soBroker = saleBillSoCodeBrokerMode(compdet);
+    const rows = await fetchSaleBillPendingOrders(comp_code, comp_uid, code, b_code, compdet);
+    res.json({
+      rows,
+      so_code_broker: soBroker,
+      party_filter:
+        soBroker === 'C' ? 'billed_to_code' : soBroker === 'B' ? 'broker_b_code' : 'code_or_broker',
+    });
+  } catch (err) {
+    console.error('❌ sale-bill-pending-orders error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Dispatch challan (ISSUE TYPE S): DAL.USERS F11 — pos 1–4 = open, add, edit, delete. */
+async function fetchDispatchChallanUserF11String(user_name, comp_uid) {
+  const u = String(user_name || '').trim().toUpperCase();
+  if (!u) return { f11: '', source: 'empty_user' };
+  const schemas = isEffectiveCompUid(comp_uid) ? [String(comp_uid).trim(), null] : [null];
+  const tables = ['DAL.USERS', 'USERS'];
+  for (const sch of schemas) {
+    for (const t of tables) {
+      const sql = `SELECT F11 FROM ${t} WHERE UPPER(TRIM(USER_NAME)) = :u AND ROWNUM = 1`;
+      try {
+        const rows = await runQuery(sql, { u }, sch, { suppressDbErrorLog: true });
+        const raw = rows?.[0]?.F11 ?? rows?.[0]?.f11;
+        if (raw != null && String(raw).trim() !== '') {
+          return { f11: String(raw).trim(), source: t };
+        }
+      } catch (err) {
+        if (!isLoginOptionalTableError(err) && !isUnknownUsersColumnError(err)) {
+          /* ignore */
+        }
+      }
+    }
+  }
+  return { f11: '', source: 'none' };
+}
+
+function dispatchChallanPermissionsFromF11(f11) {
+  const s = String(f11 || '');
+  const bit = (i) => (s.length > i ? s.charAt(i) === '1' : false);
+  if (!s) {
+    return { canOpen: true, canAdd: true, canEdit: true, canDelete: true, flags: 'legacy_no_f11' };
+  }
+  return {
+    canOpen: bit(0),
+    canAdd: bit(1),
+    canEdit: bit(2),
+    canDelete: bit(3),
+    flags: 'f11',
+  };
+}
+
+const DISPATCH_CHALLAN_TYPE = 'S';
+const DISPATCH_CHALLAN_CO = 'O';
+const DISPATCH_PARTY_SCHEDULE = 11.2;
+
+function clampDispatchWeightSql(n) {
+  const x = Number(n) || 0;
+  const c = Math.max(0, Math.min(SALE_BILL_MAX_WEIGHT, x));
+  return Math.round(c * 1000) / 1000;
+}
+
+function clampDispatchAmountSql(n) {
+  const x = Number(n) || 0;
+  return Math.round(x * 100) / 100;
+}
+
+app.get('/api/dispatch-challan-user-permissions', async (req, res) => {
+  try {
+    const { comp_uid, user_name } = req.query;
+    if (comp_uid == null || String(comp_uid).trim() === '' || !user_name) {
+      return res.status(400).json({ error: 'comp_uid and user_name are required' });
+    }
+    const { f11, source } = await fetchDispatchChallanUserF11String(user_name, comp_uid);
+    res.json({ f11, source, ...dispatchChallanPermissionsFromF11(f11) });
+  } catch (err) {
+    console.error('❌ dispatch-challan-user-permissions error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/dispatch-challan-form-context', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    if (!comp_code || comp_uid == null || String(comp_uid).trim() === '') {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const row = await runCompdetHeaderRow(comp_code, comp_uid);
+    if (!row) return res.status(404).json({ error: 'compdet row not found' });
+    const tv = (k) => {
+      const v = rowValueCI(row, k);
+      if (v == null || typeof v === 'object') return null;
+      return String(v).trim();
+    };
+    res.json({
+      G_COMP_YEAR: Number(row.COMP_YEAR ?? row.comp_year ?? 0) || 0,
+      G_AMT_CAL: String(tv('amt_cal') ?? 'K').trim().toUpperCase() || 'K',
+      COMP_S_DT: tv('comp_s_dt'),
+      COMP_E_DT: tv('comp_e_dt'),
+      MTYPE: DISPATCH_CHALLAN_TYPE,
+    });
+  } catch (err) {
+    console.error('❌ dispatch-challan-form-context error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/dispatch-challan-lookups', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const partySql = `
+      SELECT M.CODE, M.NAME, M.CITY, M.GST_NO
+      FROM MASTER M
+      WHERE M.COMP_CODE = :comp_code
+        AND ROUND(NVL(M.SCHEDULE, 0), 2) = :sched
+      ORDER BY M.NAME, M.CITY, M.CODE`;
+    const plantSql = `SELECT PLANT_CODE, PLANT_NAME FROM PLANT WHERE COMP_CODE = :comp_code ORDER BY PLANT_CODE`;
+    const markaSql = `SELECT DISTINCT TRIM(MARKA) AS MARKA FROM marka WHERE COMP_CODE = :comp_code ORDER BY 1`;
+    const itemSql = `
+      SELECT ITEM_CODE, ITEM_NAME, NVL(UNIT_WGT, 0) AS UNIT_WGT
+      FROM ITEMMAST
+      WHERE COMP_CODE = :comp_code
+      ORDER BY ITEM_NAME, ITEM_CODE`;
+    const [parties, plants, markas, items] = await Promise.all([
+      runQuery(partySql, { comp_code, sched: DISPATCH_PARTY_SCHEDULE }, comp_uid),
+      runQuery(plantSql, { comp_code }, comp_uid),
+      runQuery(markaSql, { comp_code }, comp_uid).catch(() => []),
+      runQuery(itemSql, { comp_code }, comp_uid).catch(() => []),
+    ]);
+    res.json({ parties: parties || [], plants: plants || [], markas: markas || [], items: items || [] });
+  } catch (err) {
+    console.error('❌ dispatch-challan-lookups error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/dispatch-challan-next-r-no', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, ch_type } = req.query;
+    if (!comp_code || comp_uid == null || !ch_type) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, and ch_type are required' });
+    }
+    const ct = String(ch_type).trim().toUpperCase().slice(0, 1) || ' ';
+    const sql = `
+      SELECT NVL(MAX(TO_NUMBER(TRIM(TO_CHAR(A.R_NO)))), 0) + 1 AS NEXT_R_NO
+      FROM ISSUE A
+      WHERE A.COMP_CODE = :comp_code
+        AND TRIM(TO_CHAR(A.TYPE)) = :mtype
+        AND NVL(TRIM(A.CH_TYPE), ' ') = NVL(TRIM(:ch_type), ' ')`;
+    const rows = await runQuery(sql, { comp_code, mtype: DISPATCH_CHALLAN_TYPE, ch_type: ct }, comp_uid);
+    const n = rows?.[0]?.NEXT_R_NO ?? rows?.[0]?.next_r_no ?? 1;
+    res.json({ next_r_no: Number(n) || 1 });
+  } catch (err) {
+    console.error('❌ dispatch-challan-next-r-no error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/dispatch-challan-raw', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, ch_type, r_no } = req.query;
+    if (!comp_code || comp_uid == null || !ch_type || r_no == null) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, ch_type, and r_no are required' });
+    }
+    const ct = String(ch_type).trim().toUpperCase().slice(0, 1) || ' ';
+    const sql = `
+      SELECT A.*
+      FROM ISSUE A
+      WHERE A.COMP_CODE = :comp_code
+        AND TRIM(TO_CHAR(A.TYPE)) = :mtype
+        AND NVL(TRIM(A.CH_TYPE), ' ') = NVL(TRIM(:ch_type), ' ')
+        AND TRIM(TO_CHAR(A.R_NO)) = TRIM(TO_CHAR(:r_no))
+      ORDER BY A.TRN_NO`;
+    const rows = await runQuery(
+      sql,
+      { comp_code, mtype: DISPATCH_CHALLAN_TYPE, ch_type: ct, r_no: String(r_no).trim() },
+      comp_uid
+    );
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ dispatch-challan-raw error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/dispatch-challan-list', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const binds = { comp_code, mtype: DISPATCH_CHALLAN_TYPE };
+    let dateClause = '';
+    if (s_date && e_date) {
+      binds.s_date = String(s_date).trim();
+      binds.e_date = String(e_date).trim();
+      dateClause = `AND TRUNC(A.R_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))`;
+    }
+    const sql = `
+      SELECT A.CH_TYPE, A.R_NO, MAX(A.R_DATE) AS R_DATE, MAX(A.CODE) AS CODE,
+        MAX(B.NAME) AS NAME, MAX(A.REMARKS) AS REMARKS,
+        SUM(NVL(A.QNTY, 0)) AS TOT_QNTY, SUM(NVL(A.WEIGHT, 0)) AS TOT_WEIGHT, SUM(NVL(A.AMOUNT, 0)) AS TOT_AMOUNT
+      FROM ISSUE A
+      LEFT JOIN MASTER B ON B.COMP_CODE = A.COMP_CODE AND B.CODE = A.CODE
+      WHERE A.COMP_CODE = :comp_code
+        AND TRIM(TO_CHAR(A.TYPE)) = :mtype
+        ${dateClause}
+      GROUP BY A.CH_TYPE, A.R_NO
+      ORDER BY A.R_NO DESC`;
+    const rows = await runQuery(sql, binds, comp_uid);
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ dispatch-challan-list error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Dispatch challan print — ISSUE type S, range by date / ch no / ch type (Fox print browse). */
+app.get('/api/dispatch-challan-print', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, s_no, e_no, ch_type } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (!s_date || !e_date) {
+      return res.status(400).json({ error: 's_date and e_date (DD-MM-YYYY) are required' });
+    }
+    const sno = Math.max(0, Math.floor(Number(s_no) || 0));
+    const eno = Math.max(sno, Math.floor(Number(e_no) || 0));
+    const ct = String(ch_type ?? 'I').trim().toUpperCase().slice(0, 1) || 'I';
+    const sql = `
+      SELECT A.TYPE, A.R_DATE, A.R_NO, A.CH_TYPE, A.CODE,
+        B.NAME, B.ADD1, B.ADD2, B.CITY, B.GST_NO, B.PAN, B.TEL_NO_O,
+        A.TRN_NO, A.ITEM_CODE, C.ITEM_NAME, A.MARKA, C.HSN_CODE, A.STATUS,
+        A.QNTY, A.WEIGHT, A.RATE, A.AMOUNT,
+        A.REMARKS, A.TRUCK_NO, A.TPT, A.GR_NO
+      FROM ISSUE A
+      LEFT JOIN MASTER B ON B.COMP_CODE = A.COMP_CODE AND B.CODE = A.CODE
+      LEFT JOIN ITEMMAST C ON C.COMP_CODE = A.COMP_CODE AND C.ITEM_CODE = A.ITEM_CODE
+      WHERE A.COMP_CODE = :comp_code
+        AND TRIM(TO_CHAR(A.TYPE)) = 'S'
+        AND NVL(TRIM(A.CH_TYPE), ' ') = NVL(TRIM(:ch_type), ' ')
+        AND TO_NUMBER(TRIM(TO_CHAR(A.R_NO))) >= :sno
+        AND TO_NUMBER(TRIM(TO_CHAR(A.R_NO))) <= :eno
+        AND TRUNC(A.R_DATE) >= TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))
+        AND TRUNC(A.R_DATE) <= TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))
+      ORDER BY A.TYPE, A.CH_TYPE, A.R_NO, A.TRN_NO`;
+    const binds = {
+      comp_code,
+      ch_type: ct,
+      sno,
+      eno,
+      s_date: String(s_date).trim(),
+      e_date: String(e_date).trim(),
+    };
+    const rows = await runQuery(sql, binds, comp_uid);
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ dispatch-challan-print error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Dispatch challan list report — line detail with optional date / party / item / marka filters. */
+app.get('/api/dispatch-challan-list-report', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, code, item_code, marka } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (!s_date || !e_date) {
+      return res.status(400).json({ error: 's_date and e_date (DD-MM-YYYY) are required' });
+    }
+    const binds = {
+      comp_code,
+      mtype: DISPATCH_CHALLAN_TYPE,
+      s_date: String(s_date).trim(),
+      e_date: String(e_date).trim(),
+    };
+    let extra = '';
+    const partyCode = code != null && String(code).trim() !== '' ? parseMasterCodeForSql(code) : undefined;
+    if (partyCode !== undefined) {
+      binds.party_code = partyCode;
+      extra += ` AND TRIM(TO_CHAR(A.CODE)) = TRIM(TO_CHAR(:party_code))`;
+    }
+    const itemTrim = item_code != null ? String(item_code).trim() : '';
+    if (itemTrim) {
+      binds.item_code = itemTrim;
+      extra += ` AND TRIM(A.ITEM_CODE) = TRIM(:item_code)`;
+    }
+    const markaTrim = marka != null ? String(marka).trim() : '';
+    if (markaTrim) {
+      binds.marka = markaTrim;
+      extra += ` AND TRIM(NVL(A.MARKA, ' ')) = TRIM(:marka)`;
+    }
+    const sql = `
+      SELECT A.CH_TYPE, A.R_NO, A.R_DATE, A.CODE, B.NAME AS PARTY_NAME,
+        A.SO_NO, A.ITEM_CODE, NVL(C.ITEM_NAME, A.ITEM_CODE) AS ITEM_NAME, A.MARKA,
+        A.QNTY, A.STATUS, A.WEIGHT, A.RATE, A.AMOUNT, A.TRN_NO,
+        A.PLANT_CODE, A.REMARKS, A.TRUCK_NO, A.TPT, A.GR_NO
+      FROM ISSUE A
+      LEFT JOIN MASTER B ON B.COMP_CODE = A.COMP_CODE AND B.CODE = A.CODE
+      LEFT JOIN ITEMMAST C ON C.COMP_CODE = A.COMP_CODE AND C.ITEM_CODE = A.ITEM_CODE
+      WHERE A.COMP_CODE = :comp_code
+        AND TRIM(TO_CHAR(A.TYPE)) = :mtype
+        AND TRUNC(A.R_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))
+        ${extra}
+      ORDER BY A.R_DATE, A.CH_TYPE, A.R_NO, A.TRN_NO`;
+    const rows = await runQuery(sql, binds, comp_uid);
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ dispatch-challan-list-report error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Fox dispatch challan F1 pending SO (party CODE only):
+ * X1 SORDER TYPE=SO · X2 ISSUE TYPE=S · full join · BQTY=SOQTY-SLQTY · BQTY>0.
+ */
+async function fetchDispatchChallanPendingOrders(comp_code, comp_uid, code) {
+  const partyCode = parseMasterCodeForSql(code);
+  if (partyCode === undefined) return [];
+
+  const partyBinds = { comp_code, party_code: partyCode };
+
+  const x1Sql = `
+    SELECT A.SO_NO, A.SO_DATE, A.ITEM_CODE, A.STATUS, A.RATE,
+           SUM(NVL(A.QNTY, 0)) AS SOQTY
+    FROM SORDER A
+    WHERE A.COMP_CODE = :comp_code
+      AND TRIM(TO_CHAR(A.TYPE)) = 'SO'
+      AND TRIM(TO_CHAR(A.CODE)) = TRIM(TO_CHAR(:party_code))
+    GROUP BY A.SO_NO, A.SO_DATE, A.ITEM_CODE, A.STATUS, A.RATE
+    ORDER BY A.SO_NO`;
+
+  const x2Sql = `
+    SELECT A.SO_NO, A.ITEM_CODE, A.STATUS, A.RATE,
+           SUM(NVL(A.QNTY, 0)) AS SLQTY
+    FROM ISSUE A
+    WHERE A.COMP_CODE = :comp_code
+      AND TRIM(TO_CHAR(A.TYPE)) = 'S'
+      AND TRIM(TO_CHAR(A.CODE)) = TRIM(TO_CHAR(:party_code))
+    GROUP BY A.SO_NO, A.ITEM_CODE, A.STATUS, A.RATE
+    ORDER BY A.SO_NO`;
+
+  const [x1Rows, x2Rows] = await Promise.all([
+    runQuery(x1Sql, partyBinds, comp_uid),
+    runQuery(x2Sql, partyBinds, comp_uid),
+  ]);
+
+  const rowKey = (so, ic, st, rt) =>
+    `${numVal(so)}|${String(ic ?? '').trim()}|${String(st ?? '').trim()}|${Math.round(numVal(rt) * 100) / 100}`;
+
+  const x1Map = new Map();
+  for (const r of x1Rows || []) {
+    const k = rowKey(r.SO_NO, r.ITEM_CODE, r.STATUS, r.RATE);
+    let g = x1Map.get(k);
+    if (!g) {
+      g = {
+        SO_NO: numVal(r.SO_NO),
+        SO_DATE: r.SO_DATE ?? r.so_date,
+        ITEM_CODE: String(r.ITEM_CODE ?? r.item_code ?? '').trim(),
+        STATUS: String(r.STATUS ?? r.status ?? '').trim(),
+        RATE: Math.round(numVal(r.RATE ?? r.rate) * 100) / 100,
+        SOQTY: 0,
+        _dateParts: [],
+      };
+      x1Map.set(k, g);
+    }
+    g.SOQTY += numVal(r.SOQTY ?? r.soqty);
+    if (r.SO_DATE ?? r.so_date) g._dateParts.push(r.SO_DATE ?? r.so_date);
+  }
+
+  const x2Map = new Map();
+  for (const r of x2Rows || []) {
+    const k = rowKey(r.SO_NO, r.ITEM_CODE, r.STATUS, r.RATE);
+    let g = x2Map.get(k);
+    if (!g) {
+      g = {
+        SO_NO: numVal(r.SO_NO),
+        ITEM_CODE: String(r.ITEM_CODE ?? r.item_code ?? '').trim(),
+        STATUS: String(r.STATUS ?? r.status ?? '').trim(),
+        RATE: Math.round(numVal(r.RATE ?? r.rate) * 100) / 100,
+        SLQTY: 0,
+      };
+      x2Map.set(k, g);
+    }
+    g.SLQTY += numVal(r.SLQTY ?? r.slqty);
+  }
+
+  const merged = new Map();
+  for (const [k, a] of x1Map) {
+    merged.set(k, { ...a, SLQTY: x2Map.get(k)?.SLQTY || 0 });
+  }
+  for (const [k, b] of x2Map) {
+    if (merged.has(k)) continue;
+    merged.set(k, {
+      SO_NO: b.SO_NO,
+      SO_DATE: null,
+      ITEM_CODE: b.ITEM_CODE,
+      STATUS: b.STATUS,
+      RATE: b.RATE,
+      SOQTY: 0,
+      SLQTY: b.SLQTY,
+      _dateParts: [],
+    });
+  }
+
+  const x4Map = new Map();
+  const x4Key = (so, ic, st, rt) => rowKey(so, ic, st, rt);
+  for (const r of merged.values()) {
+    const k = x4Key(r.SO_NO, r.ITEM_CODE, r.STATUS, r.RATE);
+    let g = x4Map.get(k);
+    if (!g) {
+      g = {
+        SO_NO: r.SO_NO,
+        SO_DATE: r.SO_DATE,
+        ITEM_CODE: r.ITEM_CODE,
+        STATUS: r.STATUS,
+        RATE: r.RATE,
+        SOQTY: 0,
+        SLQTY: 0,
+        _dateParts: r._dateParts ? [...r._dateParts] : [],
+      };
+      x4Map.set(k, g);
+    }
+    g.SOQTY += numVal(r.SOQTY);
+    g.SLQTY += numVal(r.SLQTY);
+    if (r.SO_DATE) g._dateParts.push(r.SO_DATE);
+    if (r._dateParts?.length) g._dateParts.push(...r._dateParts);
+  }
+
+  const out = [];
+  for (const g of x4Map.values()) {
+    const bqty = Math.round((numVal(g.SOQTY) - numVal(g.SLQTY)) * 1000) / 1000;
+    if (numVal(g.SO_NO) < 1) continue;
+    if (bqty <= 0) continue;
+    let soDate = g.SO_DATE;
+    if (g._dateParts?.length) {
+      soDate = g._dateParts.reduce((a, b) => {
+        const da = parseDateOnly(a);
+        const db = parseDateOnly(b);
+        if (!da) return b;
+        if (!db) return a;
+        return da > db ? a : b;
+      });
+    }
+    out.push({
+      SO_NO: g.SO_NO,
+      SO_DATE: soDate,
+      ITEM_CODE: g.ITEM_CODE,
+      STATUS: g.STATUS,
+      RATE: g.RATE,
+      BQTY: bqty,
+      SOQTY: numVal(g.SOQTY),
+      SLQTY: numVal(g.SLQTY),
+    });
+  }
+  out.sort((a, b) => numVal(a.SO_NO) - numVal(b.SO_NO));
+  return out;
+}
+
+app.get('/api/dispatch-challan-pending-orders', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, code } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (!code) {
+      return res.status(400).json({ error: 'code (party) is required' });
+    }
+    const rows = await fetchDispatchChallanPendingOrders(comp_code, comp_uid, code);
+    res.json({ rows, party_filter: 'code', balance_field: 'BQTY' });
+  } catch (err) {
+    console.error('❌ dispatch-challan-pending-orders error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/dispatch-challan-save', async (req, res) => {
+  let conn;
+  try {
+    const body = req.body || {};
+    const comp_code = String(body.comp_code || '').trim();
+    const comp_uid = String(body.comp_uid || '').trim();
+    const user_name = String(body.user_name || '').trim().toUpperCase();
+    const mode = String(body.mode || '').trim().toLowerCase();
+    const ch_type = String(body.ch_type ?? 'I').trim().toUpperCase().slice(0, 1) || 'I';
+    const r_date = String(body.r_date || '').trim();
+    const r_no = body.r_no;
+    const header = body.header && typeof body.header === 'object' ? body.header : {};
+    const linesIn = Array.isArray(body.lines) ? body.lines : [];
+
+    if (!comp_code || !comp_uid || !user_name || !['add', 'edit', 'delete'].includes(mode)) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, user_name, mode=add|edit|delete required' });
+    }
+    if (!r_date) return res.status(400).json({ error: 'r_date (DD-MM-YYYY) required' });
+
+    const { f11 } = await fetchDispatchChallanUserF11String(user_name, comp_uid);
+    const perms = dispatchChallanPermissionsFromF11(f11);
+    if (!perms.canOpen) return res.status(403).json({ error: 'Access denied (F11 position 1).' });
+    if (mode === 'add' && !perms.canAdd) return res.status(403).json({ error: 'You cannot add (F11 position 2).' });
+    if (mode === 'edit' && !perms.canEdit) return res.status(403).json({ error: 'You cannot edit (F11 position 3).' });
+    if (mode === 'delete' && !perms.canDelete) return res.status(403).json({ error: 'You cannot delete (F11 position 4).' });
+
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid);
+    if (!compdet) return res.status(400).json({ error: 'compdet not found' });
+    const comp_year = Number(compdet?.COMP_YEAR ?? compdet?.comp_year ?? 0) || 0;
+    const gAmtCal = String(rowValueCI(compdet, 'amt_cal') ?? 'K').trim().toUpperCase();
+    const fy = assertSaleBillDateInFinancialYear(r_date, compdet);
+    if (!fy.ok) return res.status(400).json({ error: fy.error });
+
+    const connCfg = {
+      user: comp_uid,
+      password: comp_uid,
+      connectString: activeDbConfig.connectString,
+    };
+    conn = await getDbConnection(connCfg);
+
+    const delSql = `
+      DELETE FROM ISSUE A
+      WHERE A.COMP_CODE = :comp_code
+        AND TRIM(TO_CHAR(A.TYPE)) = :mtype
+        AND NVL(TRIM(A.CH_TYPE), ' ') = NVL(TRIM(:ch_type), ' ')
+        AND TRIM(TO_CHAR(A.R_NO)) = TRIM(TO_CHAR(:r_no))`;
+
+    if (mode === 'delete') {
+      if (r_no == null) return res.status(400).json({ error: 'r_no required for delete' });
+      await conn.execute(
+        delSql,
+        { comp_code, mtype: DISPATCH_CHALLAN_TYPE, ch_type, r_no: String(r_no).trim() },
+        { autoCommit: false }
+      );
+      await conn.commit();
+      return res.json({ ok: true, mode: 'delete' });
+    }
+
+    let r_no_use = r_no;
+    if (mode === 'add') {
+      const maxRows = await conn.execute(
+        `SELECT NVL(MAX(TO_NUMBER(TRIM(TO_CHAR(A.R_NO)))), 0) + 1 AS NB
+         FROM ISSUE A
+         WHERE A.COMP_CODE = :cc
+           AND TRIM(TO_CHAR(A.TYPE)) = :tp
+           AND NVL(TRIM(A.CH_TYPE), ' ') = NVL(TRIM(:ct), ' ')`,
+        { cc: comp_code, tp: DISPATCH_CHALLAN_TYPE, ct: ch_type },
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+      r_no_use = Number(maxRows.rows?.[0]?.NB ?? maxRows.rows?.[0]?.nb) || 1;
+    }
+    if (r_no_use == null || String(r_no_use).trim() === '') {
+      return res.status(400).json({ error: 'r_no required for edit' });
+    }
+
+    const code = parseMasterCodeForSql(header.code);
+    if (code === undefined) return res.status(400).json({ error: 'Party code required' });
+    const plant_code = String(header.plant_code ?? '').trim();
+    const remarks = String(header.remarks ?? '').trim().slice(0, 50);
+    const truck_no = String(header.truck_no ?? '').trim().slice(0, 15);
+    const tpt = String(header.tpt ?? '').trim().slice(0, 30);
+    const gr_no = String(header.gr_no ?? '').trim().slice(0, 20);
+
+    if (mode === 'edit') {
+      await conn.execute(
+        delSql,
+        { comp_code, mtype: DISPATCH_CHALLAN_TYPE, ch_type, r_no: String(r_no_use).trim() },
+        { autoCommit: false }
+      );
+    }
+
+    const linesFiltered = linesIn.filter((raw) => {
+      const ic = String(raw?.item_code ?? raw?.ITEM_CODE ?? '').trim();
+      return ic !== '';
+    });
+    if (linesFiltered.length === 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'At least one line with item_code is required' });
+    }
+
+    let trn = 1;
+    const bindRows = linesFiltered.map((raw, idx) => {
+      const L = raw && typeof raw === 'object' ? raw : {};
+      const tno = Number(L.trn_no ?? L.TRN_NO ?? trn) || trn;
+      trn = tno + 1;
+      const qnty = Number(L.qnty ?? L.QNTY ?? 0) || 0;
+      const rate = Number(L.rate ?? L.RATE ?? 0) || 0;
+      const weight = clampDispatchWeightSql(L.weight ?? L.WEIGHT ?? 0);
+      const amount = clampDispatchAmountSql(L.amount ?? L.AMOUNT ?? 0);
+      const so_no = saleBillLineInt6(L.so_no ?? L.SO_NO);
+      return {
+        comp_code,
+        comp_year,
+        mtype: DISPATCH_CHALLAN_TYPE,
+        r_date,
+        r_no: String(r_no_use).trim(),
+        ch_type,
+        co: DISPATCH_CHALLAN_CO,
+        code,
+        plant_code,
+        trn_no: tno,
+        so_no,
+        item_code: String(L.item_code ?? L.ITEM_CODE ?? '').trim(),
+        marka: String(L.marka ?? L.MARKA ?? '').trim(),
+        qnty,
+        status: String(L.status ?? L.STATUS ?? 'B').trim().toUpperCase().slice(0, 1) || 'B',
+        weight,
+        rate,
+        amount,
+        remarks,
+        truck_no,
+        tpt,
+        gr_no,
+        ref_no: String(r_no_use).trim(),
+        ref_ch_type: ch_type,
+        user_name,
+      };
+    });
+
+    const insertSql = `
+      INSERT INTO ISSUE (
+        COMP_CODE, COMP_YEAR, TYPE, R_DATE, R_NO, CH_TYPE, C_O, CODE, PLANT_CODE,
+        TRN_NO, SO_NO, ITEM_CODE, MARKA, QNTY, STATUS, WEIGHT, RATE, AMOUNT,
+        REMARKS, TRUCK_NO, TPT, GR_NO, REF_NO, REF_CH_TYPE, USER_NAME, ENT_DATE, V_DATE
+      ) VALUES (
+        :comp_code, :comp_year, :mtype, TO_DATE(:r_date, 'DD-MM-YYYY'), :r_no, :ch_type, :co, :code, :plant_code,
+        :trn_no, :so_no, :item_code, :marka, :qnty, :status, :weight, :rate, :amount,
+        :remarks, :truck_no, :tpt, :gr_no, :ref_no, :ref_ch_type, :user_name, SYSDATE, TO_DATE(:r_date, 'DD-MM-YYYY')
+      )`;
+
+    const insertSqlNoRef = `
+      INSERT INTO ISSUE (
+        COMP_CODE, COMP_YEAR, TYPE, R_DATE, R_NO, CH_TYPE, C_O, CODE, PLANT_CODE,
+        TRN_NO, SO_NO, ITEM_CODE, MARKA, QNTY, STATUS, WEIGHT, RATE, AMOUNT,
+        REMARKS, TRUCK_NO, TPT, GR_NO, USER_NAME, ENT_DATE, V_DATE
+      ) VALUES (
+        :comp_code, :comp_year, :mtype, TO_DATE(:r_date, 'DD-MM-YYYY'), :r_no, :ch_type, :co, :code, :plant_code,
+        :trn_no, :so_no, :item_code, :marka, :qnty, :status, :weight, :rate, :amount,
+        :remarks, :truck_no, :tpt, :gr_no, :user_name, SYSDATE, TO_DATE(:r_date, 'DD-MM-YYYY')
+      )`;
+
+    const insertSqlNoSo = `
+      INSERT INTO ISSUE (
+        COMP_CODE, COMP_YEAR, TYPE, R_DATE, R_NO, CH_TYPE, C_O, CODE, PLANT_CODE,
+        TRN_NO, ITEM_CODE, MARKA, QNTY, STATUS, WEIGHT, RATE, AMOUNT,
+        REMARKS, TRUCK_NO, TPT, GR_NO, USER_NAME, ENT_DATE, V_DATE
+      ) VALUES (
+        :comp_code, :comp_year, :mtype, TO_DATE(:r_date, 'DD-MM-YYYY'), :r_no, :ch_type, :co, :code, :plant_code,
+        :trn_no, :item_code, :marka, :qnty, :status, :weight, :rate, :amount,
+        :remarks, :truck_no, :tpt, :gr_no, :user_name, SYSDATE, TO_DATE(:r_date, 'DD-MM-YYYY')
+      )`;
+
+    const bindRowsNoRef = bindRows.map(({ ref_no: _rn, ref_ch_type: _rct, ...rest }) => rest);
+    const bindRowsNoSo = bindRowsNoRef.map(({ so_no: _sn, ...rest }) => rest);
+
+    const isOraInvalidCol = (err) => {
+      const msg = String(err?.message || '');
+      return msg.includes('ORA-00904') || msg.includes('invalid identifier');
+    };
+
+    try {
+      await conn.executeMany(insertSql, bindRows, { autoCommit: false });
+    } catch (e1) {
+      if (!isOraInvalidCol(e1)) throw e1;
+      try {
+        await conn.executeMany(insertSqlNoRef, bindRowsNoRef, { autoCommit: false });
+      } catch (e2) {
+        if (!isOraInvalidCol(e2)) throw e2;
+        if (/SO_NO/i.test(String(e2?.message || ''))) {
+          await conn.executeMany(insertSqlNoSo, bindRowsNoSo, { autoCommit: false });
+        } else {
+          throw e2;
+        }
+      }
+    }
+
+    await conn.commit();
+    res.json({ ok: true, mode, r_no: r_no_use, ch_type, lines: bindRows.length });
+  } catch (err) {
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (_) {}
+    }
+    console.error('❌ dispatch-challan-save error:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) {
+      try {
+        await conn.close();
+      } catch (_) {}
+    }
   }
 });
 
@@ -4909,6 +6038,15 @@ app.post('/api/sale-bill-save', async (req, res) => {
       const status = String(L.status ?? L.STATUS ?? 'B').trim().toUpperCase().slice(0, 1) || 'B';
       const tno = Number(L.trn_no ?? L.TRN_NO ?? trn) || trn;
       trn = tno + 1;
+      const chNoRaw = L.ch_no ?? L.CH_NO;
+      const chTypeRaw = L.ch_type ?? L.CH_TYPE;
+      const soNoRaw = L.so_no ?? L.SO_NO;
+      const ch_no = saleBillLineInt6(chNoRaw);
+      const ch_type =
+        ch_no != null && chTypeRaw != null && String(chTypeRaw).trim() !== ''
+          ? String(chTypeRaw).trim().toUpperCase().slice(0, 1)
+          : null;
+      const so_no = saleBillLineInt6(soNoRaw);
       return {
         comp_code,
         comp_year,
@@ -4923,6 +6061,9 @@ app.post('/api/sale-bill-save', async (req, res) => {
         b_code: bcode !== undefined ? bcode : null,
         days,
         trn_no: tno,
+        ch_no,
+        ch_type,
+        so_no,
         item_code,
         s_code,
         marka,
@@ -4964,6 +6105,27 @@ app.post('/api/sale-bill-save', async (req, res) => {
     });
 
     const insertSql = `
+      INSERT INTO SALE (
+        COMP_CODE, COMP_YEAR, TYPE, VR_TYPE, B_TYPE, BILL_DATE, V_DATE, BILL_NO, SALE_INV_NO,
+        CODE, DELV_CODE, B_CODE, DAYS, TRN_NO, CH_NO, CH_TYPE, SO_NO, ITEM_CODE, S_CODE, MARKA, PLANT_CODE,
+        QNTY, STATUS, CAL, WEIGHT, RATE, AMOUNT, DIS_PER, DIS_AMT, TAXABLE,
+        CGST_PER, SGST_PER, IGST_PER, CGST_AMT, SGST_AMT, IGST_AMT,
+        BK_RATE, BK_BW, BK_AMT,
+        LABOUR, FREIGHT, INS, OTH_EXP, ADD_CODE, LABCD, FGTCD, INS_CODE,
+        BILL_AMT, TDS_ON_AMT, TDS_PER, TDS_AMT,
+        TRUCK_NO, TPT, GR_NO
+      ) VALUES (
+        :comp_code, :comp_year, :type, :vr_type, :b_type, TO_DATE(:bill_date, 'DD-MM-YYYY'), TO_DATE(:bill_date, 'DD-MM-YYYY'), :bill_no, :sale_inv_no,
+        :code, :delv_code, :b_code, :days, :trn_no, :ch_no, :ch_type, :so_no, :item_code, :s_code, :marka, :plant_code,
+        :qnty, :status, :cal, :weight, :rate, :amount, :dis_per, :dis_amt, :taxable,
+        :cgst_per, :sgst_per, :igst_per, :cgst_amt, :sgst_amt, :igst_amt,
+        :bk_rate, :bk_bw, :bk_amt,
+        :labour, :freight, :ins, :oth_exp, :add_code, :labcd, :fgtcd, :ins_code,
+        :bill_amt, :tds_on_amt, :tds_per, :tds_amt,
+        :truck_no, :tpt, :gr_no
+      )`;
+
+    const insertSqlNoCh = `
       INSERT INTO SALE (
         COMP_CODE, COMP_YEAR, TYPE, VR_TYPE, B_TYPE, BILL_DATE, V_DATE, BILL_NO, SALE_INV_NO,
         CODE, DELV_CODE, B_CODE, DAYS, TRN_NO, ITEM_CODE, S_CODE, MARKA, PLANT_CODE,
@@ -5008,13 +6170,30 @@ app.post('/api/sale-bill-save', async (req, res) => {
       const { add_code: _a, labcd: _l, fgtcd: _f, ins_code: _i, ...rest } = r;
       return rest;
     });
+    const noChBindRows = bindRows.map((r) => {
+      const { ch_no: _cn, ch_type: _ct, so_no: _sn, ...rest } = r;
+      return rest;
+    });
+    const slimNoChBindRows = slimBindRows.map((r) => {
+      const { ch_no: _cn, ch_type: _ct, so_no: _sn, ...rest } = r;
+      return rest;
+    });
 
     try {
       await conn.executeMany(insertSql, bindRows, { autoCommit: false });
     } catch (e1) {
       const msg = String(e1?.message || '');
       if (msg.includes('ORA-00904') || msg.includes('invalid identifier')) {
-        await conn.executeMany(insertSqlSlim, slimBindRows, { autoCommit: false });
+        try {
+          await conn.executeMany(insertSqlNoCh, noChBindRows, { autoCommit: false });
+        } catch (e2) {
+          const msg2 = String(e2?.message || '');
+          if (msg2.includes('ORA-00904') || msg2.includes('invalid identifier')) {
+            await conn.executeMany(insertSqlSlim, slimNoChBindRows, { autoCommit: false });
+          } else {
+            throw e2;
+          }
+        }
       } else {
         throw e1;
       }

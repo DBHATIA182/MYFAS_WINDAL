@@ -2690,6 +2690,300 @@ function buildPurchaseBillReportHtml(data, metadata) {
   `;
 }
 
+const DISPATCH_CHALLAN_PRINT_STYLES = `
+  .dc-pdf { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; font-size: 14px; line-height: 1.45; color: #0f172a; }
+  .dc-pdf-pages-wrap { display: block; }
+  .dc-pdf-page {
+    display: block;
+    width: 210mm;
+    max-width: 100%;
+    margin: 0 auto 20px;
+    padding: 10mm 12mm;
+    background: #fff;
+    box-sizing: border-box;
+    page-break-inside: avoid;
+    break-inside: avoid-page;
+    page-break-after: always;
+    break-after: page;
+  }
+  .dc-pdf-page--new {
+    page-break-before: always !important;
+    break-before: page !important;
+    margin-top: 0;
+  }
+  .dc-pdf-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+    margin-bottom: 0;
+  }
+  .dc-pdf-page-header { display: grid; grid-template-columns: 120px 1fr; align-items: flex-start; gap: 12px; margin-bottom: 12px; border-bottom: 2px solid #1e3a5f; padding-bottom: 10px; }
+  .dc-pdf-logo img { width: 110px; height: 110px; object-fit: contain; display: block; }
+  .dc-pdf-logo--empty { min-height: 80px; }
+  .dc-pdf-page-header-main { text-align: center; min-width: 0; }
+  .dc-pdf-doc-title { font-size: 17px; font-weight: 800; letter-spacing: 0.08em; margin-bottom: 6px; color: #0f172a; }
+  .dc-pdf-co-name { font-size: 20px; font-weight: 700; color: #0047ab; margin-bottom: 4px; }
+  .dc-pdf-co-line { font-size: 13px; color: #334155; margin: 2px 0; }
+  .dc-pdf-ch-meta { display: flex; flex-wrap: wrap; gap: 14px 24px; font-size: 14px; font-weight: 600; margin: 10px 0 12px; }
+  .dc-pdf-party-box { width: 100%; border-collapse: collapse; margin: 0 0 12px; border: 1px solid #94a3b8; }
+  .dc-pdf-party-box td { padding: 8px 10px; vertical-align: top; font-size: 13px; }
+  .dc-pdf-party-lbl { font-weight: 700; color: #1e3a5f; font-size: 14px; margin-bottom: 4px; }
+  .dc-pdf-party-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+  table.dc-pdf-grid { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 13px; }
+  table.dc-pdf-grid th, table.dc-pdf-grid td { border: 1px solid #64748b; padding: 6px 8px; vertical-align: top; }
+  table.dc-pdf-grid th { background: #e2e8f0; font-weight: 700; font-size: 12px; text-transform: uppercase; }
+  table.dc-pdf-grid td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  table.dc-pdf-grid tr.report-grand-total td { font-weight: 700; background: #f1f5f9; }
+  .dc-pdf-footer-fields { margin: 12px 0; font-size: 13px; line-height: 1.55; }
+  .dc-pdf-bottom-row {
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-end;
+    margin-top: 28px;
+    min-height: 72px;
+  }
+  .dc-pdf-sign-block { text-align: right; flex-shrink: 0; }
+  .dc-pdf-for-co {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #0f172a;
+  }
+  .dc-pdf-signature img { max-height: 64px; max-width: 180px; object-fit: contain; display: block; margin-left: auto; }
+  .dc-pdf-sign-lbl { font-size: 13px; margin-top: 6px; color: #475569; }
+  @media print {
+    .dc-pdf { font-size: 14px; }
+    .dc-pdf-pages-wrap { background: transparent !important; padding: 0 !important; }
+    .dc-pdf-page {
+      width: auto;
+      max-width: none;
+      margin: 0 !important;
+      padding: 0;
+      box-shadow: none !important;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+      page-break-after: always;
+      break-after: page;
+    }
+    .dc-pdf-page--new {
+      page-break-before: always !important;
+      break-before: page !important;
+    }
+    .dc-pdf-page:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+  }
+`;
+
+/** Dispatch challan print — one full page per R_NO (company header + footer on each page). */
+function buildDispatchChallanPrintReportHtml(data, metadata) {
+  const challans = Array.isArray(data?.challans) ? data.challans : [];
+  const h = data?.compdet || {};
+  const apiBase = String(metadata?.apiBase || '').trim();
+  const company = escHtml(cleanPrintText(metadata?.companyName || rowFieldCI(h, 'comp_name') || 'Company'));
+
+  const logoSafe = normalizePrintImageSrc(rowFieldCI(h, 'sale_logo'), apiBase);
+  const signatureSafe = normalizePrintImageSrc(rowFieldCI(h, 'signature_file'), apiBase);
+
+  const compLines = [];
+  for (const k of ['comp_add1', 'comp_add2', 'comp_add3', 'compadd1', 'compadd2']) {
+    const v = cleanPrintText(rowFieldCI(h, k));
+    if (v) compLines.push(v);
+  }
+  const compTel = [cleanPrintText(rowFieldCI(h, 'comp_tel1')), cleanPrintText(rowFieldCI(h, 'comp_tel2'))]
+    .filter(Boolean)
+    .join(' ');
+  if (compTel) compLines.push(`Tel: ${compTel}`);
+  const compGst = cleanPrintText(rowFieldCI(h, 'gst_no') || rowFieldCI(h, 'comp_gst'));
+  const compPan = cleanPrintText(rowFieldCI(h, 'comp_pan') || rowFieldCI(h, 'pan'));
+  if (compGst || compPan) {
+    compLines.push([compGst ? `GST: ${compGst}` : '', compPan ? `PAN: ${compPan}` : ''].filter(Boolean).join('    |    '));
+  }
+
+  const logoBlock = logoSafe
+    ? `<div class="dc-pdf-logo"><img src="${logoSafe}" alt="" /></div>`
+    : '<div class="dc-pdf-logo dc-pdf-logo--empty"></div>';
+  const pageHeaderHtml = `
+    <header class="dc-pdf-page-header">
+      ${logoBlock}
+      <div class="dc-pdf-page-header-main">
+        <div class="dc-pdf-doc-title">DISPATCH CHALLAN</div>
+        <div class="dc-pdf-co-name">${company}</div>
+        ${compLines.map((line) => `<div class="dc-pdf-co-line">${escHtml(line)}</div>`).join('')}
+      </div>
+    </header>`;
+
+  let docBody = '';
+  for (let i = 0; i < challans.length; i++) {
+    const ch = challans[i];
+    const pageCls = i > 0 ? 'dc-pdf-page dc-pdf-page--new' : 'dc-pdf-page';
+    const lines = Array.isArray(ch.lines) ? ch.lines : [];
+    const p = ch.party || {};
+    const f = ch.footer || {};
+    let tq = 0;
+    let tw = 0;
+    let ta = 0;
+    let grid = '';
+    lines.forEach((row) => {
+      const q = Number(row.QNTY ?? row.qnty ?? 0) || 0;
+      const w = Number(row.WEIGHT ?? row.weight ?? 0) || 0;
+      const a = Number(row.AMOUNT ?? row.amount ?? 0) || 0;
+      tq += q;
+      tw += w;
+      ta += a;
+      grid += `<tr>
+        <td class="num">${escHtml(String(row.TRN_NO ?? row.trn_no ?? ''))}</td>
+        <td>${escHtml(String(row.ITEM_NAME ?? row.item_name ?? row.ITEM_CODE ?? ''))}</td>
+        <td>${escHtml(String(row.MARKA ?? row.marka ?? ''))}</td>
+        <td>${escHtml(String(row.HSN_CODE ?? row.hsn_code ?? '').slice(0, 8))}</td>
+        <td>${escHtml(saleBillStatusUnitLabel(row.STATUS ?? row.status))}</td>
+        <td class="num">${formatQtyPdf(q)}</td>
+        <td class="num">${formatQtyPdf(w)}</td>
+        <td class="num">${formatAmtPdf(row.RATE ?? row.rate)}</td>
+        <td class="num">${formatAmtPdf(a)}</td>
+      </tr>`;
+    });
+    const partyName = escHtml(String(p.name || p.NAME || ''));
+    const sigHtml = signatureSafe
+      ? `<div class="dc-pdf-signature"><img src="${signatureSafe}" alt="" /></div>`
+      : '';
+    docBody += `
+      <section class="${pageCls}">
+        ${pageHeaderHtml}
+        <div class="dc-pdf-ch-meta">
+          <span><strong>Ch.Type</strong> ${escHtml(String(ch.ch_type ?? ''))}</span>
+          <span><strong>Ch.No.</strong> ${escHtml(String(ch.r_no ?? ''))}</span>
+          <span><strong>Date</strong> ${escHtml(String(ch.r_date_display ?? ''))}</span>
+        </div>
+        <table class="dc-pdf-party-box">
+          <tr><td>
+            <div class="dc-pdf-party-lbl">Party</div>
+            <div class="dc-pdf-party-name">${partyName}</div>
+            <div>${escHtml(String(p.add1 || p.ADD1 || ''))}</div>
+            <div>${escHtml(String(p.add2 || p.ADD2 || ''))}</div>
+            <div>${escHtml(String(p.city || p.CITY || ''))}</div>
+            <div>GST: ${escHtml(String(p.gst || p.GST_NO || '—'))}</div>
+            <div>PAN: ${escHtml(String(p.pan || p.PAN || '—'))}</div>
+            ${p.tel ? `<div>Tel: ${escHtml(String(p.tel))}</div>` : ''}
+          </td></tr>
+        </table>
+        <table class="dc-pdf-grid">
+          <thead>
+            <tr>
+              <th>Trn</th><th>Item name</th><th>Marka</th><th>HSN</th><th>Unit</th>
+              <th class="num">Qty</th><th class="num">Weight</th><th class="num">Rate</th><th class="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${grid || '<tr><td colspan="9">(No lines)</td></tr>'}
+            <tr class="report-grand-total">
+              <td colspan="5" class="lbl-total">Total</td>
+              <td class="num">${formatQtyPdf(tq)}</td>
+              <td class="num">${formatQtyPdf(tw)}</td>
+              <td></td>
+              <td class="num">${formatAmtPdf(ta)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="dc-pdf-footer-fields">
+          ${f.remarks ? `<div><strong>Remarks:</strong> ${escHtml(String(f.remarks))}</div>` : ''}
+          ${f.truck_no ? `<div><strong>Truck no:</strong> ${escHtml(String(f.truck_no))}</div>` : ''}
+          ${f.tpt ? `<div><strong>Tpt:</strong> ${escHtml(String(f.tpt))}</div>` : ''}
+          ${f.gr_no ? `<div><strong>GR no:</strong> ${escHtml(String(f.gr_no))}</div>` : ''}
+        </div>
+        <div class="dc-pdf-bottom-row">
+          <div class="dc-pdf-sign-block">
+            <div class="dc-pdf-for-co">For ${company}</div>
+            ${sigHtml}
+            <div class="dc-pdf-sign-lbl">Authorised signatory</div>
+          </div>
+        </div>
+      </section>`;
+  }
+
+  const html = `
+    <div class="dc-pdf">
+      <style>${DISPATCH_CHALLAN_PRINT_STYLES}</style>
+      <div class="dc-pdf-pages-wrap">
+        ${docBody || '<p class="dc-pdf-co-line">(No challans in range)</p>'}
+      </div>
+    </div>
+  `;
+
+  return html;
+}
+
+/** Dispatch challan list (ISSUE type S line detail). */
+function buildDispatchChallanListReportHtml(data, metadata) {
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  const company = escHtml(metadata.companyName || '');
+  const sdt = escHtml(metadata.startDate || '');
+  const edt = escHtml(metadata.endDate || '');
+  const party = escHtml(metadata.partyLabel || 'All parties');
+  const item = escHtml(metadata.itemLabel || 'All items');
+  const marka = escHtml(metadata.markaLabel || 'All markas');
+  const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
+
+  let tq = 0;
+  let tw = 0;
+  let ta = 0;
+  let body = '';
+  rows.forEach((r) => {
+    const q = Number(r.QNTY) || 0;
+    const w = Number(r.WEIGHT) || 0;
+    const a = Number(r.AMOUNT) || 0;
+    tq += q;
+    tw += w;
+    ta += a;
+    body += `<tr>
+      <td>${escHtml(String(r.CH_TYPE ?? ''))}</td>
+      <td>${escHtml(String(r.R_NO ?? ''))}</td>
+      <td>${escHtml(String(r.R_DATE ?? ''))}</td>
+      <td>${escHtml(String(r.CODE ?? ''))}</td>
+      <td class="col-name">${escHtml(String(r.PARTY_NAME ?? ''))}</td>
+      <td>${escHtml(String(r.SO_NO ?? ''))}</td>
+      <td>${escHtml(String(r.ITEM_CODE ?? ''))}</td>
+      <td class="col-name">${escHtml(String(r.ITEM_NAME ?? ''))}</td>
+      <td>${escHtml(String(r.MARKA ?? ''))}</td>
+      <td class="amount">${formatStockPdf(q, 3)}</td>
+      <td>${escHtml(String(r.STATUS ?? ''))}</td>
+      <td class="amount">${formatStockPdf(w, 3)}</td>
+      <td class="amount">${formatStockPdf(Number(r.RATE) || 0)}</td>
+      <td class="amount">${formatStockPdf(a)}</td>
+    </tr>`;
+  });
+
+  const grand = `<tr class="report-grand-total">
+    <td colspan="9" class="lbl-total">Grand total</td>
+    <td class="amount">${formatStockPdf(tq, 3)}</td>
+    <td></td>
+    <td class="amount">${formatStockPdf(tw, 3)}</td>
+    <td>—</td>
+    <td class="amount">${formatStockPdf(ta)}</td>
+  </tr>`;
+
+  return `
+    <div class="pdf-report-wrap">
+      <div class="pdf-report-header">
+        <h1>${company}</h1>
+        <h2>Dispatch challan list</h2>
+        <p>Period: ${sdt} to ${edt} · Party: ${party} · Item: ${item} · Marka: ${marka}</p>
+        <p class="pdf-meta">Generated: ${generated}</p>
+      </div>
+      <table class="table-report dispatch-challan-list-pdf">
+        <thead>
+          <tr>
+            <th>Tp</th><th>No</th><th>Date</th><th>Code</th><th>Party</th><th>SO</th>
+            <th>Item</th><th>Item name</th><th>Marka</th><th class="amount">Qty</th><th>St</th>
+            <th class="amount">Weight</th><th class="amount">Rate</th><th class="amount">Amount</th>
+          </tr>
+        </thead>
+        <tbody>${body || '<tr><td colspan="14">(No rows)</td></tr>'}${rows.length ? grand : ''}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 /** Purchase list */
 function buildPurchaseListReportHtml(data, metadata) {
   const rows = Array.isArray(data?.rows) ? data.rows : [];
@@ -3209,6 +3503,8 @@ export function buildReportHtml(reportType, data, metadata) {
   if (reportType === 'balance-sheet') return buildBalanceSheetReportHtml(data, metadata);
   if (reportType === 'trading-account') return buildTradingAccountReportHtml(data, metadata);
   if (reportType === 'profit-loss') return buildProfitLossReportHtml(data, metadata);
+  if (reportType === 'dispatch-challan-list') return buildDispatchChallanListReportHtml(data, metadata);
+  if (reportType === 'dispatch-challan-print') return buildDispatchChallanPrintReportHtml(data, metadata);
   return buildTrialBalanceReportHtml(data, metadata);
 }
 
@@ -3261,17 +3557,36 @@ function getPdfOptions(metadata, reportType, data) {
           }
         : { scale: 2, useCORS: true };
 
-  return {
-    margin: reportType === 'sale-bill' || reportType === 'purchase-bill' ? 8 : reportType === 'balance-sheet' ? 6 : 10,
+  const base = {
+    margin:
+      reportType === 'sale-bill' || reportType === 'purchase-bill' || reportType === 'dispatch-challan-print'
+        ? 8
+        : reportType === 'balance-sheet'
+          ? 6
+          : 10,
     filename,
     image: { type: 'jpeg', quality: 0.98 },
     html2canvas,
     jsPDF: {
-      orientation: reportType === 'sale-bill' || reportType === 'purchase-bill' ? 'portrait' : 'landscape',
+      orientation:
+        reportType === 'sale-bill' || reportType === 'purchase-bill' || reportType === 'dispatch-challan-print'
+          ? 'portrait'
+          : 'landscape',
       unit: 'mm',
       format: 'a4',
     },
   };
+
+  if (reportType === 'dispatch-challan-print') {
+    base.pagebreak = {
+      mode: ['css', 'legacy'],
+      before: '.dc-pdf-page--new',
+      after: '.dc-pdf-page',
+      avoid: ['.dc-pdf-page-header', 'tr'],
+    };
+  }
+
+  return base;
 }
 
 /**
@@ -3408,6 +3723,10 @@ export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText
                           ? 'GSTR-1'
                           : reportType === 'hsn-sales'
                             ? 'HSN Sales'
+                            : reportType === 'dispatch-challan-list'
+                              ? 'Dispatch challan list'
+                              : reportType === 'dispatch-challan-print'
+                                ? 'Dispatch challan'
                         : 'Ledger';
   const text =
     shareText || `${metadata.companyName}\n${reportLabel}\n${metadata.endDate || ''}`;

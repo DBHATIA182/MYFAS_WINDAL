@@ -23,6 +23,7 @@ export default function Slide3({ onPrev, onNext, formData }) {
     'pl-profit-loss',
     'balance-sheet',
     'sale-bill-entry',
+    'dispatch-challan-entry',
   ];
 
   const moveReportSelection = (delta) => {
@@ -391,6 +392,23 @@ export default function Slide3({ onPrev, onNext, formData }) {
           <label>
             <h3>Balance Sheet</h3>
             <p>Liabilities vs Assets tree (NO&lt;12) with profit/loss and closing stock adjustments as of date</p>
+          </label>
+        </div>
+
+        <div
+          className={`report-option ${reportType === 'dispatch-challan-entry' ? 'selected' : ''}`}
+          onClick={() => setReportType('dispatch-challan-entry')}
+        >
+          <input
+            type="radio"
+            name="reportType"
+            value="dispatch-challan-entry"
+            checked={reportType === 'dispatch-challan-entry'}
+            onChange={(e) => setReportType(e.target.value)}
+          />
+          <label>
+            <h3>Dispatch challan entry</h3>
+            <p>Add, edit, or delete dispatch challans (ISSUE type S); party schedule 11.20, pending SO pick on lines.</p>
           </label>
         </div>
 
