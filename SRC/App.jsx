@@ -21,6 +21,7 @@ import Slide18PlProfitLoss from './slides/Slide18PlProfitLoss';
 import Slide19BalanceSheet from './slides/Slide19BalanceSheet';
 import Slide21SaleBill from './slides/Slide21SaleBill';
 import Slide22DispatchChallan from './slides/Slide22DispatchChallan';
+import Slide23SalesOrder from './slides/Slide23SalesOrder';
 import { exitApp, performExitWindow } from './utils/exitApp';
 import connectionConfig from '../connection.config.json';
 import './App.css';
@@ -547,6 +548,7 @@ function App() {
     else if (reportType === 'balance-sheet') setCurrentSlide(20);
     else if (reportType === 'sale-bill-entry') setCurrentSlide(21);
     else if (reportType === 'dispatch-challan-entry') setCurrentSlide(22);
+    else if (reportType === 'sales-order-entry') setCurrentSlide(23);
     else setCurrentSlide(4);
   };
 
@@ -960,6 +962,15 @@ function App() {
         )}
         {currentSlide === 22 && (
           <Slide22DispatchChallan
+            apiBase={API_BASE}
+            formData={formData}
+            userName={loginUserName}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+          />
+        )}
+        {currentSlide === 23 && (
+          <Slide23SalesOrder
             apiBase={API_BASE}
             formData={formData}
             userName={loginUserName}

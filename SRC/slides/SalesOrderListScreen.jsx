@@ -26,12 +26,10 @@ function highlightMatch(text, q) {
 
 function mapReportRow(r) {
   return {
-    CH_TYPE: String(r.CH_TYPE ?? r.ch_type ?? '').trim(),
-    R_NO: r.R_NO ?? r.r_no,
-    R_DATE: toDisplayDate(toInputDateString(r.R_DATE ?? r.r_date)),
+    SO_NO: r.SO_NO ?? r.so_no,
+    SO_DATE: toDisplayDate(toInputDateString(r.SO_DATE ?? r.so_date)),
     CODE: r.CODE ?? r.code,
     PARTY_NAME: r.PARTY_NAME ?? r.party_name ?? r.NAME ?? r.name,
-    SO_NO: r.SO_NO ?? r.so_no,
     ITEM_CODE: r.ITEM_CODE ?? r.item_code,
     ITEM_NAME: r.ITEM_NAME ?? r.item_name,
     MARKA: r.MARKA ?? r.marka,
@@ -41,17 +39,18 @@ function mapReportRow(r) {
     RATE: Number(r.RATE ?? r.rate ?? 0),
     AMOUNT: Number(r.AMOUNT ?? r.amount ?? 0),
     TRN_NO: r.TRN_NO ?? r.trn_no,
-    PLANT_CODE: r.PLANT_CODE ?? r.plant_code,
+    PO_NO: r.PO_NO ?? r.po_no,
     REMARKS: r.REMARKS ?? r.remarks,
+    REMARKS2: r.REMARKS2 ?? r.remarks2,
   };
 }
 
-export default function DispatchChallanListScreen({
+export default function SalesOrderListScreen({
   apiBase,
   formData,
   lookups,
   onClose,
-  onOpenChallan,
+  onOpenOrder,
 }) {
   const compCode = formData.comp_code ?? formData.COMP_CODE;
   const compUid = formData.comp_uid ?? formData.COMP_UID;
@@ -70,7 +69,7 @@ export default function DispatchChallanListScreen({
   const [err, setErr] = useState('');
   const [ran, setRan] = useState(false);
 
-  const parties = lookups?.parties || [];
+  const parties = lookups?.customers || [];
   const items = lookups?.items || [];
   const markas = lookups?.markas || [];
 
@@ -135,22 +134,11 @@ export default function DispatchChallanListScreen({
   const excelRows = useMemo(
     () =>
       reportRows.map((r) => ({
-        ChType: r.CH_TYPE,
-        ChNo: r.R_NO,
-        ChDate: r.R_DATE,
-        PartyCode: r.CODE,
-        PartyName: r.PARTY_NAME,
-        SO_No: r.SO_NO,
-        Item: r.ITEM_CODE,
-        ItemName: r.ITEM_NAME,
-        Marka: r.MARKA,
-        Qty: r.QNTY,
-        Status: r.STATUS,
-        Weight: r.WEIGHT,
-        Rate: r.RATE,
-        Amount: r.AMOUNT,
-        Plant: r.PLANT_CODE,
+        SoNo: r.SO_NO,
+        SoDate: r.SO_DATE,
+        PoNo: r.PO_NO,
         Remarks: r.REMARKS,
+        Remarks2: r.REMARKS2,
       })),
     [reportRows]
   );
@@ -172,7 +160,7 @@ export default function DispatchChallanListScreen({
       if (partyCode) params.code = partyCode;
       if (itemCode.trim()) params.item_code = itemCode.trim();
       if (marka.trim()) params.marka = marka.trim();
-      const { data } = await axios.get(`${apiBase}/api/dispatch-challan-list-report`, { params, ...reqOpts });
+      const { data } = await axios.get(`${apiBase}/api/sales-order-list-report`, { params, ...reqOpts });
       setRows(Array.isArray(data) ? data : []);
       setRan(true);
     } catch (e) {
@@ -190,7 +178,7 @@ export default function DispatchChallanListScreen({
     setMarka('');
   };
 
-  const shareText = `${compName}\nDispatch challan list\n${toDisplayDate(sDate)} to ${toDisplayDate(eDate)}\n${partyLabel}\n${itemLabel}`;
+  const shareText = `${compName}\nSales order list\n${toDisplayDate(sDate)} to ${toDisplayDate(eDate)}\n${partyLabel}\n${itemLabel}`;
 
   const hasRows = reportRows.length > 0;
   const listActionButtons = (
@@ -203,7 +191,7 @@ export default function DispatchChallanListScreen({
         className="btn btn-export"
         disabled={!hasRows}
         onClick={() =>
-          generatePDF('dispatch-challan-list', { rows: reportRows }, pdfMeta).catch((e) =>
+          generatePDF('sales-order-list', { rows: reportRows }, pdfMeta).catch((e) =>
             alert(e?.message || String(e))
           )
         }
@@ -214,7 +202,7 @@ export default function DispatchChallanListScreen({
         type="button"
         className="btn btn-excel"
         disabled={!hasRows}
-        onClick={() => downloadExcelRows(excelRows, 'DispatchChallan', `${compName}_DispatchChallan_List`)}
+        onClick={() => downloadExcelRows(excelRows, 'SalesOrder', `${compName}_SalesOrder_List`)}
       >
         Excel
       </button>
@@ -224,7 +212,7 @@ export default function DispatchChallanListScreen({
         disabled={!hasRows}
         title={hasRows ? 'Share list as PDF on WhatsApp' : 'Run report first'}
         onClick={() =>
-          sharePdfWithWhatsApp('dispatch-challan-list', { rows: reportRows }, pdfMeta, shareText).catch((e) =>
+          sharePdfWithWhatsApp('sales-order-list', { rows: reportRows }, pdfMeta, shareText).catch((e) =>
             alert(e?.message || String(e))
           )
         }
@@ -235,9 +223,9 @@ export default function DispatchChallanListScreen({
   );
 
   return (
-    <div className="slide slide-22-dispatch-challan-list dc-list-screen">
+    <div className="slide slide-23-sales-order-list dc-list-screen">
       <header className="dc-list-screen__head">
-        <h2 className="sale-bill-page__title">Dispatch challan list</h2>
+        <h2 className="sale-bill-page__title">Sales order list</h2>
       </header>
 
       <DcActionBar position="top" label="List actions">
@@ -385,11 +373,9 @@ export default function DispatchChallanListScreen({
             <table className="report-table dc-list-table">
               <thead>
                 <tr>
-                  <th>Type</th>
-                  <th>No</th>
+                  <th>SO no</th>
                   <th>Date</th>
                   <th>Party</th>
-                  <th>SO</th>
                   <th>Item</th>
                   <th>Marka</th>
                   <th className="num">Qty</th>
@@ -402,30 +388,25 @@ export default function DispatchChallanListScreen({
               <tbody>
                 {reportRows.length === 0 ? (
                   <tr>
-                    <td colSpan={12}>No rows for selected filters.</td>
+                    <td colSpan={11}>No rows for selected filters.</td>
                   </tr>
                 ) : (
                   reportRows.map((r, i) => (
                     <tr
-                      key={`${r.CH_TYPE}-${r.R_NO}-${r.TRN_NO}-${i}`}
+                      key={`${r.SO_NO}-${r.TRN_NO}-${i}`}
                       className="dc-list-row-clickable"
                       title="Open this challan in entry"
                       onClick={() =>
-                        onOpenChallan?.({
-                          CH_TYPE: r.CH_TYPE,
-                          R_NO: r.R_NO,
-                        })
+                        onOpenOrder?.({ SO_NO: r.SO_NO })
                       }
                     >
-                      <td>{r.CH_TYPE}</td>
-                      <td>{r.R_NO}</td>
-                      <td>{r.R_DATE}</td>
+                      <td>{r.SO_NO}</td>
+                      <td>{r.SO_DATE}</td>
                       <td className="dc-list-party-cell" title={`[${r.CODE}] ${r.PARTY_NAME ?? ''}`}>
                         <span className="dc-list-party-line">
                           [{r.CODE}] {r.PARTY_NAME}
                         </span>
                       </td>
-                      <td>{r.SO_NO ?? ''}</td>
                       <td>{r.ITEM_CODE}</td>
                       <td>{r.MARKA}</td>
                       <td className="num">{Number(r.QNTY) || ''}</td>
@@ -439,7 +420,7 @@ export default function DispatchChallanListScreen({
               </tbody>
             </table>
           </div>
-          <p className="sale-bill-section__hint">Click a row to open that challan in the entry screen.</p>
+          <p className="sale-bill-section__hint">Click a row to open that sales order in the entry screen.</p>
         </section>
       ) : null}
 

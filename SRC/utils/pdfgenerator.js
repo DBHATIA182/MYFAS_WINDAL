@@ -2695,8 +2695,8 @@ const DISPATCH_CHALLAN_PRINT_STYLES = `
   .dc-pdf-pages-wrap { display: block; }
   .dc-pdf-page {
     display: block;
-    width: 210mm;
-    max-width: 100%;
+    width: 100%;
+    max-width: 210mm;
     margin: 0 auto 20px;
     padding: 10mm 12mm;
     background: #fff;
@@ -2728,8 +2728,30 @@ const DISPATCH_CHALLAN_PRINT_STYLES = `
   .dc-pdf-party-box td { padding: 8px 10px; vertical-align: top; font-size: 13px; }
   .dc-pdf-party-lbl { font-weight: 700; color: #1e3a5f; font-size: 14px; margin-bottom: 4px; }
   .dc-pdf-party-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
-  table.dc-pdf-grid { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 13px; }
-  table.dc-pdf-grid th, table.dc-pdf-grid td { border: 1px solid #64748b; padding: 6px 8px; vertical-align: top; }
+  .dc-pdf-grid-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 12px;
+  }
+  table.dc-pdf-grid {
+    width: 100%;
+    min-width: 0;
+    border-collapse: collapse;
+    margin-bottom: 0;
+    font-size: 13px;
+    table-layout: fixed;
+  }
+  table.dc-pdf-grid th, table.dc-pdf-grid td { border: 1px solid #64748b; padding: 6px 8px; vertical-align: top; word-break: normal; overflow-wrap: normal; }
+  table.dc-pdf-grid th:nth-child(1), table.dc-pdf-grid td:nth-child(1) { width: 5%; }
+  table.dc-pdf-grid th:nth-child(2), table.dc-pdf-grid td:nth-child(2) { width: 18%; }
+  table.dc-pdf-grid th:nth-child(3), table.dc-pdf-grid td:nth-child(3) { width: 12%; }
+  table.dc-pdf-grid th:nth-child(4), table.dc-pdf-grid td:nth-child(4) { width: 10%; }
+  table.dc-pdf-grid th:nth-child(5), table.dc-pdf-grid td:nth-child(5) { width: 8%; }
+  table.dc-pdf-grid th:nth-child(6), table.dc-pdf-grid td:nth-child(6) { width: 8%; }
+  table.dc-pdf-grid th:nth-child(7), table.dc-pdf-grid td:nth-child(7) { width: 12%; }
+  table.dc-pdf-grid th:nth-child(8), table.dc-pdf-grid td:nth-child(8) { width: 12%; }
+  table.dc-pdf-grid th:nth-child(9), table.dc-pdf-grid td:nth-child(9) { width: 15%; }
   table.dc-pdf-grid th { background: #e2e8f0; font-weight: 700; font-size: 12px; text-transform: uppercase; }
   table.dc-pdf-grid td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   table.dc-pdf-grid tr.report-grand-total td { font-weight: 700; background: #f1f5f9; }
@@ -2750,14 +2772,48 @@ const DISPATCH_CHALLAN_PRINT_STYLES = `
   }
   .dc-pdf-signature img { max-height: 64px; max-width: 180px; object-fit: contain; display: block; margin-left: auto; }
   .dc-pdf-sign-lbl { font-size: 13px; margin-top: 6px; color: #475569; }
+  @media screen {
+    .dc-pdf-pages-wrap {
+      padding: 8px 10px;
+      box-sizing: border-box;
+    }
+    .dc-pdf-page {
+      width: 100% !important;
+      max-width: 794px !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
+      box-sizing: border-box;
+    }
+  }
+  @media screen and (max-width: 768px) {
+    .dc-pdf-page {
+      width: 100% !important;
+      max-width: 100% !important;
+      padding: 10px 12px !important;
+      margin: 0 auto 12px !important;
+      box-sizing: border-box;
+    }
+    .dc-pdf-page-header {
+      grid-template-columns: 56px 1fr;
+      gap: 8px;
+    }
+    .dc-pdf-logo img { width: 52px; height: 52px; }
+    .dc-pdf-co-name { font-size: 16px; }
+    .dc-pdf-doc-title { font-size: 14px; }
+    table.dc-pdf-grid { font-size: 11px; table-layout: fixed; width: 100%; }
+    table.dc-pdf-grid th, table.dc-pdf-grid td { padding: 4px 5px; word-break: break-word; }
+    table.dc-pdf-grid td.num { white-space: nowrap; }
+    table.dc-pdf-grid th:nth-child(2), table.dc-pdf-grid td:nth-child(2) { width: 22%; }
+    table.dc-pdf-grid th:nth-child(3), table.dc-pdf-grid td:nth-child(3) { width: 14%; }
+  }
   @media print {
     .dc-pdf { font-size: 14px; }
     .dc-pdf-pages-wrap { background: transparent !important; padding: 0 !important; }
     .dc-pdf-page {
-      width: auto;
+      width: 210mm;
       max-width: none;
       margin: 0 !important;
-      padding: 0;
+      padding: 10mm 12mm;
       box-shadow: none !important;
       page-break-inside: avoid;
       break-inside: avoid-page;
@@ -2867,6 +2923,7 @@ function buildDispatchChallanPrintReportHtml(data, metadata) {
             ${p.tel ? `<div>Tel: ${escHtml(String(p.tel))}</div>` : ''}
           </td></tr>
         </table>
+        <div class="dc-pdf-grid-wrap">
         <table class="dc-pdf-grid">
           <thead>
             <tr>
@@ -2885,6 +2942,7 @@ function buildDispatchChallanPrintReportHtml(data, metadata) {
             </tr>
           </tbody>
         </table>
+        </div>
         <div class="dc-pdf-footer-fields">
           ${f.remarks ? `<div><strong>Remarks:</strong> ${escHtml(String(f.remarks))}</div>` : ''}
           ${f.truck_no ? `<div><strong>Truck no:</strong> ${escHtml(String(f.truck_no))}</div>` : ''}
@@ -2911,6 +2969,145 @@ function buildDispatchChallanPrintReportHtml(data, metadata) {
   `;
 
   return html;
+}
+
+/** Sales order print — one page per SO_NO (same layout as dispatch challan). */
+function buildSalesOrderPrintReportHtml(data, metadata) {
+  const orders = Array.isArray(data?.orders) ? data.orders : [];
+  const h = data?.compdet || {};
+  const apiBase = String(metadata?.apiBase || '').trim();
+  const company = escHtml(cleanPrintText(metadata?.companyName || rowFieldCI(h, 'comp_name') || 'Company'));
+
+  const logoSafe = normalizePrintImageSrc(rowFieldCI(h, 'sale_logo'), apiBase);
+  const signatureSafe = normalizePrintImageSrc(rowFieldCI(h, 'signature_file'), apiBase);
+
+  const compLines = [];
+  for (const k of ['comp_add1', 'comp_add2', 'comp_add3', 'compadd1', 'compadd2']) {
+    const v = cleanPrintText(rowFieldCI(h, k));
+    if (v) compLines.push(v);
+  }
+  const compTel = [cleanPrintText(rowFieldCI(h, 'comp_tel1')), cleanPrintText(rowFieldCI(h, 'comp_tel2'))]
+    .filter(Boolean)
+    .join(' ');
+  if (compTel) compLines.push(`Tel: ${compTel}`);
+  const compGst = cleanPrintText(rowFieldCI(h, 'gst_no') || rowFieldCI(h, 'comp_gst'));
+  const compPan = cleanPrintText(rowFieldCI(h, 'comp_pan') || rowFieldCI(h, 'pan'));
+  if (compGst || compPan) {
+    compLines.push([compGst ? `GST: ${compGst}` : '', compPan ? `PAN: ${compPan}` : ''].filter(Boolean).join('    |    '));
+  }
+
+  const logoBlock = logoSafe
+    ? `<div class="dc-pdf-logo"><img src="${logoSafe}" alt="" /></div>`
+    : '<div class="dc-pdf-logo dc-pdf-logo--empty"></div>';
+  const pageHeaderHtml = `
+    <header class="dc-pdf-page-header">
+      ${logoBlock}
+      <div class="dc-pdf-page-header-main">
+        <div class="dc-pdf-doc-title">SALES ORDER</div>
+        <div class="dc-pdf-co-name">${company}</div>
+        ${compLines.map((line) => `<div class="dc-pdf-co-line">${escHtml(line)}</div>`).join('')}
+      </div>
+    </header>`;
+
+  let docBody = '';
+  for (let i = 0; i < orders.length; i++) {
+    const ord = orders[i];
+    const pageCls = i > 0 ? 'dc-pdf-page dc-pdf-page--new' : 'dc-pdf-page';
+    const lines = Array.isArray(ord.lines) ? ord.lines : [];
+    const p = ord.party || {};
+    const f = ord.footer || {};
+    let tq = 0;
+    let tw = 0;
+    let ta = 0;
+    let grid = '';
+    lines.forEach((row) => {
+      const q = Number(row.QNTY ?? row.qnty ?? 0) || 0;
+      const w = Number(row.WEIGHT ?? row.weight ?? 0) || 0;
+      const a = Number(row.AMOUNT ?? row.amount ?? 0) || 0;
+      tq += q;
+      tw += w;
+      ta += a;
+      grid += `<tr>
+        <td class="num">${escHtml(String(row.TRN_NO ?? row.trn_no ?? ''))}</td>
+        <td>${escHtml(String(row.ITEM_NAME ?? row.item_name ?? row.ITEM_CODE ?? ''))}</td>
+        <td>${escHtml(String(row.MARKA ?? row.marka ?? ''))}</td>
+        <td>${escHtml(String(row.HSN_CODE ?? row.hsn_code ?? '').slice(0, 8))}</td>
+        <td>${escHtml(saleBillStatusUnitLabel(row.STATUS ?? row.status))}</td>
+        <td class="num">${formatQtyPdf(q)}</td>
+        <td class="num">${formatQtyPdf(w)}</td>
+        <td class="num">${formatAmtPdf(row.RATE ?? row.rate)}</td>
+        <td class="num">${formatAmtPdf(a)}</td>
+      </tr>`;
+    });
+    const partyName = escHtml(String(p.name || p.NAME || ''));
+    const sigHtml = signatureSafe
+      ? `<div class="dc-pdf-signature"><img src="${signatureSafe}" alt="" /></div>`
+      : '';
+    const footerLeft = [
+      f.po_no ? `<div><strong>PO no:</strong> ${escHtml(String(f.po_no))}</div>` : '',
+      f.remarks ? `<div><strong>Remarks:</strong> ${escHtml(String(f.remarks))}</div>` : '',
+      f.remarks2 ? `<div><strong>Remarks 2:</strong> ${escHtml(String(f.remarks2))}</div>` : '',
+    ]
+      .filter(Boolean)
+      .join('');
+    docBody += `
+      <section class="${pageCls}">
+        ${pageHeaderHtml}
+        <div class="dc-pdf-ch-meta">
+          <span><strong>SO no.</strong> ${escHtml(String(ord.so_no ?? ''))}</span>
+          <span><strong>Date</strong> ${escHtml(String(ord.so_date_display ?? ''))}</span>
+        </div>
+        <table class="dc-pdf-party-box">
+          <tr><td>
+            <div class="dc-pdf-party-lbl">Customer</div>
+            <div class="dc-pdf-party-name">${partyName}</div>
+            <div>${escHtml(String(p.add1 || p.ADD1 || ''))}</div>
+            <div>${escHtml(String(p.add2 || p.ADD2 || ''))}</div>
+            <div>${escHtml(String(p.city || p.CITY || ''))}</div>
+            <div>GST: ${escHtml(String(p.gst || p.GST_NO || '—'))}</div>
+            <div>PAN: ${escHtml(String(p.pan || p.PAN || '—'))}</div>
+            ${p.tel ? `<div>Tel: ${escHtml(String(p.tel))}</div>` : ''}
+          </td></tr>
+        </table>
+        <div class="dc-pdf-grid-wrap">
+        <table class="dc-pdf-grid">
+          <thead>
+            <tr>
+              <th>Trn</th><th>Item name</th><th>Marka</th><th>HSN</th><th>Unit</th>
+              <th class="num">Qty</th><th class="num">Weight</th><th class="num">Rate</th><th class="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${grid || '<tr><td colspan="9">(No lines)</td></tr>'}
+            <tr class="report-grand-total">
+              <td colspan="5" class="lbl-total">Total</td>
+              <td class="num">${formatQtyPdf(tq)}</td>
+              <td class="num">${formatQtyPdf(tw)}</td>
+              <td></td>
+              <td class="num">${formatAmtPdf(ta)}</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+        <div class="dc-pdf-footer-row" style="display:flex;justify-content:space-between;align-items:flex-start;margin-top:12px;gap:16px;">
+          <div class="dc-pdf-footer-fields" style="text-align:left;flex:1;">${footerLeft}</div>
+          <div class="dc-pdf-sign-block">
+            <div class="dc-pdf-for-co">For ${company}</div>
+            ${sigHtml}
+            <div class="dc-pdf-sign-lbl">Authorised signatory</div>
+          </div>
+        </div>
+      </section>`;
+  }
+
+  return `
+    <div class="dc-pdf">
+      <style>${DISPATCH_CHALLAN_PRINT_STYLES}</style>
+      <div class="dc-pdf-pages-wrap">
+        ${docBody || '<p class="dc-pdf-co-line">(No sales orders in range)</p>'}
+      </div>
+    </div>
+  `;
 }
 
 /** Dispatch challan list (ISSUE type S line detail). */
@@ -2940,7 +3137,7 @@ function buildDispatchChallanListReportHtml(data, metadata) {
       <td>${escHtml(String(r.R_NO ?? ''))}</td>
       <td>${escHtml(String(r.R_DATE ?? ''))}</td>
       <td>${escHtml(String(r.CODE ?? ''))}</td>
-      <td class="col-name">${escHtml(String(r.PARTY_NAME ?? ''))}</td>
+      <td class="col-party">${escHtml(`[${String(r.CODE ?? '').trim()}] ${String(r.PARTY_NAME ?? '').trim()}`.trim())}</td>
       <td>${escHtml(String(r.SO_NO ?? ''))}</td>
       <td>${escHtml(String(r.ITEM_CODE ?? ''))}</td>
       <td class="col-name">${escHtml(String(r.ITEM_NAME ?? ''))}</td>
@@ -2979,6 +3176,74 @@ function buildDispatchChallanListReportHtml(data, metadata) {
           </tr>
         </thead>
         <tbody>${body || '<tr><td colspan="14">(No rows)</td></tr>'}${rows.length ? grand : ''}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+/** Sales order list (SORDER type SO). */
+function buildSalesOrderListReportHtml(data, metadata) {
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  const company = escHtml(metadata.companyName || '');
+  const sdt = escHtml(metadata.startDate || '');
+  const edt = escHtml(metadata.endDate || '');
+  const party = escHtml(metadata.partyLabel || 'All parties');
+  const item = escHtml(metadata.itemLabel || 'All items');
+  const marka = escHtml(metadata.markaLabel || 'All markas');
+  const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
+
+  let tq = 0;
+  let tw = 0;
+  let ta = 0;
+  let body = '';
+  rows.forEach((r) => {
+    const q = Number(r.QNTY) || 0;
+    const w = Number(r.WEIGHT) || 0;
+    const a = Number(r.AMOUNT) || 0;
+    tq += q;
+    tw += w;
+    ta += a;
+    const partyLine = `[${String(r.CODE ?? '').trim()}] ${String(r.PARTY_NAME ?? '').trim()}`.trim();
+    body += `<tr>
+      <td>${escHtml(String(r.SO_NO ?? ''))}</td>
+      <td>${escHtml(String(r.SO_DATE ?? ''))}</td>
+      <td class="col-party">${escHtml(partyLine)}</td>
+      <td>${escHtml(String(r.ITEM_CODE ?? ''))}</td>
+      <td class="col-name">${escHtml(String(r.ITEM_NAME ?? ''))}</td>
+      <td>${escHtml(String(r.MARKA ?? ''))}</td>
+      <td class="amount">${formatStockPdf(q, 3)}</td>
+      <td>${escHtml(String(r.STATUS ?? ''))}</td>
+      <td class="amount">${formatStockPdf(w, 3)}</td>
+      <td class="amount">${formatStockPdf(Number(r.RATE) || 0)}</td>
+      <td class="amount">${formatStockPdf(a)}</td>
+    </tr>`;
+  });
+
+  const grand = `<tr class="report-grand-total">
+    <td colspan="6" class="lbl-total">Grand total</td>
+    <td class="amount">${formatStockPdf(tq, 3)}</td>
+    <td></td>
+    <td class="amount">${formatStockPdf(tw, 3)}</td>
+    <td>—</td>
+    <td class="amount">${formatStockPdf(ta)}</td>
+  </tr>`;
+
+  return `
+    <div class="pdf-report-wrap sales-order-list-pdf-wrap">
+      <div class="pdf-report-header">
+        <h1>${company}</h1>
+        <h2>Sales order list</h2>
+        <p>Period: ${sdt} to ${edt} · Party: ${party} · Item: ${item} · Marka: ${marka}</p>
+        <p class="pdf-meta">Generated: ${generated}</p>
+      </div>
+      <table class="table-report sales-order-list-pdf">
+        <thead>
+          <tr>
+            <th>SO no</th><th>Date</th><th>Party</th><th>Item</th><th>Item name</th><th>Marka</th>
+            <th class="amount">Qty</th><th>St</th><th class="amount">Weight</th><th class="amount">Rate</th><th class="amount">Amount</th>
+          </tr>
+        </thead>
+        <tbody>${body || '<tr><td colspan="11">(No rows)</td></tr>'}${rows.length ? grand : ''}</tbody>
       </table>
     </div>
   `;
@@ -3505,6 +3770,8 @@ export function buildReportHtml(reportType, data, metadata) {
   if (reportType === 'profit-loss') return buildProfitLossReportHtml(data, metadata);
   if (reportType === 'dispatch-challan-list') return buildDispatchChallanListReportHtml(data, metadata);
   if (reportType === 'dispatch-challan-print') return buildDispatchChallanPrintReportHtml(data, metadata);
+  if (reportType === 'sales-order-list') return buildSalesOrderListReportHtml(data, metadata);
+  if (reportType === 'sales-order-print') return buildSalesOrderPrintReportHtml(data, metadata);
   return buildTrialBalanceReportHtml(data, metadata);
 }
 
@@ -3555,11 +3822,20 @@ function getPdfOptions(metadata, reportType, data) {
             useCORS: true,
             logging: false,
           }
-        : { scale: 2, useCORS: true };
+        : reportType === 'dispatch-challan-print'
+          ? {
+              scale: 2,
+              useCORS: true,
+              logging: false,
+              windowWidth: 794,
+              scrollX: 0,
+              scrollY: 0,
+            }
+          : { scale: 2, useCORS: true };
 
   const base = {
     margin:
-      reportType === 'sale-bill' || reportType === 'purchase-bill' || reportType === 'dispatch-challan-print'
+      reportType === 'sale-bill' || reportType === 'purchase-bill' || reportType === 'dispatch-challan-print' || reportType === 'sales-order-print'
         ? 8
         : reportType === 'balance-sheet'
           ? 6
@@ -3569,7 +3845,7 @@ function getPdfOptions(metadata, reportType, data) {
     html2canvas,
     jsPDF: {
       orientation:
-        reportType === 'sale-bill' || reportType === 'purchase-bill' || reportType === 'dispatch-challan-print'
+        reportType === 'sale-bill' || reportType === 'purchase-bill' || reportType === 'dispatch-challan-print' || reportType === 'sales-order-print'
           ? 'portrait'
           : 'landscape',
       unit: 'mm',
@@ -3577,12 +3853,11 @@ function getPdfOptions(metadata, reportType, data) {
     },
   };
 
-  if (reportType === 'dispatch-challan-print') {
+  if (reportType === 'dispatch-challan-print' || reportType === 'sales-order-print') {
     base.pagebreak = {
       mode: ['css', 'legacy'],
       before: '.dc-pdf-page--new',
-      after: '.dc-pdf-page',
-      avoid: ['.dc-pdf-page-header', 'tr'],
+      avoid: ['.dc-pdf-page', '.dc-pdf-page-header'],
     };
   }
 

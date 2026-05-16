@@ -1,36 +1,71 @@
 import React, { useEffect, useRef, useState } from 'react';
 
+const SALES_MODULE_ID = '__sales-module__';
+
+const SALES_REPORT_ORDER = ['sales-order-entry', 'dispatch-challan-entry', 'sale-bill-entry'];
+
+const MAIN_REPORT_ORDER = [
+  'trial-balance',
+  'ledger',
+  'ledger-interest',
+  'customer-ledger',
+  'supplier-ledger',
+  'broker-os',
+  'sale-bill-printing',
+  'sale-list',
+  'stock-sum',
+  'ageing',
+  'purchase-list',
+  'voucher-list',
+  'gstr1',
+  'hsn-sales',
+  'hsn-purchase',
+  'trading-ac',
+  'pl-profit-loss',
+  'balance-sheet',
+  SALES_MODULE_ID,
+];
+
+function ReportOption({ id, selected, title, description, onSelect }) {
+  return (
+    <div className={`report-option ${selected ? 'selected' : ''}`} onClick={() => onSelect(id)}>
+      <input type="radio" name="reportType" value={id} checked={selected} onChange={() => onSelect(id)} />
+      <label>
+        <h3>{title}</h3>
+        <p>{description}</p>
+      </label>
+    </div>
+  );
+}
+
 export default function Slide3({ onPrev, onNext, formData }) {
+  const [menuView, setMenuView] = useState('main');
   const [reportType, setReportType] = useState('trial-balance');
   const reportMenuRef = useRef(null);
-  const reportOrder = [
-    'trial-balance',
-    'ledger',
-    'ledger-interest',
-    'customer-ledger',
-    'supplier-ledger',
-    'broker-os',
-    'sale-bill-printing',
-    'sale-list',
-    'stock-sum',
-    'ageing',
-    'purchase-list',
-    'voucher-list',
-    'gstr1',
-    'hsn-sales',
-    'hsn-purchase',
-    'trading-ac',
-    'pl-profit-loss',
-    'balance-sheet',
-    'sale-bill-entry',
-    'dispatch-challan-entry',
-  ];
+
+  const activeReportOrder = menuView === 'sales' ? SALES_REPORT_ORDER : MAIN_REPORT_ORDER;
+
+  const openSalesModule = () => {
+    setMenuView('sales');
+    if (!SALES_REPORT_ORDER.includes(reportType)) {
+      setReportType('sales-order-entry');
+    }
+  };
 
   const moveReportSelection = (delta) => {
-    const idx = reportOrder.indexOf(reportType);
+    const order = activeReportOrder;
+    let currentId = reportType;
+    if (menuView === 'main' && currentId === SALES_MODULE_ID) {
+      /* keep */
+    } else if (menuView === 'sales' && !order.includes(currentId)) {
+      currentId = order[0];
+    } else if (menuView === 'main' && !order.includes(currentId)) {
+      currentId = order[0];
+    }
+    const idx = order.indexOf(currentId);
     const current = idx >= 0 ? idx : 0;
-    const next = (current + delta + reportOrder.length) % reportOrder.length;
-    setReportType(reportOrder[next]);
+    const next = (current + delta + order.length) % order.length;
+    setReportType(order[next]);
   };
 
   const handleMenuKeyDown = (e) => {
@@ -42,6 +77,12 @@ export default function Slide3({ onPrev, onNext, formData }) {
       e.preventDefault();
       e.stopPropagation();
       moveReportSelection(-1);
+    } else if (e.key === 'Enter') {
+      if (menuView === 'main' && reportType === SALES_MODULE_ID) {
+        e.preventDefault();
+        e.stopPropagation();
+        openSalesModule();
+      }
     }
   };
 
@@ -59,13 +100,18 @@ export default function Slide3({ onPrev, onNext, formData }) {
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         moveReportSelection(-1);
+      } else if (e.key === 'Enter') {
+        if (menuView === 'main' && reportType === SALES_MODULE_ID) {
+          e.preventDefault();
+          openSalesModule();
+        }
       }
     };
     document.addEventListener('keydown', onDocKeyDown);
     return () => {
       document.removeEventListener('keydown', onDocKeyDown);
     };
-  }, [reportType]);
+  }, [reportType, menuView]);
 
   useEffect(() => {
     const root = reportMenuRef.current;
@@ -74,10 +120,35 @@ export default function Slide3({ onPrev, onNext, formData }) {
     if (selected && typeof selected.scrollIntoView === 'function') {
       selected.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
-  }, [reportType]);
+  }, [reportType, menuView]);
 
   const handleNext = () => {
+    if (menuView === 'main' && reportType === SALES_MODULE_ID) {
+      openSalesModule();
+      return;
+    }
+    if (menuView === 'sales') {
+      onNext({ reportType });
+      return;
+    }
     onNext({ reportType });
+  };
+
+  const handleBack = () => {
+    if (menuView === 'sales') {
+      setMenuView('main');
+      setReportType(SALES_MODULE_ID);
+      return;
+    }
+    onPrev();
+  };
+
+  const selectReport = (id) => {
+    if (id === SALES_MODULE_ID) {
+      openSalesModule();
+      return;
+    }
+    setReportType(id);
   };
 
   return (
@@ -86,14 +157,45 @@ export default function Slide3({ onPrev, onNext, formData }) {
         {formData.comp_name} | {formData.comp_year}
       </p>
 
+      {menuView === 'sales' ? (
+        <p className="report-submenu-title">Sales Module</p>
+      ) : null}
+
       <div
         ref={reportMenuRef}
-        className="report-options"
+        className={`report-options${menuView === 'sales' ? ' report-options--sales' : ''}`}
         tabIndex={0}
         onKeyDown={handleMenuKeyDown}
-        aria-label="Report type menu"
+        aria-label={menuView === 'sales' ? 'Sales module menu' : 'Report type menu'}
       >
-        <div 
+        {menuView === 'sales' ? (
+          <div className="report-options-sales">
+            <p className="report-submenu-head">Choose: Sales Order, Dispatch Challan, or Sale Bill</p>
+            <ReportOption
+              id="sales-order-entry"
+              selected={reportType === 'sales-order-entry'}
+              title="Sales Order"
+              description="Add, edit, or delete sales orders (SORDER type SO); F12 permissions; manual SO number."
+              onSelect={selectReport}
+            />
+            <ReportOption
+              id="dispatch-challan-entry"
+              selected={reportType === 'dispatch-challan-entry'}
+              title="Dispatch Challan"
+              description="Add, edit, or delete dispatch challans (ISSUE type S); party schedule 11.20, pending SO pick on lines."
+              onSelect={selectReport}
+            />
+            <ReportOption
+              id="sale-bill-entry"
+              selected={reportType === 'sale-bill-entry'}
+              title="Sale Bill"
+              description="Add, edit, or delete sale bills; posts SALE, LEDGER, STOCK, and BILLS. Print from entry after save."
+              onSelect={selectReport}
+            />
+          </div>
+        ) : (
+        <div className="report-options-main">
+        <div
           className={`report-option ${reportType === 'trial-balance' ? 'selected' : ''}`}
           onClick={() => setReportType('trial-balance')}
         >
@@ -396,42 +498,28 @@ export default function Slide3({ onPrev, onNext, formData }) {
         </div>
 
         <div
-          className={`report-option ${reportType === 'dispatch-challan-entry' ? 'selected' : ''}`}
-          onClick={() => setReportType('dispatch-challan-entry')}
+          className={`report-option ${reportType === SALES_MODULE_ID ? 'selected' : ''}`}
+          onClick={() => selectReport(SALES_MODULE_ID)}
         >
           <input
             type="radio"
             name="reportType"
-            value="dispatch-challan-entry"
-            checked={reportType === 'dispatch-challan-entry'}
-            onChange={(e) => setReportType(e.target.value)}
+            value={SALES_MODULE_ID}
+            checked={reportType === SALES_MODULE_ID}
+            onChange={() => selectReport(SALES_MODULE_ID)}
           />
           <label>
-            <h3>Dispatch challan entry</h3>
-            <p>Add, edit, or delete dispatch challans (ISSUE type S); party schedule 11.20, pending SO pick on lines.</p>
+            <h3>Sales Module</h3>
+            <p>Sales Order, Dispatch Challan, and Sale Bill entry screens</p>
           </label>
         </div>
+        </div>
+        )}
 
-        <div
-          className={`report-option ${reportType === 'sale-bill-entry' ? 'selected' : ''}`}
-          onClick={() => setReportType('sale-bill-entry')}
-        >
-          <input
-            type="radio"
-            name="reportType"
-            value="sale-bill-entry"
-            checked={reportType === 'sale-bill-entry'}
-            onChange={(e) => setReportType(e.target.value)}
-          />
-          <label>
-            <h3>Sale bill entry</h3>
-            <p>Add, edit, or delete sale bills; posts SALE, LEDGER, STOCK, and BILLS (Fox-style subset). Print from this screen after save.</p>
-          </label>
-        </div>
       </div>
 
       <div className="button-group">
-        <button onClick={onPrev} className="btn btn-secondary">
+        <button onClick={handleBack} className="btn btn-secondary">
           ← Back
         </button>
         <button onClick={handleNext} className="btn btn-primary">

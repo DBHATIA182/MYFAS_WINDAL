@@ -2,20 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
-import DispatchChallanListScreen from './DispatchChallanListScreen';
-import DispatchChallanPrintScreen from './DispatchChallanPrintScreen';
+import SalesOrderListScreen from './SalesOrderListScreen';
+import SalesOrderPrintScreen from './SalesOrderPrintScreen';
 import { DcActionBar } from '../components/DispatchChallanActionBar';
 
 const reqOpts = { withCredentials: true, timeout: 120000 };
-const DEFAULT_CH_TYPE = 'I';
-
-function normChType(raw) {
-  const c = String(raw ?? DEFAULT_CH_TYPE)
-    .trim()
-    .toUpperCase()
-    .slice(0, 1);
-  return c || DEFAULT_CH_TYPE;
-}
 
 function dispNum(v) {
   const n = Number(v);
@@ -129,7 +120,7 @@ function focusNextInForm(rootEl, currentEl) {
 
 function focusLineQnty(lineIdx) {
   window.requestAnimationFrame(() => {
-    const root = document.querySelector('.slide-22-dispatch-challan');
+    const root = document.querySelector('.slide-23-sales-order');
     const el = root?.querySelector(`input[data-dc-line-qty="${lineIdx}"]`);
     if (!el || el.disabled) return;
     try {
@@ -142,17 +133,16 @@ function focusLineQnty(lineIdx) {
 function handleEnterAsTab(e) {
   if (e.key !== 'Enter') return;
   const t = e.target;
-  if (!t || t.closest('.slide-22-dispatch-challan-ignore-enter')) return;
+  if (!t || t.closest('.slide-23-sales-order-ignore-enter')) return;
   if (t.tagName === 'TEXTAREA') return;
   e.preventDefault();
-  const root = t.closest('.slide-22-dispatch-challan');
+  const root = t.closest('.slide-23-sales-order');
   if (root) focusNextInForm(root, t);
 }
 
 function emptyLine() {
   return {
     trn_no: 1,
-    so_no: '',
     item_code: '',
     item_name: '',
     marka: '',
@@ -162,8 +152,6 @@ function emptyLine() {
     rate: 0,
     amount: 0,
     weight_manual: false,
-    _so_ref_qty: 0,
-    _so_ref_wgt: 0,
   };
 }
 
@@ -215,7 +203,7 @@ function DispatchPickModal({ open, title, hint, emptyMessage, loading, rows, col
   if (!open) return null;
 
   return createPortal(
-    <div className="sale-bill-pick-overlay slide-22-dispatch-challan-ignore-enter" role="presentation" onClick={onClose}>
+    <div className="sale-bill-pick-overlay slide-23-sales-order-ignore-enter" role="presentation" onClick={onClose}>
       <div
         ref={cardRef}
         className="sale-bill-pick-card"
@@ -289,9 +277,8 @@ function highlightMatch(text, q) {
   );
 }
 
-export default function Slide22DispatchChallan({ apiBase, formData, userName, onPrev, onReset }) {
-  const rNoRef = useRef('');
-  const chTypeRef = useRef(DEFAULT_CH_TYPE);
+export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev, onReset }) {
+  const soNoRef = useRef('');
   const slotGenRef = useRef(0);
 
   const compCode = formData.comp_code ?? formData.COMP_CODE;
@@ -301,47 +288,38 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
 
   const [perm, setPerm] = useState(null);
   const [ctx, setCtx] = useState(null);
-  const [lookups, setLookups] = useState({ parties: [], plants: [], markas: [], items: [] });
+  const [lookups, setLookups] = useState({ customers: [], markas: [], items: [] });
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
   const [mode, setMode] = useState('new');
-  const [chType, setChType] = useState(DEFAULT_CH_TYPE);
-  const [rNo, setRNo] = useState('');
-  const [rDateYmd, setRDateYmd] = useState(() => toInputDateString(new Date()));
+  const [soNo, setSoNo] = useState('');
+  const [soDateYmd, setSoDateYmd] = useState(() => toInputDateString(new Date()));
   const [code, setCode] = useState('');
-  const [plantCode, setPlantCode] = useState('');
-  const [partySearch, setPartySearch] = useState('');
+    const [partySearch, setPartySearch] = useState('');
   const [partyHi, setPartyHi] = useState(0);
   const [partyFinderOpen, setPartyFinderOpen] = useState(true);
   const [postedNew, setPostedNew] = useState(false);
 
+  const [poNo, setPoNo] = useState('');
   const [remarks, setRemarks] = useState('');
-  const [truckNo, setTruckNo] = useState('');
-  const [tpt, setTpt] = useState('');
-  const [grNo, setGrNo] = useState('');
+  const [remarks2, setRemarks2] = useState('');
   const [lines, setLines] = useState([emptyLine()]);
 
   const [listScreenOpen, setListScreenOpen] = useState(false);
   const [printScreenOpen, setPrintScreenOpen] = useState(false);
   const [lineNumEdit, setLineNumEdit] = useState(null);
-  const [soPick, setSoPick] = useState({ open: false, lineIdx: -1, rows: [], loading: false, hi: 0 });
-
-  const dcLinesTopScrollRef = useRef(null);
+    const dcLinesTopScrollRef = useRef(null);
   const dcLinesTopInnerRef = useRef(null);
   const dcLinesGridScrollRef = useRef(null);
 
-  const rDateOracle = useMemo(() => toOracleDate(rDateYmd), [rDateYmd]);
+  const soDateOracle = useMemo(() => toOracleDate(soDateYmd), [soDateYmd]);
   const gAmtCal = ctx?.G_AMT_CAL ?? 'K';
 
   useEffect(() => {
-    rNoRef.current = String(rNo ?? '').trim();
-  }, [rNo]);
-  useEffect(() => {
-    chTypeRef.current = normChType(chType);
-  }, [chType]);
-
+    soNoRef.current = String(soNo ?? '').trim();
+  }, [soNo]);
   useEffect(() => {
     const top = dcLinesTopScrollRef.current;
     const topInner = dcLinesTopInnerRef.current;
@@ -381,22 +359,22 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
 
   const partyInfo = useMemo(() => {
     if (!code) return null;
-    return lookups.parties.find((p) => String(p.CODE ?? p.code) === String(code)) ?? null;
-  }, [code, lookups.parties]);
+    return lookups.customers.find((p) => String(p.CODE ?? p.code) === String(code)) ?? null;
+  }, [code, lookups.customers]);
 
   const filteredParties = useMemo(() => {
     const q = partySearch.trim().toLowerCase();
-    const list = lookups.parties || [];
+    const list = lookups.customers || [];
     if (!q) return [];
     return list
       .filter((p) => {
-      const pc = String(p.CODE ?? p.code ?? '').toLowerCase();
-      const name = String(p.NAME ?? p.name ?? '').toLowerCase();
-      const city = String(p.CITY ?? p.city ?? '').toLowerCase();
-      return pc.includes(q) || name.includes(q) || city.includes(q);
-    })
+        const pc = String(p.CODE ?? p.code ?? '').toLowerCase();
+        const name = String(p.NAME ?? p.name ?? '').toLowerCase();
+        const city = String(p.CITY ?? p.city ?? '').toLowerCase();
+        return pc.includes(q) || name.includes(q) || city.includes(q);
+      })
       .slice(0, 50);
-  }, [partySearch, lookups.parties]);
+  }, [partySearch, lookups.customers]);
 
   const safePartyHi = Math.min(Math.max(0, partyHi), Math.max(0, filteredParties.length - 1));
 
@@ -428,7 +406,7 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
     [accessOnlyBrowse, mode, can]
   );
   const fieldsDisabled = !can.canOpen || accessOnlyBrowse || mode === 'delete';
-  const showChNav = !!can.canOpen;
+  const showSoNav = !!can.canOpen;
 
   const showNotice = useCallback((text) => {
     setErr('');
@@ -488,11 +466,9 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
       if (!rows?.length) return;
       const h0 = rows[0];
       setCode(String(h0.CODE ?? h0.code ?? '').trim());
-      setPlantCode(String(h0.PLANT_CODE ?? h0.plant_code ?? '').trim());
+      setPoNo(String(h0.PO_NO ?? h0.po_no ?? '').trim());
       setRemarks(String(h0.REMARKS ?? h0.remarks ?? '').trim());
-      setTruckNo(String(h0.TRUCK_NO ?? h0.truck_no ?? '').trim());
-      setTpt(String(h0.TPT ?? h0.tpt ?? '').trim());
-      setGrNo(String(h0.GR_NO ?? h0.gr_no ?? '').trim());
+      setRemarks2(String(h0.REMARKS2 ?? h0.remarks2 ?? '').trim());
       setPartyFinderOpen(false);
       setLines(
         rows.map((r, i) => {
@@ -500,7 +476,6 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
           const it = itemByCode(ic);
           return {
             trn_no: Number(r.TRN_NO ?? r.trn_no ?? i + 1) || i + 1,
-            so_no: displayLineInt6(r.SO_NO ?? r.so_no),
             item_code: ic,
             item_name: it ? String(it.ITEM_NAME ?? it.item_name ?? '').trim() : ic,
             marka: String(r.MARKA ?? r.marka ?? '').trim(),
@@ -510,8 +485,6 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
             rate: roundRate2(Number(r.RATE ?? r.rate ?? 0) || 0),
             amount: Number(r.AMOUNT ?? r.amount ?? 0) || 0,
             weight_manual: true,
-            _so_ref_qty: 0,
-            _so_ref_wgt: 0,
           };
         })
       );
@@ -525,12 +498,12 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
     try {
       const params = { comp_uid: compUid, user_name: userName };
       const [pRes, cRes, lRes] = await Promise.all([
-        axios.get(`${apiBase}/api/dispatch-challan-user-permissions`, { params, ...reqOpts }),
-        axios.get(`${apiBase}/api/dispatch-challan-form-context`, {
+        axios.get(`${apiBase}/api/sales-order-user-permissions`, { params, ...reqOpts }),
+        axios.get(`${apiBase}/api/sales-order-form-context`, {
           params: { comp_code: compCode, comp_uid: compUid },
           ...reqOpts,
         }),
-        axios.get(`${apiBase}/api/dispatch-challan-lookups`, {
+        axios.get(`${apiBase}/api/sales-order-lookups`, {
           params: { comp_code: compCode, comp_uid: compUid },
           ...reqOpts,
         }),
@@ -538,12 +511,11 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
       setPerm(pRes.data);
       setCtx(cRes.data);
       setLookups({
-        parties: lRes.data?.parties || [],
-        plants: lRes.data?.plants || [],
+        customers: lRes.data?.customers || [],
         markas: lRes.data?.markas || [],
         items: lRes.data?.items || [],
       });
-      if (!pRes.data?.canOpen) setErr('Access denied (F11 position 1).');
+      if (!pRes.data?.canOpen) setErr('Access denied (F12 position 1).');
     } catch (e) {
       setErr(e?.response?.data?.error || e.message || 'Load failed');
     } finally {
@@ -555,130 +527,71 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
     void loadBootstrap();
   }, [loadBootstrap]);
 
-  const fetchNextRNo = useCallback(async () => {
-    const ct = normChType(chType);
-    const { data } = await axios.get(`${apiBase}/api/dispatch-challan-next-r-no`, {
-      params: { comp_code: compCode, comp_uid: compUid, ch_type: ct },
+  const fetchNextSoNo = useCallback(async () => {
+    const { data } = await axios.get(`${apiBase}/api/sales-order-next-so-no`, {
+      params: { comp_code: compCode, comp_uid: compUid },
       ...reqOpts,
     });
-    setRNo(String(data?.next_r_no ?? ''));
-  }, [apiBase, compCode, compUid, chType]);
+    setSoNo(String(data?.next_so_no ?? ''));
+  }, [apiBase, compCode, compUid]);
 
   useEffect(() => {
     if (loading || mode !== 'new' || postedNew) return;
-    void fetchNextRNo().catch(() => {});
-  }, [loading, mode, postedNew, chType, fetchNextRNo]);
+    void fetchNextSoNo().catch(() => {});
+  }, [loading, mode, postedNew, fetchNextSoNo]);
 
   const loadBySlot = useCallback(
-    async (targetRNo, targetChType) => {
+    async (targetSoNo) => {
       const gen = ++slotGenRef.current;
       try {
-        const { data } = await axios.get(`${apiBase}/api/dispatch-challan-raw`, {
+        const { data } = await axios.get(`${apiBase}/api/sales-order-raw`, {
           params: {
             comp_code: compCode,
             comp_uid: compUid,
-            ch_type: targetChType,
-            r_no: targetRNo,
+            so_no: targetSoNo,
           },
           ...reqOpts,
         });
         if (gen !== slotGenRef.current) return;
         const rows = Array.isArray(data) ? data : [];
         if (rows.length === 0) {
-          setRNo(String(targetRNo));
-          setChType(targetChType);
+          setSoNo(String(targetSoNo));
           setMode('new');
           setPostedNew(false);
           setLines([emptyLine()]);
-          showNotice('No challan at this number — ready for new entry.');
+          showNotice('No sales order at this number — ready for new entry.');
           return;
         }
-        const rd = rows[0].R_DATE ?? rows[0].r_date;
-        setRDateYmd(toInputDateString(rd) || rDateYmd);
-        setRNo(String(targetRNo));
-        setChType(targetChType);
+        const rd = rows[0].SO_DATE ?? rows[0].so_date;
+        setSoDateYmd(toInputDateString(rd) || soDateYmd);
+        setSoNo(String(targetSoNo));
         applyRowsFromApi(rows);
         if (can.canEdit) setMode('edit');
       } catch (e) {
         setErr(e?.response?.data?.error || e.message || 'Load failed');
       }
     },
-    [apiBase, compCode, compUid, applyRowsFromApi, can.canEdit, rDateYmd, showNotice]
+    [apiBase, compCode, compUid, applyRowsFromApi, can.canEdit, soDateYmd, showNotice]
   );
 
-  const stepChNo = (delta) => {
-    const cur = Number(String(rNoRef.current).replace(/\D/g, '')) || 0;
+  const stepSoNo = (delta) => {
+    const cur = Number(String(soNoRef.current).replace(/\D/g, '')) || 0;
     const next = Math.max(1, cur + delta);
-    const ct = chTypeRef.current;
-    void loadBySlot(next, ct);
+    const ct = '';
+    void loadBySlot(next);
   };
-
-  const openSoPick = async (lineIdx) => {
-    if (!canEditLines) return;
-    if (!code) {
-      showNotice('Select party (schedule 11.20) before pending SO (F1).');
-      return;
-    }
-    setSoPick({ open: true, lineIdx, rows: [], loading: true, hi: 0 });
-    try {
-      const { data } = await axios.get(`${apiBase}/api/dispatch-challan-pending-orders`, {
-        params: { comp_code: compCode, comp_uid: compUid, code },
-        ...reqOpts,
-      });
-      setSoPick((p) => ({ ...p, rows: data?.rows || [], loading: false }));
-    } catch (e) {
-      setErr(e?.response?.data?.error || e.message || 'Pending SO failed');
-      setSoPick((p) => ({ ...p, open: false, loading: false }));
-    }
-  };
-
-  const applySoPick = (lineIdx, row) => {
-    const ic = String(row.ITEM_CODE ?? '').trim();
-    const bqty = Number(row.BQTY ?? 0) || 0;
-    applyItemToLine(lineIdx, ic);
-    window.setTimeout(() => {
-      recalcLine(lineIdx, {
-        so_no: displayLineInt6(row.SO_NO),
-        qnty: bqty,
-        status: String(row.STATUS ?? 'B').trim().slice(0, 1) || 'B',
-        rate: roundRate2(Number(row.RATE ?? 0) || 0),
-        weight_manual: false,
-        _so_ref_qty: bqty,
-        _so_ref_wgt: 0,
-      });
-      focusLineQnty(lineIdx);
-    }, 0);
-    setSoPick((p) => ({ ...p, open: false }));
-  };
-
-  const soPickColumns = useMemo(
-    () => [
-      { key: 'so', label: 'SO no', render: (r) => displayLineInt6(r.SO_NO) },
-      { key: 'dt', label: 'Date', render: (r) => formatPickDate(r.SO_DATE) },
-      { key: 'it', label: 'Item', render: (r) => String(r.ITEM_CODE ?? '').trim() },
-      { key: 'st', label: 'BKH', render: (r) => String(r.STATUS ?? '').trim() },
-      { key: 'rt', label: 'Rate', render: (r) => Number(r.RATE ?? 0).toFixed(2) },
-      { key: 'bq', label: 'Bal qty', render: (r) => Number(r.BQTY ?? 0) },
-      { key: 'soq', label: 'SO qty', render: (r) => Number(r.SOQTY ?? 0) },
-      { key: 'slq', label: 'Disp qty', render: (r) => Number(r.SLQTY ?? 0) },
-    ],
-    []
-  );
 
   const clearForNew = useCallback(() => {
-    setChType(DEFAULT_CH_TYPE);
     setCode('');
-    setPlantCode('');
     setPartySearch('');
     setPartyFinderOpen(true);
+    setPoNo('');
     setRemarks('');
-    setTruckNo('');
-    setTpt('');
-    setGrNo('');
+    setRemarks2('');
     setLines([emptyLine()]);
     setPostedNew(false);
-    void fetchNextRNo();
-  }, [fetchNextRNo]);
+    void fetchNextSoNo();
+  }, [fetchNextSoNo]);
 
   const handleSave = async (saveMode) => {
     setMsg('');
@@ -688,11 +601,11 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
       return;
     }
     if (!code) {
-      showNotice('Select party (schedule 11.20).');
+      showNotice('Select party (master list).');
       return;
     }
-    if (compS && compE && rDateYmd && (rDateYmd < compS || rDateYmd > compE)) {
-      showNotice(`Challan date must be between ${toDisplayDate(compS)} and ${toDisplayDate(compE)}.`);
+    if (compS && compE && soDateYmd && (soDateYmd < compS || soDateYmd > compE)) {
+      showNotice(`SO date must be between ${toDisplayDate(compS)} and ${toDisplayDate(compE)}.`);
       return;
     }
     const validLines = lines.filter((L) => String(L.item_code ?? '').trim());
@@ -706,16 +619,11 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
         comp_uid: compUid,
         user_name: userName,
         mode: saveMode,
-        ch_type: normChType(chType),
-        r_date: rDateOracle,
-        r_no: String(rNo ?? '').trim() || undefined,
-        header: { code: Number(code), plant_code: plantCode, remarks, truck_no: truckNo, tpt, gr_no: grNo },
+        so_date: soDateOracle,
+        so_no: String(soNo ?? '').trim() || undefined,
+        header: { code: Number(code), po_no: poNo, remarks, remarks2 },
         lines: validLines.map((L, i) => ({
           trn_no: i + 1,
-          so_no: (() => {
-            const s = parseLineInt6Input(L.so_no);
-            return s ? Number(s) : null;
-          })(),
           item_code: L.item_code,
           marka: L.marka,
           qnty: Number(L.qnty) || 0,
@@ -725,30 +633,28 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
           amount: Number(L.amount) || 0,
         })),
       };
-      const { data } = await axios.post(`${apiBase}/api/dispatch-challan-save`, payload, reqOpts);
+      const { data } = await axios.post(`${apiBase}/api/sales-order-save`, payload, reqOpts);
       if (saveMode === 'delete') {
-        setMsg('Challan deleted.');
+        setMsg('Sales order deleted.');
         setPostedNew(false);
         setMode('new');
         clearForNew();
       } else {
-        setRNo(String(data?.r_no ?? rNo));
+        setSoNo(String(data?.so_no ?? soNo));
         setPostedNew(saveMode === 'add');
         setMode('edit');
-        setMsg(saveMode === 'add' ? 'Challan saved.' : 'Challan updated.');
+        setMsg(saveMode === 'add' ? 'Sales order saved.' : 'Sales order updated.');
       }
     } catch (e) {
       setErr(e?.response?.data?.error || e.message || 'Save failed');
     }
   };
 
-  const openChallanFromList = async (row) => {
-    const ct = normChType(row.CH_TYPE ?? row.ch_type);
-    const rn = row.R_NO ?? row.r_no;
+  const openOrderFromList = async (row) => {
+    const sn = row.SO_NO ?? row.so_no;
     setListScreenOpen(false);
-    setChType(ct);
     setMode('edit');
-    await loadBySlot(rn, ct);
+    await loadBySlot(sn);
   };
 
   const lineNumDisplay = (idx, field, value, formatter) => {
@@ -774,12 +680,12 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
     }
   };
 
-  const chNavButtons = (
+  const soNavButtons = (
     <>
-      <button type="button" className="btn btn-secondary" onClick={() => stepChNo(-1)}>
+      <button type="button" className="btn btn-secondary" onClick={() => stepSoNo(-1)}>
         ← Prev
       </button>
-      <button type="button" className="btn btn-secondary" onClick={() => stepChNo(1)}>
+      <button type="button" className="btn btn-secondary" onClick={() => stepSoNo(1)}>
         Next →
       </button>
     </>
@@ -819,24 +725,23 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
 
   if (listScreenOpen) {
     return (
-      <DispatchChallanListScreen
+      <SalesOrderListScreen
         apiBase={apiBase}
         formData={formData}
         lookups={lookups}
         onClose={() => setListScreenOpen(false)}
-        onOpenChallan={(row) => void openChallanFromList(row)}
+        onOpenOrder={(row) => void openOrderFromList(row)}
       />
     );
   }
 
   if (printScreenOpen) {
     return (
-      <DispatchChallanPrintScreen
+      <SalesOrderPrintScreen
         apiBase={apiBase}
         formData={formData}
-        defaultChType={chType}
-        defaultRNo={rNo}
-        defaultRDateYmd={rDateYmd}
+        defaultSoNo={soNo}
+        defaultSoDateYmd={soDateYmd}
         onClose={() => setPrintScreenOpen(false)}
       />
     );
@@ -844,9 +749,9 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
 
   if (loading) {
     return (
-      <div className="slide slide-22-dispatch-challan slide-22-dispatch-challan--loading">
+      <div className="slide slide-23-sales-order slide-23-sales-order--loading">
         <div className="sale-bill-loading-card">
-          <h2 className="sale-bill-page__title">Dispatch challan</h2>
+          <h2 className="sale-bill-page__title">Sales order</h2>
           <p className="sale-bill-loading-card__text">Loading…</p>
           <button type="button" className="btn btn-secondary" onClick={onPrev}>
             ← Back
@@ -858,9 +763,9 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
 
   if (!can.canOpen) {
     return (
-      <div className="slide slide-22-dispatch-challan">
-        <h2 className="sale-bill-page__title">Dispatch challan</h2>
-        <p className="deploy-update-msg deploy-update-msg--err">{err || 'Access denied (F11).'}</p>
+      <div className="slide slide-23-sales-order">
+        <h2 className="sale-bill-page__title">Sales order</h2>
+        <p className="deploy-update-msg deploy-update-msg--err">{err || 'Access denied (F12).'}</p>
         <button type="button" className="btn btn-secondary" onClick={onPrev}>
           ← Back
         </button>
@@ -869,10 +774,10 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
   }
 
   return (
-    <div className="slide slide-22-dispatch-challan sale-bill-page" onKeyDown={handleEnterAsTab} role="presentation">
+    <div className="slide slide-22-dispatch-challan slide-23-sales-order sale-bill-page" onKeyDown={handleEnterAsTab} role="presentation">
       <header className="sale-bill-page__header">
         <div className="sale-bill-page__title-row">
-          <h2 className="sale-bill-page__title">Dispatch challan</h2>
+          <h2 className="sale-bill-page__title">Sales order</h2>
         </div>
         <div className="sale-bill-page__user-power" role="status">
           <span className="sale-bill-page__user-power-user">
@@ -906,9 +811,9 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
         </div>
       </header>
 
-      {showChNav ? (
+      {showSoNav ? (
         <DcActionBar position="top" label="Challan navigation">
-          {chNavButtons}
+          {soNavButtons}
         </DcActionBar>
       ) : null}
       <DcActionBar position="top" label="Screen actions">
@@ -936,48 +841,32 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
               <option value="delete">Delete</option>
             </select>
           </label>
-          <label className="dc-header-field dc-header-field--chtype">
-            <span className="dc-header-k">ChType</span>
-            <span className="dc-chtype-inline">
-              <span className="dc-chtype-colon" aria-hidden>
-                :
-              </span>
-              <input
-                maxLength={1}
-                className="form-input dc-header-control dc-chtype-input"
-                value={chType}
-                disabled={fieldsDisabled || postedNew}
-                onFocus={selectAllOnFocus}
-                onChange={(e) => setChType(singleCharFromInput(e.target.value) || DEFAULT_CH_TYPE)}
-              />
-            </span>
-          </label>
           <label className="dc-header-field dc-header-field--chno">
-            <span className="dc-header-k">Ch.No.</span>
+            <span className="dc-header-k">SO no</span>
             <input
               className="form-input dc-header-control"
-              value={rNo}
+              value={soNo}
               disabled={fieldsDisabled}
-              onChange={(e) => setRNo(e.target.value.replace(/\D/g, '').slice(0, 8))}
+              onChange={(e) => setSoNo(e.target.value.replace(/\D/g, '').slice(0, 8))}
             />
           </label>
           <label className="dc-header-field dc-header-field--chdate">
-            <span className="dc-header-k">Ch.Date</span>
+            <span className="dc-header-k">SO date</span>
             <input
               type="date"
               className="form-input dc-header-control"
-              value={rDateYmd}
+              value={soDateYmd}
               disabled={fieldsDisabled}
               min={compS || undefined}
               max={compE || undefined}
-              onChange={(e) => setRDateYmd(e.target.value)}
+              onChange={(e) => setSoDateYmd(e.target.value)}
             />
           </label>
 
         </div>
 
         <div className="dc-header-row dc-header-row--party">
-          <span className="dc-header-k">Party</span>
+          <span className="dc-header-k">Customer</span>
           <div className="dc-header-row__body">
             {partyInfo && !partyFinderOpen ? (
               <div className="dc-party-selected">
@@ -995,7 +884,7 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
                 <input
                   type="search"
                   className="form-input sale-bill-search-input"
-                  placeholder="Search party — code, name, or city (schedule 11.20)"
+                  placeholder="Search customer — code, name, or city"
                   autoComplete="off"
                   value={partySearch}
                   disabled={fieldsDisabled}
@@ -1020,7 +909,7 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
                   }}
                 />
                 {partySearch.trim() ? (
-                  <div className="account-search-results party-search-results dc-party-list" role="listbox" aria-label="Party matches">
+                  <div className="account-search-results party-search-results dc-party-list" role="listbox" aria-label="Customer matches">
                     <div className="account-search-header party-search-header" aria-hidden="true">
                       <span>Code</span>
                       <span>Name</span>
@@ -1059,22 +948,6 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
           </div>
         </div>
 
-        <div className="dc-header-row dc-header-row--plant">
-          <span className="dc-header-k">Plant</span>
-          <select
-            className="form-input dc-plant-select"
-            value={plantCode}
-            disabled={fieldsDisabled}
-            onChange={(e) => setPlantCode(e.target.value)}
-          >
-            <option value="">—</option>
-            {(lookups.plants || []).map((p) => (
-              <option key={p.PLANT_CODE ?? p.plant_code} value={String(p.PLANT_CODE ?? p.plant_code ?? '')}>
-                {p.PLANT_NAME ?? p.plant_name ?? p.PLANT_CODE}
-              </option>
-            ))}
-          </select>
-        </div>
       </section>
 
       <section className="sale-bill-section sale-bill-section--card dc-lines-section">
@@ -1086,7 +959,6 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
           <table className="report-table sale-bill-lines-table dc-lines-table">
             <colgroup>
               <col className="dc-col-seq" />
-              <col className="dc-col-so" />
               <col className="dc-col-item" />
               <col className="dc-col-name" />
               <col className="dc-col-marka" />
@@ -1098,8 +970,7 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
             </colgroup>
             <thead>
               <tr>
-                <th>#</th>
-                <th>SO no</th>
+                <th>Trn</th>
                 <th>Item</th>
                 <th>Name</th>
                 <th className="dc-th-marka">Marka</th>
@@ -1113,54 +984,20 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
             <tbody>
               {lines.map((L, idx) => (
                 <tr key={idx}>
-                  <td>{idx + 1}</td>
                   <td>
-                    <div className="dc-line-so-cell slide-22-dispatch-challan-ignore-enter">
-                      <button
-                        type="button"
-                        className="dc-line-pick-mobile slide-22-dispatch-challan-ignore-enter"
-                        disabled={!canEditLines}
-                        onClick={() => void openSoPick(idx)}
-                      >
-                        Pick
-                      </button>
-                      <button
-                        type="button"
-                        className="dc-line-pick-icon"
-                        disabled={!canEditLines}
-                        title="Pick pending SO (F1)"
-                        aria-label="Pick pending SO"
-                        onClick={() => void openSoPick(idx)}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-                          <path
-                            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </button>
-                      <input
-                        className="sale-bill-line-ch-so dc-line-so-input"
-                        value={L.so_no}
-                        disabled={!canEditLines}
-                        onChange={(e) =>
-                          setLines((p) => {
-                            const n = [...p];
-                            n[idx] = { ...n[idx], so_no: parseLineInt6Input(e.target.value) };
-                            return n;
-                          })
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === 'F1') {
-                            e.preventDefault();
-                            void openSoPick(idx);
-                          }
-                        }}
-                      />
-                    </div>
+                    <input
+                      className="dc-line-trn"
+                      value={L.trn_no}
+                      disabled={!canEditLines}
+                      onChange={(e) => {
+                        const t = Math.max(1, Math.floor(Number(e.target.value) || idx + 1));
+                        setLines((p) => {
+                          const n = [...p];
+                          n[idx] = { ...n[idx], trn_no: t };
+                          return n;
+                        });
+                      }}
+                    />
                   </td>
                   <td className="dc-td-item">
                     <select
@@ -1276,66 +1113,48 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
         <h3 className="sale-bill-section__title">Footer</h3>
         <div className="sale-bill-totals-grid">
           <label className="sale-bill-field sale-bill-field--block">
+            <span className="sale-bill-field__label">PO no</span>
+            <input
+              className="form-input dc-footer-field-input"
+              value={poNo}
+              disabled={fieldsDisabled}
+              onChange={(e) => setPoNo(e.target.value)}
+              maxLength={50}
+            />
+          </label>
+          <label className="sale-bill-field sale-bill-field--block">
             <span className="sale-bill-field__label">Remarks</span>
             <input
               className="form-input dc-footer-field-input"
               value={remarks}
               disabled={fieldsDisabled}
               onChange={(e) => setRemarks(e.target.value)}
+              maxLength={50}
             />
           </label>
           <label className="sale-bill-field sale-bill-field--block">
-            <span className="sale-bill-field__label">Truck no</span>
+            <span className="sale-bill-field__label">Remarks 2</span>
             <input
               className="form-input dc-footer-field-input"
-              value={truckNo}
+              value={remarks2}
               disabled={fieldsDisabled}
-              onChange={(e) => setTruckNo(e.target.value)}
-            />
-          </label>
-          <label className="sale-bill-field sale-bill-field--block">
-            <span className="sale-bill-field__label">Transport</span>
-            <input
-              className="form-input dc-footer-field-input"
-              value={tpt}
-              disabled={fieldsDisabled}
-              onChange={(e) => setTpt(e.target.value)}
-            />
-          </label>
-          <label className="sale-bill-field sale-bill-field--block">
-            <span className="sale-bill-field__label">GR no</span>
-            <input
-              className="form-input dc-footer-field-input"
-              value={grNo}
-              disabled={fieldsDisabled}
-              onChange={(e) => setGrNo(e.target.value)}
+              onChange={(e) => setRemarks2(e.target.value)}
+              maxLength={50}
             />
           </label>
         </div>
       </section>
 
-      {showChNav ? (
-        <DcActionBar position="bottom" label="Challan navigation">
-          {chNavButtons}
+      {showSoNav ? (
+        <DcActionBar position="bottom" label="SO navigation">
+          {soNavButtons}
         </DcActionBar>
       ) : null}
       <DcActionBar position="bottom" label="Screen actions">
         {screenActionButtons}
       </DcActionBar>
 
-      <DispatchPickModal
-        open={soPick.open}
-        title="Pending sales orders"
-        hint={code ? `Party ${code}` : ''}
-        emptyMessage="No pending SO for this party."
-        loading={soPick.loading}
-        rows={soPick.rows}
-        columns={soPickColumns}
-        hi={soPick.hi}
-        onHi={(n) => setSoPick((p) => ({ ...p, hi: n }))}
-        onClose={() => setSoPick((p) => ({ ...p, open: false }))}
-        onPick={(row) => applySoPick(soPick.lineIdx, row)}
-      />
+      
 
       {msg ? (
         createPortal(

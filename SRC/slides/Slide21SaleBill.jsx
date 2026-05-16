@@ -1439,7 +1439,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         vr_type: vrType,
         b_type: bType,
         bill_date: billDateOracle,
-        bill_no: saveMode === 'add' ? undefined : billNo,
+        bill_no: String(billNo ?? '').trim() || undefined,
         header,
         lines: lines.map((L, i) => ({
           trn_no: i + 1,
@@ -1717,9 +1717,15 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
             />
           </label>
           <div className="sale-bill-toolbar__refs">
-            <span className="sale-bill-ref-pill">
-              Bill <strong>{billNo || '—'}</strong>
-            </span>
+            <label className="sale-bill-ref-pill sale-bill-ref-pill--input">
+              <span className="sale-bill-ref-pill__k">Bill no</span>
+              <input
+                className="form-input sale-bill-bill-no-input"
+                value={billNo}
+                disabled={!canEditSaleBillFields}
+                onChange={(e) => setBillNo(e.target.value.replace(/\D/g, '').slice(0, 8))}
+              />
+            </label>
             <span className="sale-bill-ref-pill">
               Sale inv <strong>{saleInvNo || '—'}</strong>
             </span>
