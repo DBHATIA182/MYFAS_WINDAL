@@ -1,0 +1,47 @@
+# Client PC — Git setup when apptest was renamed to apptest_old
+# Folder: D:\windal\apptest_old  (backup)  ->  D:\windal\apptest  (new Git clone)
+# Repo: https://github.com/DBHATIA182/MYFAS_WINDAL.git
+# Run each block in PowerShell (no "1." "2." numbers — PowerShell rejects those)
+
+# --- Check Git ---
+git --version
+
+# --- Go to windal parent (must NOT have a folder named apptest yet) ---
+cd D:\windal
+dir
+
+# If apptest still exists (not only apptest_old), rename or remove it first.
+# You should see: apptest_old   and NO apptest
+
+# --- Clone fresh (creates D:\windal\apptest) ---
+git clone https://github.com/DBHATIA182/MYFAS_WINDAL.git apptest
+
+cd D:\windal\apptest
+
+# --- Copy machine-only files from backup (tunnel + Oracle client config) ---
+Copy-Item -LiteralPath D:\windal\apptest_old\connection.config.json -Destination D:\windal\apptest\ -Force
+
+Copy-Item -LiteralPath D:\windal\apptest_old\config.yml -Destination D:\windal\apptest\ -Force -ErrorAction SilentlyContinue
+
+Get-ChildItem D:\windal\apptest_old\*.json | Where-Object { $_.Name -match '^[0-9a-f-]{36}\.json$' } | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination D:\windal\apptest\ -Force
+    Write-Host "Copied tunnel JSON:" $_.Name
+}
+
+# --- Install dependencies and build (use npm.cmd if npm is blocked in PowerShell) ---
+npm.cmd ci
+npm.cmd run build
+
+# --- Verify Git ---
+git status
+git remote -v
+
+# --- Start services ---
+powershell -ExecutionPolicy Bypass -File .\start-apptest-services.ps1
+
+# ========== FUTURE UPDATES (from D:\windal\apptest only) ==========
+# cd D:\windal\apptest
+# Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -like '*D:\windal\apptest*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+# Get-Process node,esbuild,cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+# powershell -ExecutionPolicy Bypass -File .\update-from-git.ps1 -Branch main
+# powershell -ExecutionPolicy Bypass -File .\start-apptest-services.ps1

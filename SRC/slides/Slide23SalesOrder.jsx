@@ -6,6 +6,12 @@ import SalesOrderListScreen from './SalesOrderListScreen';
 import SalesOrderPrintScreen from './SalesOrderPrintScreen';
 import { DcActionBar } from '../components/DispatchChallanActionBar';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SaleEntryFinYearStrip from '../components/SaleEntryFinYearStrip';
+import {
+  resolveSaleEntryFinYear,
+  clampYmdToFinYear,
+  defaultDocDateInFinYear,
+} from '../utils/saleEntryFinYear';
 
 const reqOpts = { withCredentials: true, timeout: 120000 };
 
@@ -284,8 +290,7 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
 
   const compCode = formData.comp_code ?? formData.COMP_CODE;
   const compUid = formData.comp_uid ?? formData.COMP_UID;
-  const compS = toInputDateString(formData.comp_s_dt ?? formData.COMP_S_DT);
-  const compE = toInputDateString(formData.comp_e_dt ?? formData.COMP_E_DT);
+  const compYearLogin = String(formData.comp_year ?? formData.COMP_YEAR ?? '').trim();
 
   const [perm, setPerm] = useState(null);
   const [ctx, setCtx] = useState(null);
@@ -317,6 +322,15 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
 
   const soDateOracle = useMemo(() => toOracleDate(soDateYmd), [soDateYmd]);
   const gAmtCal = ctx?.G_AMT_CAL ?? 'K';
+  const { compYear, fyMinYmd, fyMaxYmd } = useMemo(
+    () => resolveSaleEntryFinYear(formData, ctx),
+    [formData, ctx]
+  );
+
+  useEffect(() => {
+    if (!ctx) return;
+    setSoDateYmd((prev) => clampYmdToFinYear(prev, fyMinYmd, fyMaxYmd) || defaultDocDateInFinYear(fyMinYmd, fyMaxYmd));
+  }, [ctx, fyMinYmd, fyMaxYmd]);
 
   useEffect(() => {
     soNoRef.current = String(soNo ?? '').trim();
@@ -501,7 +515,11 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
       const [pRes, cRes, lRes] = await Promise.all([
         axios.get(`${apiBase}/api/sales-order-user-permissions`, { params, ...reqOpts }),
         axios.get(`${apiBase}/api/sales-order-form-context`, {
-          params: { comp_code: compCode, comp_uid: compUid },
+          params: {
+            comp_code: compCode,
+            comp_uid: compUid,
+            ...(compYearLogin ? { comp_year: compYearLogin } : {}),
+          },
           ...reqOpts,
         }),
         axios.get(`${apiBase}/api/sales-order-lookups`, {
@@ -522,7 +540,7 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
     } finally {
       setLoading(false);
     }
-  }, [apiBase, compCode, compUid, userName]);
+  }, [apiBase, compCode, compUid, compYearLogin, userName]);
 
   useEffect(() => {
     void loadBootstrap();
@@ -605,8 +623,8 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
       showNotice('Select party (master list).');
       return;
     }
-    if (compS && compE && soDateYmd && (soDateYmd < compS || soDateYmd > compE)) {
-      showNotice(`SO date must be between ${toDisplayDate(compS)} and ${toDisplayDate(compE)}.`);
+    if (fyMinYmd && fyMaxYmd && soDateYmd && (soDateYmd < fyMinYmd || soDateYmd > fyMaxYmd)) {
+      showNotice(`SO date must be between ${toDisplayDate(fyMinYmd)} and ${toDisplayDate(fyMaxYmd)}.`);
       return;
     }
     const validLines = lines.filter((L) => String(L.item_code ?? '').trim());
@@ -618,6 +636,7 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
       const payload = {
         comp_code: compCode,
         comp_uid: compUid,
+        comp_year: compYear || compYearLogin || undefined,
         user_name: userName,
         mode: saveMode,
         so_date: soDateOracle,
@@ -777,7 +796,17 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
   return (
     <div className="slide slide-22-dispatch-challan slide-23-sales-order sale-bill-page" onKeyDown={handleEnterAsTab} role="presentation">
       <header className="sale-bill-page__header">
-        <div className="sale-bill-page__title-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}><h2 className="sale-bill-page__title">Sales order</h2><ReportHelpButton reportId="sales-order-entry" /></div>
+        <SaleEntryFinYearStrip
+          screenTitle="Sales order"
+          formData={formData}
+          ctx={ctx}
+          userName={userName}
+          companyName={formData.comp_name ?? formData.COMP_NAME}
+        />
+        <div className="sale-bill-page__title-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <h2 className="sale-bill-page__title">Sales order</h2>
+          <ReportHelpButton reportId="sales-order-entry" />
+        </div>
         <div className="sale-bill-page__user-power" role="status">
           <span className="sale-bill-page__user-power-user">
             <span className="sale-bill-page__user-power-k">USER</span>
@@ -856,8 +885,8 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
               className="form-input dc-header-control"
               value={soDateYmd}
               disabled={fieldsDisabled}
-              min={compS || undefined}
-              max={compE || undefined}
+              min={fyMinYmd || undefined}
+              max={fyMaxYmd || undefined}
               onChange={(e) => setSoDateYmd(e.target.value)}
             />
           </label>

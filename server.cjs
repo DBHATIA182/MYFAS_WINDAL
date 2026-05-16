@@ -1202,6 +1202,13 @@ async function runCompdetHeaderRow(comp_code, comp_uid, comp_year_opt) {
   return null;
 }
 
+/** Login-selected COMP_YEAR — avoids picking latest compdet when multiple years share comp_uid. */
+function parseCompYearOpt(v) {
+  if (v == null || String(v).trim() === '') return undefined;
+  const n = Number(String(v).trim());
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 /** Sale / tax invoice print images: always from defvalue, never from compdet or SALE row blobs */
 const SALE_PRINT_IMAGE_FIELD_LC = new Set(['sale_logo', 'sale_logo2', 'signature_file']);
 
@@ -4089,11 +4096,11 @@ app.get('/api/sale-bill-user-permissions', async (req, res) => {
 /** COMPDET-derived globals for sale bill data entry (Fox G_* parity where available). */
 app.get('/api/sale-bill-form-context', async (req, res) => {
   try {
-    const { comp_code, comp_uid } = req.query;
+    const { comp_code, comp_uid, comp_year } = req.query;
     if (!comp_code || comp_uid == null || String(comp_uid).trim() === '') {
       return res.status(400).json({ error: 'comp_code and comp_uid are required' });
     }
-    const row = await runCompdetHeaderRow(comp_code, comp_uid);
+    const row = await runCompdetHeaderRow(comp_code, comp_uid, parseCompYearOpt(comp_year));
     if (!row) return res.status(404).json({ error: 'compdet row not found' });
     enrichCompdetSalePrintGlobals(row);
     const tv = (k) => {
@@ -4717,18 +4724,20 @@ app.get('/api/dispatch-challan-user-permissions', async (req, res) => {
 
 app.get('/api/dispatch-challan-form-context', async (req, res) => {
   try {
-    const { comp_code, comp_uid } = req.query;
+    const { comp_code, comp_uid, comp_year } = req.query;
     if (!comp_code || comp_uid == null || String(comp_uid).trim() === '') {
       return res.status(400).json({ error: 'comp_code and comp_uid are required' });
     }
-    const row = await runCompdetHeaderRow(comp_code, comp_uid);
+    const row = await runCompdetHeaderRow(comp_code, comp_uid, parseCompYearOpt(comp_year));
     if (!row) return res.status(404).json({ error: 'compdet row not found' });
+    enrichCompdetSalePrintGlobals(row);
     const tv = (k) => {
       const v = rowValueCI(row, k);
       if (v == null || typeof v === 'object') return null;
       return String(v).trim();
     };
     res.json({
+      G_FIN_YEAR: row.G_FIN_YEAR ?? computeGFinYearFromCompdetRow(row),
       G_COMP_YEAR: Number(row.COMP_YEAR ?? row.comp_year ?? 0) || 0,
       G_AMT_CAL: String(tv('amt_cal') ?? 'K').trim().toUpperCase() || 'K',
       COMP_S_DT: tv('comp_s_dt'),
@@ -5143,9 +5152,10 @@ app.post('/api/dispatch-challan-save', async (req, res) => {
     if (mode === 'edit' && !perms.canEdit) return res.status(403).json({ error: 'You cannot edit (F11 position 3).' });
     if (mode === 'delete' && !perms.canDelete) return res.status(403).json({ error: 'You cannot delete (F11 position 4).' });
 
-    const compdet = await runCompdetHeaderRow(comp_code, comp_uid);
+    const comp_year_sel = parseCompYearOpt(body.comp_year);
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid, comp_year_sel);
     if (!compdet) return res.status(400).json({ error: 'compdet not found' });
-    const comp_year = Number(compdet?.COMP_YEAR ?? compdet?.comp_year ?? 0) || 0;
+    const comp_year = Number(compdet?.COMP_YEAR ?? compdet?.comp_year ?? comp_year_sel ?? 0) || 0;
     const gAmtCal = String(rowValueCI(compdet, 'amt_cal') ?? 'K').trim().toUpperCase();
     const fy = assertSaleBillDateInFinancialYear(r_date, compdet);
     if (!fy.ok) return res.status(400).json({ error: fy.error });
@@ -5410,18 +5420,20 @@ app.get('/api/sales-order-user-permissions', async (req, res) => {
 
 app.get('/api/sales-order-form-context', async (req, res) => {
   try {
-    const { comp_code, comp_uid } = req.query;
+    const { comp_code, comp_uid, comp_year } = req.query;
     if (!comp_code || comp_uid == null || String(comp_uid).trim() === '') {
       return res.status(400).json({ error: 'comp_code and comp_uid are required' });
     }
-    const row = await runCompdetHeaderRow(comp_code, comp_uid);
+    const row = await runCompdetHeaderRow(comp_code, comp_uid, parseCompYearOpt(comp_year));
     if (!row) return res.status(404).json({ error: 'compdet row not found' });
+    enrichCompdetSalePrintGlobals(row);
     const tv = (k) => {
       const v = rowValueCI(row, k);
       if (v == null || typeof v === 'object') return null;
       return String(v).trim();
     };
     res.json({
+      G_FIN_YEAR: row.G_FIN_YEAR ?? computeGFinYearFromCompdetRow(row),
       G_COMP_YEAR: Number(row.COMP_YEAR ?? row.comp_year ?? 0) || 0,
       G_AMT_CAL: String(tv('amt_cal') ?? 'K').trim().toUpperCase() || 'K',
       COMP_S_DT: tv('comp_s_dt'),
@@ -5627,9 +5639,10 @@ app.post('/api/sales-order-save', async (req, res) => {
     if (mode === 'edit' && !perms.canEdit) return res.status(403).json({ error: 'You cannot edit (F12 position 3).' });
     if (mode === 'delete' && !perms.canDelete) return res.status(403).json({ error: 'You cannot delete (F12 position 4).' });
 
-    const compdet = await runCompdetHeaderRow(comp_code, comp_uid);
+    const comp_year_sel = parseCompYearOpt(body.comp_year);
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid, comp_year_sel);
     if (!compdet) return res.status(400).json({ error: 'compdet not found' });
-    const comp_year = Number(compdet?.COMP_YEAR ?? compdet?.comp_year ?? 0) || 0;
+    const comp_year = Number(compdet?.COMP_YEAR ?? compdet?.comp_year ?? comp_year_sel ?? 0) || 0;
     const fy = assertSaleBillDateInFinancialYear(so_date, compdet);
     if (!fy.ok) return res.status(400).json({ error: fy.error });
 
@@ -6291,10 +6304,11 @@ app.post('/api/sale-bill-save', async (req, res) => {
       return res.status(403).json({ error: 'You cannot delete (F1 position 4).' });
     }
 
-    const compdet = await runCompdetHeaderRow(comp_code, comp_uid);
+    const comp_year_sel = parseCompYearOpt(body.comp_year);
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid, comp_year_sel);
     if (!compdet) return res.status(400).json({ error: 'compdet not found' });
     enrichCompdetSalePrintGlobals(compdet);
-    const comp_year = Number(compdet?.COMP_YEAR ?? compdet?.comp_year ?? 0) || 0;
+    const comp_year = Number(compdet?.COMP_YEAR ?? compdet?.comp_year ?? comp_year_sel ?? 0) || 0;
     const fyBill = assertSaleBillDateInFinancialYear(bill_date, compdet);
     if (!fyBill.ok) {
       return res.status(400).json({ error: fyBill.error });

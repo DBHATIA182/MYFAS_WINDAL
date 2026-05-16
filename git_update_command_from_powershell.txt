@@ -1,10 +1,19 @@
-cd E:\WINDAL\APPTEST
-.\push-all-to-git.ps1 -CommitMessage "your message here"
+# Dev PC — commit/push:
+# cd E:\WINDAL\APPTEST
+# .\push-all-to-git.ps1 -CommitMessage "your message here"
 
+# ========== CLIENT PC — run in PowerShell (one line at a time, or paste ALL lines below) ==========
+# Use the LIVE app folder (apptest), NOT apptest_old
 
-on client machine
-cd\windal\apptest
-1.  Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -like '*E:\WINDAL\APPTEST*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
-2.  Get-Process node,esbuild,cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force
-3.  .\update-from-git.ps1 -Branch main
-4.  .\start-apptest-services.ps1
+cd D:\windal\apptest
+
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -like '*D:\windal\apptest*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
+Get-Process node,esbuild,cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+powershell -ExecutionPolicy Bypass -File .\update-from-git.ps1 -Branch main
+
+powershell -ExecutionPolicy Bypass -File .\start-apptest-services.ps1
+
+# If npm fails in PowerShell, use npm.cmd in scripts or run:
+#   Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned

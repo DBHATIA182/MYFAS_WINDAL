@@ -1,16 +1,18 @@
-WINDAL — Cloudflare tunnel (client key: dal-rgind)
+WINDAL — Cloudflare tunnel (client key: dal-pushkar)
 =================================================
 
+App folder: use the real path on that PC (e.g. D:\windal\apptest or E:\WINDAL\APPTEST).
+Scripts do NOT require E: — only cd to your APPTEST folder first.
+
 Public URLs (after DNS routes):
-  https://dal-rgind.fasaccountingsoftware.in          (Vite / web UI)
-  https://dal-rgind-api.fasaccountingsoftware.in      (Node API)
+  https://dal-pushkar.fasaccountingsoftware.in          (Vite / web UI)
+  https://dal-pushkar-api.fasaccountingsoftware.in      (Node API)
 
-Note: DNS host labels cannot contain underscores. The name you want as "dal_rgind"
-maps to client key / hostname "dal-rgind" (hyphen).
-
-ONE-COMMAND SETUP (from E:\WINDAL\APPTEST, PowerShell):
+ONE-COMMAND SETUP (PowerShell — from your APPTEST folder):
+  cd D:\windal\apptest
   powershell -ExecutionPolicy Bypass -File .\setup-new-client-tunnel.ps1 `
-    -ClientKey "dal-rgind" `
+    -ClientKey "dal-pushkar" `
+    -SkipClientSetup `
     -OraclePrimaryUser "DAL" `
     -OraclePrimaryPassword "DAL" `
     -OracleSecondaryUser "DAL" `
@@ -19,8 +21,8 @@ ONE-COMMAND SETUP (from E:\WINDAL\APPTEST, PowerShell):
 
 That script:
   - Runs setup-client.ps1 (unless -SkipClientSetup)
-  - Creates or reuses Cloudflare tunnel "dal-rgind"
-  - Creates DNS CNAMEs dal-rgind.fasaccountingsoftware.in and dal-rgind-api.fasaccountingsoftware.in
+  - Creates or reuses Cloudflare tunnel "dal-pushkar"
+  - Creates DNS CNAMEs dal-pushkar.fasaccountingsoftware.in and dal-pushkar-api.fasaccountingsoftware.in
   - Writes config.yml (web UI -> localhost:5174) and copies <tunnel-uuid>.json next to config.yml
 
 Then start (3 terminals or use run-all-services.cmd):
@@ -29,7 +31,6 @@ Then start (3 terminals or use run-all-services.cmd):
   3) cloudflared.exe tunnel --config .\config.yml run
 
 DAL / Windal uses port 5174 for Vite (not 5173). config.yml ingress must match.
-For dal-pushkar, use -ClientKey "dal-pushkar" in the command above.
 
 Git remote for this product line:
   https://github.com/DBHATIA182/MYFAS_WINDAL.git

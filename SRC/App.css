@@ -219,6 +219,56 @@ body {
   font-weight: 600;
 }
 
+.sale-entry-fy-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.55rem;
+  margin: 0 0 0.45rem;
+  padding: 0.42rem 0.55rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #1e3a8a;
+  background: linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%);
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+}
+
+.sale-entry-fy-strip__screen {
+  font-weight: 800;
+  font-size: 0.82rem;
+  color: #1e40af;
+}
+
+.sale-entry-fy-strip__k {
+  font-weight: 600;
+  color: #475569;
+  margin-right: 0.15rem;
+}
+
+.sale-entry-fy-strip__sep {
+  color: #94a3b8;
+  font-weight: 300;
+  user-select: none;
+}
+
+.sale-entry-fy-strip__dates strong {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.sale-entry-fy-strip__user strong {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+@media (max-width: 640px) {
+  .sale-entry-fy-strip {
+    font-size: 0.74rem;
+    padding: 0.38rem 0.48rem;
+  }
+}
+
 .report-help-overlay {
   position: fixed;
   inset: 0;

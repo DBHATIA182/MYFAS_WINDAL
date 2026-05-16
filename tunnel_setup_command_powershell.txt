@@ -1,9 +1,13 @@
-# Do not type <APP_ROOT> — that was a placeholder. Use your real folder path.
+# Use YOUR app folder — drive letter does not matter (E:, D:, etc.).
+# Example on client: D:\windal\apptest   Example on dev PC: E:\WINDAL\APPTEST
 
-# Windal install — from this folder:
-cd E:\WINDAL\APPTEST
+cd D:\windal\apptest
+# Or:  cd E:\WINDAL\APPTEST
 
-# A) Tunnel + DNS + config.yml + JSON only (no scheduled task — no Admin needed):
+# Tunnel dal-pushkar ALREADY EXISTS? Use -SkipClientSetup only to refresh config.yml + JSON on this PC
+# (or copy config.yml + <uuid>.json from the machine where tunnel was created).
+
+# A) Link existing tunnel + write config.yml + JSON (no new tunnel if name exists):
 powershell -ExecutionPolicy Bypass -File .\setup-new-client-tunnel.ps1 `
   -ClientKey "dal-pushkar" `
   -SkipClientSetup `
@@ -13,18 +17,16 @@ powershell -ExecutionPolicy Bypass -File .\setup-new-client-tunnel.ps1 `
   -OracleSecondaryPassword "DAL" `
   -OracleConnectString "XE"
 
-# B) Full client setup (npm + task FAS-dal-pushkar-API) — run PowerShell as Administrator:
+# B) Full client setup (npm + task FAS-dal-pushkar-API) — PowerShell as Administrator:
 # powershell -ExecutionPolicy Bypass -File .\setup-new-client-tunnel.ps1 `
 #   -ClientKey "dal-pushkar" `
 #   -OraclePrimaryUser "DAL" ...
 
-# Public URLs after DNS (underscores are invalid in hostnames — use dal-pushkar):
+# Public URLs (tunnel name dal-pushkar — not fas-dal-pushkar):
 # - https://dal-pushkar.fasaccountingsoftware.in
 # - https://dal-pushkar-api.fasaccountingsoftware.in
-# Check them under Cloudflare -> DNS records (not only the Tunnel "Routes" card).
 
-# Then start stack (or use start services batch file.bat / start-apptest-services.ps1):
+# Then start stack (from the same APP folder you used above):
 #   npm.cmd run server
 #   npm.cmd run dev -- --host 0.0.0.0 --port 5174
-#   cloudflared.exe tunnel --config .\config.yml run
-# (setup script writes ingress -> localhost:5174 for DAL/Windal)
+#   cloudflared tunnel --config .\config.yml run
