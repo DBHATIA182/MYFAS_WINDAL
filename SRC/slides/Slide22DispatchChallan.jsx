@@ -5,6 +5,7 @@ import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFor
 import DispatchChallanListScreen from './DispatchChallanListScreen';
 import DispatchChallanPrintScreen from './DispatchChallanPrintScreen';
 import { DcActionBar } from '../components/DispatchChallanActionBar';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 const reqOpts = { withCredentials: true, timeout: 120000 };
 const DEFAULT_CH_TYPE = 'I';
@@ -871,9 +872,7 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
   return (
     <div className="slide slide-22-dispatch-challan sale-bill-page" onKeyDown={handleEnterAsTab} role="presentation">
       <header className="sale-bill-page__header">
-        <div className="sale-bill-page__title-row">
-          <h2 className="sale-bill-page__title">Dispatch challan</h2>
-        </div>
+        <div className="sale-bill-page__title-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}><h2 className="sale-bill-page__title">Dispatch challan</h2><ReportHelpButton reportId="dispatch-challan-entry" /></div>
         <div className="sale-bill-page__user-power" role="status">
           <span className="sale-bill-page__user-power-user">
             <span className="sale-bill-page__user-power-k">USER</span>

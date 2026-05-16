@@ -4,6 +4,7 @@ import ReportTable from '../components/ReportTable';
 import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, getCurBal, formatCurBal } from '../utils/dateFormat';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 const DEFAULT_HISTORY_START_DATE = '2001-04-01';
 
@@ -251,6 +252,8 @@ export default function Slide6({ apiBase, onPrev, onReset, formData }) {
         <div className="report-toolbar">
           <h2>{ledgerTitle}</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId="customer-ledger" />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
               ← Back
             </button>

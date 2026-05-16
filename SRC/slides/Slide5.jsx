@@ -7,6 +7,7 @@ import { generatePDF, sharePdfWithWhatsApp, buildLedgerStatementPdfMetadata } fr
 import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, formatCurBal, getCurBal } from '../utils/dateFormat';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 function highlightMatch(text, q) {
   if (text == null) return null;
@@ -329,6 +330,8 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
           <div className="report-toolbar">
             <h2>Voucher entries</h2>
             <div className="toolbar-actions">
+            <ReportHelpButton reportId={isLedgerInterest ? 'ledger-interest' : 'ledger'} />
+            
               <button type="button" className="btn btn-toolbar-back" onClick={() => setVoucherRows(null)}>
                 ← Back to ledger
               </button>
@@ -382,6 +385,8 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
         <div className="report-toolbar">
           <h2>{isLedgerInterest ? 'Ledger With Interest' : 'Ledger Report'}</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId={isLedgerInterest ? 'ledger-interest' : 'ledger'} />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={closeReport}>
               ← Back
             </button>

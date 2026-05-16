@@ -7,6 +7,7 @@ import SaleBillPrintModal from '../components/SaleBillPrintModal';
 import LedgerReportHeader from '../components/LedgerReportHeader';
 import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 function num(v) {
   const n = Number(v);
@@ -346,6 +347,8 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
         <div className="report-toolbar">
           <h2>Voucher entries</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId="balance-sheet" />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => setScreen(SCREEN.LEDGER)}>
               ← Back to ledger
             </button>
@@ -405,6 +408,8 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
         <div className="report-toolbar">
           <h2>Ledger Report</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId="balance-sheet" />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => setScreen(SCREEN.ACCOUNTS)}>
               ← Back to Accounts
             </button>
@@ -459,6 +464,8 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
         <div className="report-toolbar">
           <h2>Schedule Accounts</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId="balance-sheet" />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => setScreen(SCREEN.BS)}>
               ← Back to Balance Sheet
             </button>
@@ -559,6 +566,8 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
         <div className="report-toolbar">
           <h2>Balance Sheet</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId="balance-sheet" />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => { setBsData(null); setScreen(SCREEN.FORM); }}>
               ← Back
             </button>

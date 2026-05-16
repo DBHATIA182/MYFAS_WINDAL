@@ -21,12 +21,15 @@ That script:
   - Runs setup-client.ps1 (unless -SkipClientSetup)
   - Creates or reuses Cloudflare tunnel "dal-rgind"
   - Creates DNS CNAMEs dal-rgind.fasaccountingsoftware.in and dal-rgind-api.fasaccountingsoftware.in
-  - Writes config.yml and copies <tunnel-uuid>.json next to config.yml
+  - Writes config.yml (web UI -> localhost:5174) and copies <tunnel-uuid>.json next to config.yml
 
 Then start (3 terminals or use run-all-services.cmd):
   1) npm.cmd run server
-  2) npm.cmd run dev -- --host 0.0.0.0 --port 5173
+  2) npm.cmd run dev -- --host 0.0.0.0 --port 5174
   3) cloudflared.exe tunnel --config .\config.yml run
+
+DAL / Windal uses port 5174 for Vite (not 5173). config.yml ingress must match.
+For dal-pushkar, use -ClientKey "dal-pushkar" in the command above.
 
 Git remote for this product line:
   https://github.com/DBHATIA182/MYFAS_WINDAL.git

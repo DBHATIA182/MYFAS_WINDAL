@@ -6,6 +6,7 @@ import { toInputDateString, toOracleDate, toDisplayDate, formatLedgerDateDisplay
 import { formatApiOrigin } from '../utils/apiLabel';
 import PurchaseBillPrintModal from '../components/PurchaseBillPrintModal';
 import SaleBillPrintModal from '../components/SaleBillPrintModal';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 /** Maps Oracle SALE.TYPE (1–9) to print/API letter bucket (same as Slide13). */
 const SALE_LIST_NUMTYPE_TO_PRINT = {
@@ -548,6 +549,8 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
         <div className="report-toolbar">
           <h2>Stock sum</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId="stock-sum" />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
               ← Back
             </button>
@@ -732,6 +735,8 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
                 {ledgerMeta?.plantCode ? `· Plant ${ledgerMeta.plantCode}` : ''}
               </h2>
               <div className="toolbar-actions">
+            <ReportHelpButton reportId="stock-sum" />
+            
                 <button type="button" className="btn btn-toolbar-back" onClick={() => setStockPanel('summary')}>
                   ← Stock sum
                 </button>
@@ -875,6 +880,8 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
             <div className="report-toolbar stock-ledger-detail-toolbar">
               <h2 className="stock-panel-title stock-ledger-detail-title">{ledgerEntryTitle}</h2>
               <div className="toolbar-actions">
+            <ReportHelpButton reportId="stock-sum" />
+            
                 <button type="button" className="btn btn-toolbar-back" onClick={goBackFromLedgerDetail}>
                   ← Stock ledger
                 </button>

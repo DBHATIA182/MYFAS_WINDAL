@@ -5,6 +5,7 @@ import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, formatLedgerDateDisplay } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
 import PurchaseBillPrintModal from '../components/PurchaseBillPrintModal';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 function n(row, upper, lower) {
   const v = row?.[upper] ?? row?.[lower];
@@ -282,6 +283,8 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
         <div className="report-toolbar">
           <h2>Purchase list</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId="purchase-list" />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
               ← Back
             </button>

@@ -3,6 +3,7 @@ import axios from 'axios';
 import SaleBillPrintModal from '../components/SaleBillPrintModal';
 import { toDisplayDate, toInputDateString, toOracleDate } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 /** Maps Oracle SALE.TYPE (1–9) to print/API letter bucket (same as sale list / Slide8). */
 const SALE_LIST_NUMTYPE_TO_PRINT = {
@@ -247,6 +248,8 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
         <div className="report-toolbar">
           <h2>Sale Bill Printing</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId="sale-bill-printing" />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
               ← Back
             </button>

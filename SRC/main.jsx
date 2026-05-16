@@ -19,23 +19,14 @@ function renderFatalStartupMessage(errorLike) {
         <p style="margin: 0 0 10px; font-weight: 600;">App could not start on this browser.</p>
         <p style="margin: 0 0 8px;">Please refresh once. If it still fails, clear browser site data/cache.</p>
         <pre style="white-space: pre-wrap; word-break: break-word; background: #f8fafc; border: 1px solid #cbd5e1; padding: 12px; border-radius: 8px;">${msg}</pre>
-      </div>
-    `;
+      </motionless>
+    `.replace(/motionless/g, 'div');
   } catch {
     /* last-resort fallback only */
   }
 }
 
 try {
-  if (typeof window !== 'undefined') {
-    window.addEventListener('error', (event) => {
-      renderFatalStartupMessage(event?.error || event?.message || 'Runtime error');
-    });
-    window.addEventListener('unhandledrejection', (event) => {
-      renderFatalStartupMessage(event?.reason || 'Unhandled promise rejection');
-    });
-  }
-
   const rootElement = typeof document !== 'undefined' ? document.getElementById('root') : null;
   if (rootElement) {
     const root = ReactDOM.createRoot(rootElement);

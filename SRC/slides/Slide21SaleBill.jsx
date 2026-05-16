@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { toInputDateString, toOracleDate, toDisplayDate, normalizeHtmlDateValue } from '../utils/dateFormat';
 import SaleBillPrintModal from '../components/SaleBillPrintModal';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 const reqOpts = { withCredentials: true, timeout: 120000 };
 
@@ -1573,16 +1574,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         companyName={formData.comp_name ?? formData.COMP_NAME ?? ''}
       />
       <header className="sale-bill-page__header">
-        <div className="sale-bill-page__title-row">
-          <h2 className="sale-bill-page__title">Sale bill</h2>
-          <span className="sale-bill-page__badge" title={permSummary}>
-            {perm && (perm.canOpen || perm.canAdd || perm.canEdit || perm.canDelete)
-              ? accessOnlyBrowse
-                ? 'View only'
-                : 'F1 access'
-              : 'No access'}
-          </span>
-        </div>
+        <div className="sale-bill-page__title-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}><h2 className="sale-bill-page__title">Sale bill</h2><ReportHelpButton reportId="sale-bill-entry" /></div>
         <div className="sale-bill-page__user-power" role="status" aria-label="User and sale bill F1 rights">
           <span className="sale-bill-page__user-power-user">
             <span className="sale-bill-page__user-power-k">USER</span>

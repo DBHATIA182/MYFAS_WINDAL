@@ -9,6 +9,7 @@ param(
     [string]$OracleConnectString = "XE",
     [string]$OfflinePackageRoot = "",
     [string]$BaseDomain = "fasaccountingsoftware.in",
+    [int]$DevPort = 5174,
     [switch]$SkipClientSetup
 )
 
@@ -211,7 +212,7 @@ credentials-file: ./$tunnelUuid.json
 
 ingress:
   - hostname: $appHost
-    service: http://localhost:5173
+    service: http://localhost:$DevPort
   - hostname: $apiHost
     service: http://localhost:5001
   - service: http_status:404
@@ -243,6 +244,6 @@ catch {
 Write-Host ""
 Write-Host "Start runtime in separate terminals:" -ForegroundColor Yellow
 Write-Host "1) npm.cmd run server"
-Write-Host "2) npm.cmd run dev -- --host 0.0.0.0 --port 5173"
+Write-Host "2) npm.cmd run dev -- --host 0.0.0.0 --port $DevPort"
 Write-Host ("3) `"{0}`" tunnel --config `"{1}`" run" -f $script:CfExe, $configPath)
 

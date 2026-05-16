@@ -4,6 +4,7 @@ import ReportTable from '../components/ReportTable';
 import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { toDisplayDate, toInputDateString, toOracleDate } from '../utils/dateFormat';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 function todayInputValue() {
   const d = new Date();
@@ -194,6 +195,8 @@ export default function Slide12({ apiBase, onPrev, onReset, formData }) {
         <div className="report-toolbar">
           <h2>{mlb === 'B' ? 'Pending bill entries' : 'Pending ledger entries'}</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId="ageing" />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => setViewMode(VIEW.REPORT)}>
               ← Back to ageing
             </button>
@@ -244,6 +247,8 @@ export default function Slide12({ apiBase, onPrev, onReset, formData }) {
         <div className="report-toolbar">
           <h2>Ageing report</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId="ageing" />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => setViewMode(VIEW.FORM)}>
               ← Back
             </button>

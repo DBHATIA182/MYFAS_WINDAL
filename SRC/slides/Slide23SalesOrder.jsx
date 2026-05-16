@@ -5,6 +5,7 @@ import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFor
 import SalesOrderListScreen from './SalesOrderListScreen';
 import SalesOrderPrintScreen from './SalesOrderPrintScreen';
 import { DcActionBar } from '../components/DispatchChallanActionBar';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 const reqOpts = { withCredentials: true, timeout: 120000 };
 
@@ -776,9 +777,7 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
   return (
     <div className="slide slide-22-dispatch-challan slide-23-sales-order sale-bill-page" onKeyDown={handleEnterAsTab} role="presentation">
       <header className="sale-bill-page__header">
-        <div className="sale-bill-page__title-row">
-          <h2 className="sale-bill-page__title">Sales order</h2>
-        </div>
+        <div className="sale-bill-page__title-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}><h2 className="sale-bill-page__title">Sales order</h2><ReportHelpButton reportId="sales-order-entry" /></div>
         <div className="sale-bill-page__user-power" role="status">
           <span className="sale-bill-page__user-power-user">
             <span className="sale-bill-page__user-power-k">USER</span>

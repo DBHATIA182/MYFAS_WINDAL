@@ -3,6 +3,7 @@ import axios from 'axios';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
 import { downloadExcelWorkbook } from '../utils/excelExport';
 import { generatePDF } from '../utils/pdfgenerator';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 function toYesNo(v, defVal = 'Y') {
   const t = String(v ?? '').trim().toUpperCase();
@@ -731,6 +732,8 @@ export default function Slide15({ apiBase, formData, onPrev, onReset }) {
           <div className="report-toolbar">
             <h2>{saleDetailTitle || 'Detail view'}</h2>
             <div className="toolbar-actions">
+            <ReportHelpButton reportId="gstr1" />
+            
               <button type="button" className="btn btn-toolbar-back" onClick={() => setDetailScreenOpen(false)}>
                 ← Back
               </button>
@@ -800,6 +803,8 @@ export default function Slide15({ apiBase, formData, onPrev, onReset }) {
         <div className="report-toolbar">
           <h2>GSTR-1 Report</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId="gstr1" />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => setReport(null)}>
               ← Back
             </button>

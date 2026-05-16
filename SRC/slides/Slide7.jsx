@@ -6,6 +6,7 @@ import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
 import { filterBrokerOsRawRowsByMinClosingAbs, parseBrokerOsRangeForUi } from '../utils/brokerOsDisplay';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 const DEFAULT_HISTORY_START_DATE = '2001-04-01';
 
@@ -314,6 +315,8 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
           <div className="report-toolbar">
             <h2>Broker outstanding</h2>
             <div className="toolbar-actions">
+            <ReportHelpButton reportId="broker-os" />
+            
               <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
                 ← Back
               </button>
@@ -341,6 +344,8 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
         <div className="report-toolbar">
           <h2>Broker outstanding</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId="broker-os" />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
               ← Back
             </button>

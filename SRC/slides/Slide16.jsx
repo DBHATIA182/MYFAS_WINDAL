@@ -3,6 +3,7 @@ import axios from 'axios';
 import { downloadExcelWorkbook } from '../utils/excelExport';
 import { toDisplayDate, toInputDateString, toOracleDate } from '../utils/dateFormat';
 import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 function num(v) {
   const n = Number(v);
@@ -689,6 +690,8 @@ export default function Slide16({ apiBase, formData, onPrev, onReset, reportMode
           <div className="report-toolbar">
             <h2>{titleBase} Detail</h2>
             <div className="toolbar-actions">
+            <ReportHelpButton reportId={reportMode === 'purchase' ? 'hsn-purchase' : 'hsn-sales'} />
+            
               <button type="button" className="btn btn-toolbar-back" onClick={() => setScreen('main')}>
                 ← Back
               </button>
@@ -762,6 +765,8 @@ export default function Slide16({ apiBase, formData, onPrev, onReset, reportMode
         <div className="report-toolbar">
           <h2>{titleBase}</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId={reportMode === 'purchase' ? 'hsn-purchase' : 'hsn-sales'} />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => setReport(null)}>
               ← Back
             </button>

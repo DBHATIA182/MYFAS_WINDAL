@@ -6,6 +6,7 @@ import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 /** VFP9 PTYPE: Oracle SALE.TYPE is NUMBER 1–9 (not SL/CN text). */
 const SALE_LIST_NUMTYPE_TO_PRINT = {
@@ -394,6 +395,8 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
         <div className="report-toolbar">
           <h2>Sale bill list</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId="sale-list" />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
               ← Back
             </button>

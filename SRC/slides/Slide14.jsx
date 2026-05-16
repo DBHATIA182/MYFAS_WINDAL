@@ -3,6 +3,7 @@ import axios from 'axios';
 import { downloadExcelRows } from '../utils/excelExport';
 import { formatLedgerDateDisplay, toDisplayDate, toInputDateString, toOracleDate } from '../utils/dateFormat';
 import ReportTable from '../components/ReportTable';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 function fmtAmt(v) {
   const n = parseFloat(v);
@@ -178,6 +179,8 @@ export default function Slide14({ apiBase, formData, onPrev, onReset }) {
           <div className="report-toolbar">
             <h2>Voucher entries</h2>
             <div className="toolbar-actions">
+            <ReportHelpButton reportId="voucher-list" />
+            
               <button type="button" className="btn btn-toolbar-back" onClick={() => setVoucherRows(null)}>
                 ← Back to list
               </button>
@@ -220,6 +223,8 @@ export default function Slide14({ apiBase, formData, onPrev, onReset }) {
         <div className="report-toolbar">
           <h2>Cash/Bank/Journal Voucher List</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId="voucher-list" />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
               ← Back
             </button>

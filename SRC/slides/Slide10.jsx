@@ -4,6 +4,7 @@ import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, formatLedgerDateDisplay } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
+import ReportHelpButton from '../components/ReportHelpButton';
 
 function n(row, upper, lower) {
   const v = row?.[upper] ?? row?.[lower];
@@ -264,6 +265,8 @@ export default function Slide10({ apiBase, formData, onPrev, onReset }) {
         <div className="report-toolbar">
           <h2>Stock lot</h2>
           <div className="toolbar-actions">
+            <ReportHelpButton reportId="stock-lot" />
+            
             <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
               ← Back
             </button>
