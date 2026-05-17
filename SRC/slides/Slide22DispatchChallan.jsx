@@ -7,11 +7,16 @@ import DispatchChallanPrintScreen from './DispatchChallanPrintScreen';
 import { DcActionBar } from '../components/DispatchChallanActionBar';
 import ReportHelpButton from '../components/ReportHelpButton';
 import SaleEntryFinYearStrip from '../components/SaleEntryFinYearStrip';
+import MasterPartyCreateModal, { PartyAddButton } from '../components/MasterPartyCreateModal';
+import LineMarkaCombo from '../components/LineMarkaCombo';
 import {
   resolveSaleEntryFinYear,
   clampYmdToFinYear,
   defaultDocDateInFinYear,
 } from '../utils/saleEntryFinYear';
+import { upsertMasterParty } from '../utils/upsertMasterParty';
+
+const DISPATCH_PARTY_SCHEDULE = 11.2;
 
 const reqOpts = { withCredentials: true, timeout: 120000 };
 const DEFAULT_CH_TYPE = 'I';
@@ -306,6 +311,8 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
   const compYearLogin = String(formData.comp_year ?? formData.COMP_YEAR ?? '').trim();
 
   const [perm, setPerm] = useState(null);
+  const [masterPartyPerm, setMasterPartyPerm] = useState(null);
+  const [masterPartyOpen, setMasterPartyOpen] = useState(false);
   const [ctx, setCtx] = useState(null);
   const [lookups, setLookups] = useState({ parties: [], plants: [], markas: [], items: [] });
   const [loading, setLoading] = useState(true);
@@ -421,6 +428,37 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
     setPartySearch('');
     setPartyHi(0);
   }, []);
+
+  const tryOpenNewParty = useCallback(() => {
+    const p = masterPartyPerm;
+    if (!p?.canOpen) {
+      alert('Access Denied');
+      return;
+    }
+    if (!p?.canAdd) {
+      alert('You Can Not Add');
+      return;
+    }
+    setMasterPartyOpen(true);
+  }, [masterPartyPerm]);
+
+  const handleMasterPartyCreated = useCallback(
+    (row) => {
+      setMasterPartyOpen(false);
+      const entry = {
+        CODE: row.CODE ?? row.code,
+        NAME: row.NAME ?? row.name,
+        CITY: row.CITY ?? row.city,
+        GST_NO: row.GST_NO ?? row.gst_no,
+      };
+      setLookups((prev) => ({
+        ...prev,
+        parties: upsertMasterParty(prev.parties, entry),
+      }));
+      applyPartyPick(String(entry.CODE ?? '').trim());
+    },
+    [applyPartyPick]
+  );
 
   const totals = useMemo(() => {
     let q = 0;
@@ -539,7 +577,7 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
     setErr('');
     try {
       const params = { comp_uid: compUid, user_name: userName };
-      const [pRes, cRes, lRes] = await Promise.all([
+      const [pRes, cRes, lRes, mpRes] = await Promise.all([
         axios.get(`${apiBase}/api/dispatch-challan-user-permissions`, { params, ...reqOpts }),
         axios.get(`${apiBase}/api/dispatch-challan-form-context`, {
           params: {
@@ -553,8 +591,10 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
           params: { comp_code: compCode, comp_uid: compUid },
           ...reqOpts,
         }),
+        axios.get(`${apiBase}/api/master-party-user-permissions`, { params, ...reqOpts }),
       ]);
       setPerm(pRes.data);
+      setMasterPartyPerm(mpRes.data);
       setCtx(cRes.data);
       setLookups({
         parties: lRes.data?.parties || [],
@@ -934,12 +974,12 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
         </div>
       </header>
 
-      {showChNav ? (
-        <DcActionBar position="top" label="Challan navigation">
-          {chNavButtons}
-        </DcActionBar>
-      ) : null}
       <DcActionBar position="top" label="Screen actions">
+        {showChNav ? (
+          <span className="dc-action-bar__nav" role="group" aria-label="Challan navigation">
+            {chNavButtons}
+          </span>
+        ) : null}
         {screenActionButtons}
       </DcActionBar>
 
@@ -1006,11 +1046,22 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
 
         <div className="dc-header-row dc-header-row--party">
           <span className="dc-header-k">Party</span>
-          <div className="dc-header-row__body">
+          <div className="dc-header-row__body dc-party-entry">
+            <PartyAddButton
+              onClick={tryOpenNewParty}
+              disabled={fieldsDisabled}
+              title="Add new party (schedule 11.2)"
+            />
+            <div className="dc-party-entry__main">
             {partyInfo && !partyFinderOpen ? (
               <div className="dc-party-selected">
-                <span className="account-selected-hint dc-party-selected__text">
-                  [{code}] {partyInfo.NAME ?? partyInfo.name} — {partyInfo.CITY ?? partyInfo.city}
+                <span
+                  className="account-selected-hint dc-party-selected__text"
+                  title={`[${code}] ${partyInfo.NAME ?? partyInfo.name} — ${partyInfo.CITY ?? partyInfo.city}`}
+                >
+                  <span className="dc-party-selected__code">[{code}]</span>{' '}
+                  <span className="dc-party-selected__name">{partyInfo.NAME ?? partyInfo.name}</span>
+                  <span className="dc-party-selected__city"> — {partyInfo.CITY ?? partyInfo.city}</span>
                 </span>
                 {!fieldsDisabled ? (
                   <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPartyFinderOpen(true)}>
@@ -1084,6 +1135,7 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
                 )}
               </div>
             )}
+            </div>
           </div>
         </div>
 
@@ -1213,12 +1265,12 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
                   </td>
                   <td className="sale-bill-line-readonly dc-line-name">{L.item_name}</td>
                   <td className="dc-td-marka">
-                    <input
+                    <LineMarkaCombo
                       className="dc-line-marka"
-                      list="dc-markas"
                       value={L.marka}
+                      options={lookups.markas || []}
                       disabled={!canEditLines}
-                      onChange={(e) => recalcLine(idx, { marka: e.target.value })}
+                      onChange={(marka) => recalcLine(idx, { marka })}
                     />
                   </td>
                   <td>
@@ -1281,11 +1333,6 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
             </tbody>
           </table>
         </div>
-        <datalist id="dc-markas">
-          {(lookups.markas || []).map((m, i) => (
-            <option key={i} value={String(m.MARKA ?? m.marka ?? m)} />
-          ))}
-        </datalist>
         {canEditLines ? (
           <button
             type="button"
@@ -1342,12 +1389,12 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
         </div>
       </section>
 
-      {showChNav ? (
-        <DcActionBar position="bottom" label="Challan navigation">
-          {chNavButtons}
-        </DcActionBar>
-      ) : null}
       <DcActionBar position="bottom" label="Screen actions">
+        {showChNav ? (
+          <span className="dc-action-bar__nav" role="group" aria-label="Challan navigation">
+            {chNavButtons}
+          </span>
+        ) : null}
         {screenActionButtons}
       </DcActionBar>
 
@@ -1387,6 +1434,18 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
           document.body
         )
       ) : null}
+      <MasterPartyCreateModal
+        open={masterPartyOpen}
+        onClose={() => setMasterPartyOpen(false)}
+        apiBase={apiBase}
+        compCode={compCode}
+        compUid={compUid}
+        compYear={Number(compYear) || Number(compYearLogin) || 0}
+        userName={userName}
+        defaultSchedule={DISPATCH_PARTY_SCHEDULE}
+        lockSchedule
+        onCreated={handleMasterPartyCreated}
+      />
     </div>
   );
 }

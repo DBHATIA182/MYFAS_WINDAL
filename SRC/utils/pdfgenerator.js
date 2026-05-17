@@ -4,6 +4,7 @@ import { buildBrokerOsDisplayRows, brokerOsBCodeOf, brokerOsCrFirstFromSchedule 
 import { buildSaleListDisplayRows, saleListMeas, isSaleListCn } from './saleListDisplay';
 import { rupeesToWords } from './rupeesInWords';
 import { saleBillStatusUnitLabel } from './saleBillDocTitle';
+import { showSaleBillLessBrokerage } from './saleBillBroker';
 import {
   rowFieldCI,
   rowFieldAny,
@@ -1921,7 +1922,7 @@ function buildSaleBillReportHtml(data, metadata) {
           <table class="sb-pdf-sum">
             <tbody>
               <tr><td>Total amount</td><td class="num">${formatAmtPdf(t.sumAmt)}</td></tr>
-              ${Math.abs(Number(t.sumBk || 0)) > 0.0001 ? `<tr><td>Less brokerage</td><td class="num">${formatAmtPdf(t.sumBk)}</td></tr>` : ''}
+              ${showSaleBillLessBrokerage(f, t) ? `<tr><td>Less brokerage</td><td class="num">${formatAmtPdf(t.sumBk)}</td></tr>` : ''}
               ${Math.abs(Number(t.sumDami || 0)) > 0.0001 ? `<tr><td>Dami</td><td class="num">${formatAmtPdf(t.sumDami)}</td></tr>` : ''}
               ${Math.abs(Number(t.disAmt || 0)) > 0.0001 ? `<tr><td>Discount${Math.abs(Number(t.disPerBill || 0)) > 0.0001 ? ` @ ${formatAmtPdf(t.disPerBill)}%` : ''}</td><td class="num">${formatAmtPdf(t.disAmt)}</td></tr>` : ''}
               ${
@@ -3917,7 +3918,7 @@ function pickWhatsAppDigitsFromMetadata(metadata) {
     cc
   );
   if (explicit.length >= 10) return explicit;
-  for (const key of ['partyTel', 'accountTel', 'customerTel', 'dispatchTel']) {
+  for (const key of ['partyTel', 'accountTel', 'customerTel', 'brokerTel', 'dispatchTel']) {
     const n = normalizeWhatsAppPhoneDigits(metadata[key], cc);
     if (n.length >= 10) return n;
   }
@@ -3964,7 +3965,12 @@ export const generatePDF = async (reportType, data, metadata) => {
  * - If mobile sharing is not available or fails: downloads the PDF and opens wa.me (with phone when known)
  *   and explains attaching from Downloads / Files (URLs cannot attach files by themselves).
  */
-export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText) {
+/**
+ * @param {object} [options]
+ * @param {string} [options.phoneDigits] — override metadata phone (e.g. broker vs customer)
+ * @param {boolean} [options.skipPdfDownload] — wa.me only; PDF already saved (e.g. second of two chats)
+ */
+export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText, options = {}) {
   const { blob, filename } = await getPdfBlob(reportType, data, metadata);
   const file = new File([blob], filename, { type: 'application/pdf', lastModified: Date.now() });
   const reportLabel =
@@ -4006,8 +4012,14 @@ export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText
   const text =
     shareText || `${metadata.companyName}\n${reportLabel}\n${metadata.endDate || ''}`;
 
-  const waDigits = pickWhatsAppDigitsFromMetadata(metadata);
+  const cc = metadata?.shareWhatsAppCountryCode ?? '91';
+  const overridePhone =
+    options?.phoneDigits != null && String(options.phoneDigits).trim() !== ''
+      ? normalizeWhatsAppPhoneDigits(options.phoneDigits, cc)
+      : '';
+  const waDigits = overridePhone.length >= 10 ? overridePhone : pickWhatsAppDigitsFromMetadata(metadata);
   const hasTargetPhone = waDigits.length >= 10;
+  const skipPdfDownload = !!options?.skipPdfDownload;
   const preferDirectNumber = !!metadata?.preferWhatsAppDirectToNumber;
   const phoneHint = hasTargetPhone
     ? `Send to +${waDigits}\nOpen chat: https://wa.me/${waDigits}\n\n`
@@ -4026,7 +4038,7 @@ export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText
    * Attachment still cannot be auto-inserted by URL; save PDF locally and user attaches in that chat.
    */
   if (hasTargetPhone && preferDirectNumber) {
-    downloadBlob(blob, filename);
+    if (!skipPdfDownload) downloadBlob(blob, filename);
     const url = buildWhatsAppWebUrl(waDigits, body);
     window.open(url, '_blank', 'noopener,noreferrer');
     return;
@@ -4056,7 +4068,7 @@ export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText
     }
   }
 
-  downloadBlob(blob, filename);
+  if (!skipPdfDownload) downloadBlob(blob, filename);
   const url = buildWhatsAppWebUrl(hasTargetPhone ? waDigits : '', body);
   window.open(url, '_blank', 'noopener,noreferrer');
 }

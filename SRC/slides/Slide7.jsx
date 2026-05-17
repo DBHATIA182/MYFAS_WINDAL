@@ -7,6 +7,7 @@ import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFor
 import { formatApiOrigin } from '../utils/apiLabel';
 import { filterBrokerOsRawRowsByMinClosingAbs, parseBrokerOsRangeForUi } from '../utils/brokerOsDisplay';
 import ReportHelpButton from '../components/ReportHelpButton';
+import { filterCodeNameCityRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
 
 const DEFAULT_HISTORY_START_DATE = '2001-04-01';
 
@@ -122,26 +123,15 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
     setBrokEnd(BROKER_OS_RANGE_END);
   }, [compCode, compUid]);
 
-  const filteredParties = useMemo(() => {
-    const q = partySearch.trim().toLowerCase();
-    if (!q) return parties.slice(0, 150);
-    return parties.filter((p) => {
-      const code = String(p.CODE ?? p.code ?? '').toLowerCase();
-      const name = String(p.NAME ?? p.name ?? '').toLowerCase();
-      const city = String(p.CITY ?? p.city ?? '').toLowerCase();
-      return code.includes(q) || name.includes(q) || city.includes(q);
-    });
-  }, [parties, partySearch]);
+  const filteredParties = useMemo(
+    () => filterCodeNameCityRows(parties, partySearch, 50),
+    [parties, partySearch]
+  );
 
-  const filteredBrokers = useMemo(() => {
-    const q = brokerSearch.trim().toLowerCase();
-    if (!q) return brokers.slice(0, 150);
-    return brokers.filter((b) => {
-      const code = String(b.CODE ?? b.code ?? '').toLowerCase();
-      const name = String(b.NAME ?? b.name ?? '').toLowerCase();
-      return code.includes(q) || name.includes(q);
-    });
-  }, [brokers, brokerSearch]);
+  const filteredBrokers = useMemo(
+    () => filterCodeNameCityRows(brokers, brokerSearch, 50),
+    [brokers, brokerSearch]
+  );
 
   useEffect(() => {
     setListHighlight(0);
@@ -496,7 +486,7 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
                 All brokers
               </button>
             </p>
-          ) : (
+          ) : brokerSearch.trim() ? (
             <div className="account-search-results broker-search-results" role="listbox" aria-label="Brokers">
               <div className="account-search-header broker-search-header" aria-hidden="true">
                 <span>Code</span>
@@ -504,11 +494,7 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
               </div>
               {filteredBrokers.length === 0 ? (
                 <div className="account-search-empty">
-                  {lookupError
-                    ? 'Fix the API error above to load brokers.'
-                    : brokerSearch.trim()
-                      ? 'No brokers match.'
-                      : 'Type to search, or set starting / ending codes below for a range.'}
+                  {lookupError ? 'Fix the API error above to load brokers.' : SEARCH_NO_MATCH}
                 </div>
               ) : (
                 filteredBrokers.map((row, index) => {
@@ -533,6 +519,10 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
                 })
               )}
             </div>
+          ) : (
+            <p className="sale-bill-section__hint dc-party-search-hint">
+              {SEARCH_TYPE_HINT} Or set starting / ending broker codes below for a range.
+            </p>
           )}
         </div>
 
@@ -616,7 +606,7 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
               </button>
             </p>
           ) : null}
-          {!selectedParty ? (
+          {!selectedParty && partySearch.trim() ? (
             <div className="account-search-results party-search-results" role="listbox" aria-label="Parties C/S">
               <div className="account-search-header party-search-header" aria-hidden="true">
                 <span>Code</span>
@@ -625,11 +615,7 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
               </div>
               {filteredParties.length === 0 ? (
                 <div className="account-search-empty">
-                  {lookupError
-                    ? 'Fix the API error above to load parties.'
-                    : partySearch.trim()
-                      ? 'No parties match.'
-                      : 'Optional: type to pick one party, or leave empty for all C/S accounts.'}
+                  {lookupError ? 'Fix the API error above to load parties.' : SEARCH_NO_MATCH}
                 </div>
               ) : (
                 filteredParties.map((row, index) => {
@@ -657,6 +643,10 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
                 })
               )}
             </div>
+          ) : !selectedParty ? (
+            <p className="sale-bill-section__hint dc-party-search-hint">
+              Optional: {SEARCH_TYPE_HINT} Leave blank to include all C/S accounts.
+            </p>
           ) : null}
         </div>
 

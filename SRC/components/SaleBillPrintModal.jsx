@@ -9,6 +9,7 @@ import {
 } from '../utils/saleBillDocTitle';
 import { signedQrCodeToDataUrl, dataUrlToObjectUrl } from '../utils/qrDataUrl';
 import { buildReportHtml, generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
+import { showSaleBillLessBrokerage } from '../utils/saleBillBroker';
 import { downloadExcelWorkbook } from '../utils/excelExport';
 import {
   rowFieldCI,
@@ -138,6 +139,8 @@ export default function SaleBillPrintModal({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [mobilePdfPreview, setMobilePdfPreview] = useState(() => window.innerWidth <= 768);
+  const [waMenuOpen, setWaMenuOpen] = useState(false);
+  const waMenuRef = useRef(null);
   useEffect(() => {
     const onResize = () => setMobilePdfPreview(window.innerWidth <= 768);
     window.addEventListener('resize', onResize);
@@ -462,6 +465,10 @@ export default function SaleBillPrintModal({
         rowFieldAny(header || {}, ['comp_tel1', 'comptel1', 'tel1', 'phone1']) ||
         rowFieldAny(header || {}, ['comp_tel2', 'comptel2', 'tel2', 'phone2']) ||
         '';
+      const brokerTel =
+        (first ? rowFieldCI(first, 'b_tel_no') : '') ||
+        (first ? rowFieldCI(first, 'b_tel_no_o') : '') ||
+        '';
       return {
         companyName: compDisplayName,
         apiBase,
@@ -472,16 +479,65 @@ export default function SaleBillPrintModal({
             ? rowFieldCI(first, 'bill_no') || rowFieldCI(first, 'sale_inv_no') || 'bill'
             : rowFieldCI(first, 'sale_inv_no') || rowFieldCI(first, 'bill_no') || 'bill'
           : 'bill',
-        /** WhatsApp share: prefer buyer phone; fallback dispatch/company phone. */
-        shareWhatsAppPhone: partyTel || dispatchTel || companyTel,
+        /** WhatsApp share: default target = customer; broker via picker when both exist. */
+        shareWhatsAppPhone: partyTel || brokerTel || dispatchTel || companyTel,
         /** Force wa.me direct chat so contact picker is skipped. */
         preferWhatsAppDirectToNumber: true,
         partyTel,
+        brokerTel,
         dispatchTel,
       };
     },
     [apiBase, billParams?.printGrossDane, billParams?.printPacking, compDisplayName, first, header, isCreditNoteSale]
   );
+
+  const whatsAppRecipients = useMemo(() => {
+    if (!first) return [];
+    const partyName = cleanPrintText(rowFieldCI(first, 'name')) || 'Customer';
+    const brokerName = cleanPrintText(rowFieldCI(first, 'bk_name')) || 'Broker';
+    const bCode = String(rowFieldCI(first, 'b_code') ?? '').trim();
+    const partyDigits = normalizeWhatsappDigits(pdfMeta.partyTel || '');
+    const brokerDigits = normalizeWhatsappDigits(pdfMeta.brokerTel || '');
+    const list = [];
+    if (partyDigits.length >= 10) {
+      list.push({
+        id: 'party',
+        role: 'customer',
+        label: partyName,
+        digits: partyDigits,
+        phoneRaw: pdfMeta.partyTel || partyDigits,
+      });
+    }
+    if (bCode && brokerDigits.length >= 10) {
+      if (!list.some((r) => r.digits === brokerDigits)) {
+        list.push({
+          id: 'broker',
+          role: 'broker',
+          label: brokerName,
+          digits: brokerDigits,
+          phoneRaw: pdfMeta.brokerTel || brokerDigits,
+        });
+      }
+    }
+    return list;
+  }, [first, pdfMeta.partyTel, pdfMeta.brokerTel]);
+
+  useEffect(() => {
+    if (!waMenuOpen) return;
+    const onDoc = (e) => {
+      if (waMenuRef.current && !waMenuRef.current.contains(e.target)) setWaMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('touchstart', onDoc);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('touchstart', onDoc);
+    };
+  }, [waMenuOpen]);
+
+  useEffect(() => {
+    if (!open) setWaMenuOpen(false);
+  }, [open]);
 
   const handleDownloadPdf = useCallback(() => {
     if (!pdfData) return;
@@ -501,25 +557,79 @@ export default function SaleBillPrintModal({
     }
   }, [lines, header, compDisplayName]);
 
-  const handleShareWhatsApp = useCallback(() => {
-    if (!pdfData) return;
-    const waDigits = normalizeWhatsappDigits(pdfMeta?.shareWhatsAppPhone || '');
-    if (waDigits) {
-      const proceed = window.confirm(`Opening WhatsApp to +${waDigits}. Continue?`);
-      if (!proceed) return;
-    } else {
-      const proceed = window.confirm('No bill phone found. Open WhatsApp without a prefilled number?');
-      if (!proceed) return;
-    }
+  const buildWhatsAppShareText = useCallback(() => {
     const refNo = first
       ? isCreditNoteSale
         ? rowFieldCI(first, 'bill_no') || '—'
         : rowFieldCI(first, 'sale_inv_no') || '—'
       : '—';
     const head = isCreditNoteSale ? 'Credit note — ' : 'Sale bill — ';
-    const shareText = [head + refNo, compDisplayName, formatLedgerDateDisplay(first?.BILL_DATE ?? first?.bill_date)].join('\n');
-    sharePdfWithWhatsApp('sale-bill', pdfData, pdfMeta, shareText).catch((e) => alert(String(e?.message || e)));
-  }, [pdfData, pdfMeta, first, compDisplayName, isCreditNoteSale]);
+    return [head + refNo, compDisplayName, formatLedgerDateDisplay(first?.BILL_DATE ?? first?.bill_date)].join('\n');
+  }, [first, compDisplayName, isCreditNoteSale]);
+
+  const runWhatsAppShare = useCallback(
+    async (recipient, opts = {}) => {
+      if (!pdfData) return;
+      const digits = recipient?.digits ? String(recipient.digits) : '';
+      if (digits.length >= 10 && !opts.skipConfirm) {
+        const who =
+          recipient?.role === 'broker'
+            ? `Broker ${recipient.label}`
+            : recipient?.role === 'customer'
+              ? `Customer ${recipient.label}`
+              : recipient?.label || 'Contact';
+        const proceed = window.confirm(`Opening WhatsApp to ${who} (+${digits}). Continue?`);
+        if (!proceed) return;
+      } else if (!digits && !opts.skipConfirm) {
+        const proceed = window.confirm('No bill phone found. Open WhatsApp without a prefilled number?');
+        if (!proceed) return;
+      }
+      const shareText = buildWhatsAppShareText();
+      await sharePdfWithWhatsApp('sale-bill', pdfData, pdfMeta, shareText, {
+        phoneDigits: recipient?.phoneRaw || recipient?.digits || '',
+        skipPdfDownload: !!opts.skipPdfDownload,
+      });
+    },
+    [pdfData, pdfMeta, buildWhatsAppShareText]
+  );
+
+  const handleShareWhatsAppBoth = useCallback(async () => {
+    setWaMenuOpen(false);
+    const customer = whatsAppRecipients.find((r) => r.id === 'party');
+    const broker = whatsAppRecipients.find((r) => r.id === 'broker');
+    if (!customer || !broker) return;
+    try {
+      await runWhatsAppShare(customer);
+      const proceed = window.confirm(
+        `Customer chat opened and PDF saved.\n\nAlso open WhatsApp for broker ${broker.label}? (+${broker.digits})`
+      );
+      if (!proceed) return;
+      await runWhatsAppShare(broker, { skipConfirm: true, skipPdfDownload: true });
+    } catch (e) {
+      alert(String(e?.message || e));
+    }
+  }, [whatsAppRecipients, runWhatsAppShare]);
+
+  const handleShareWhatsApp = useCallback(() => {
+    if (!pdfData) return;
+    if (whatsAppRecipients.length === 0) {
+      runWhatsAppShare(null).catch((e) => alert(String(e?.message || e)));
+      return;
+    }
+    if (whatsAppRecipients.length === 1) {
+      runWhatsAppShare(whatsAppRecipients[0]).catch((e) => alert(String(e?.message || e)));
+      return;
+    }
+    setWaMenuOpen((v) => !v);
+  }, [pdfData, whatsAppRecipients, runWhatsAppShare]);
+
+  const pickWhatsAppRecipient = useCallback(
+    (recipient) => {
+      setWaMenuOpen(false);
+      runWhatsAppShare(recipient).catch((e) => alert(String(e?.message || e)));
+    },
+    [runWhatsAppShare]
+  );
 
   const mobilePreviewHtml = useMemo(() => {
     if (!mobilePdfPreview || !pdfData) return '';
@@ -663,14 +773,47 @@ export default function SaleBillPrintModal({
             <button type="button" className="btn btn-excel" disabled={!lines.length} onClick={handleDownloadExcel}>
               📊 Excel
             </button>
-            <button
-              type="button"
-              className="btn btn-whatsapp"
-              disabled={!pdfData}
-              onClick={handleShareWhatsApp}
+            <div
+              ref={waMenuRef}
+              className={`sale-bill-wa-dropdown${waMenuOpen ? ' sale-bill-wa-dropdown--open' : ''}`}
             >
-              💬 WhatsApp
-            </button>
+              <button
+                type="button"
+                className="btn btn-whatsapp"
+                disabled={!pdfData}
+                onClick={handleShareWhatsApp}
+                aria-expanded={waMenuOpen}
+                aria-haspopup={whatsAppRecipients.length > 1 ? 'menu' : undefined}
+              >
+                💬 WhatsApp
+                {whatsAppRecipients.length > 1 ? <span className="sale-bill-wa-caret" aria-hidden> ▾</span> : null}
+              </button>
+              {waMenuOpen && whatsAppRecipients.length > 1 ? (
+                <div className="sale-bill-wa-menu" role="menu">
+                  {whatsAppRecipients.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      role="menuitem"
+                      className="sale-bill-wa-menu-item"
+                      onClick={() => pickWhatsAppRecipient(r)}
+                    >
+                      <span className="sale-bill-wa-menu-role">{r.role === 'broker' ? 'Broker' : 'Customer'}</span>
+                      <span className="sale-bill-wa-menu-name">{r.label}</span>
+                      <span className="sale-bill-wa-menu-tel">+{r.digits}</span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="sale-bill-wa-menu-item sale-bill-wa-menu-item--both"
+                    onClick={() => handleShareWhatsAppBoth().catch((e) => alert(String(e?.message || e)))}
+                  >
+                    Both (customer, then broker)
+                  </button>
+                </div>
+              ) : null}
+            </div>
             <button type="button" className="sale-bill-modal-close" onClick={onClose} aria-label="Close">
               ×
             </button>
@@ -932,7 +1075,7 @@ export default function SaleBillPrintModal({
                         <td>Total amount</td>
                         <td className="num">{fmtAmt(totals.sumAmt)}</td>
                       </tr>
-                      {Math.abs(totals.sumBk) > 0.0001 ? (
+                      {showSaleBillLessBrokerage(first, totals) ? (
                         <tr>
                           <td>Less brokerage</td>
                           <td className="num">{fmtAmt(totals.sumBk)}</td>

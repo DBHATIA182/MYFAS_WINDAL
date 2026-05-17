@@ -4,6 +4,7 @@ import SaleBillPrintModal from '../components/SaleBillPrintModal';
 import { toDisplayDate, toInputDateString, toOracleDate } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
 import ReportHelpButton from '../components/ReportHelpButton';
+import { filterCodeNameCityRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
 
 /** Maps Oracle SALE.TYPE (1–9) to print/API letter bucket (same as sale list / Slide8). */
 const SALE_LIST_NUMTYPE_TO_PRINT = {
@@ -117,27 +118,15 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
     load();
   }, [apiBase, compCode, compUid]);
 
-  const filteredParties = useMemo(() => {
-    const q = partySearch.trim().toLowerCase();
-    if (!q) return parties.slice(0, 150);
-    return parties.filter((p) => {
-      const code = String(p.CODE ?? p.code ?? '').toLowerCase();
-      const name = String(p.NAME ?? p.name ?? '').toLowerCase();
-      const city = String(p.CITY ?? p.city ?? '').toLowerCase();
-      return code.includes(q) || name.includes(q) || city.includes(q);
-    });
-  }, [parties, partySearch]);
+  const filteredParties = useMemo(
+    () => filterCodeNameCityRows(parties, partySearch, 50),
+    [parties, partySearch]
+  );
 
-  const filteredBrokers = useMemo(() => {
-    const q = brokerSearch.trim().toLowerCase();
-    if (!q) return brokers.slice(0, 150);
-    return brokers.filter((p) => {
-      const code = String(p.CODE ?? p.code ?? '').toLowerCase();
-      const name = String(p.NAME ?? p.name ?? '').toLowerCase();
-      const city = String(p.CITY ?? p.city ?? '').toLowerCase();
-      return code.includes(q) || name.includes(q) || city.includes(q);
-    });
-  }, [brokers, brokerSearch]);
+  const filteredBrokers = useMemo(
+    () => filterCodeNameCityRows(brokers, brokerSearch, 50),
+    [brokers, brokerSearch]
+  );
 
   useEffect(() => {
     setPartyHi(0);
@@ -557,7 +546,7 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
                 Clear
               </button>
             </p>
-          ) : (
+          ) : partySearch.trim() ? (
             <div className="account-search-results party-search-results" role="listbox">
               <div className="account-search-header party-search-header" aria-hidden="true">
                 <span>CODE</span>
@@ -565,9 +554,7 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
                 <span>CITY</span>
               </div>
               {filteredParties.length === 0 ? (
-                <div className="account-search-empty">
-                  {partySearch.trim() ? 'No matches found.' : 'Type to search or leave empty for all parties.'}
-                </div>
+                <div className="account-search-empty">{SEARCH_NO_MATCH}</div>
               ) : (
                 filteredParties.map((row, index) => {
                   const code = row.CODE ?? row.code;
@@ -592,6 +579,8 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
                 })
               )}
             </div>
+          ) : (
+            <p className="sale-bill-section__hint dc-party-search-hint">{SEARCH_TYPE_HINT}</p>
           )}
         </div>
 
@@ -639,7 +628,7 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
                 Clear
               </button>
             </p>
-          ) : (
+          ) : brokerSearch.trim() ? (
             <div className="account-search-results party-search-results" role="listbox">
               <div className="account-search-header party-search-header" aria-hidden="true">
                 <span>CODE</span>
@@ -647,9 +636,7 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
                 <span>CITY</span>
               </div>
               {filteredBrokers.length === 0 ? (
-                <div className="account-search-empty">
-                  {brokerSearch.trim() ? 'No matches found.' : 'Type to search or leave empty for all brokers.'}
-                </div>
+                <div className="account-search-empty">{SEARCH_NO_MATCH}</div>
               ) : (
                 filteredBrokers.map((row, index) => {
                   const code = row.CODE ?? row.code;
@@ -674,6 +661,8 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
                 })
               )}
             </div>
+          ) : (
+            <p className="sale-bill-section__hint dc-party-search-hint">{SEARCH_TYPE_HINT}</p>
           )}
         </div>
 

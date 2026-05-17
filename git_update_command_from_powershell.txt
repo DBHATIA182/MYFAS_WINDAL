@@ -2,18 +2,20 @@
 # cd E:\WINDAL\APPTEST
 # .\push-all-to-git.ps1 -CommitMessage "your message here"
 
-# ========== CLIENT PC — run in PowerShell (one line at a time, or paste ALL lines below) ==========
-# Use the LIVE app folder (apptest), NOT apptest_old
+# ========== CLIENT PC — manual update (D:\windal\apptest) ==========
+# Prefer desktop shortcut / Update-APPTEST-From-Desktop.cmd (runs run-desktop-update.ps1).
 
 cd D:\windal\apptest
 
-Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -like '*D:\windal\apptest*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+powershell -ExecutionPolicy Bypass -File .\run-desktop-update.ps1 -AppRoot "D:\windal\apptest" -Branch main
 
-Get-Process node,esbuild,cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+# Or step by step:
+# powershell -ExecutionPolicy Bypass -File .\stop-apptest-services.ps1 -AppRoot "D:\windal\apptest" -StopScheduledTasks -ReleaseApiPort5001 -ReleasePorts5174 -WaitSeconds 3
+# powershell -ExecutionPolicy Bypass -File .\update-from-git.ps1 -Branch main -SkipProcessStop
+# powershell -ExecutionPolicy Bypass -File .\start-apptest-services.ps1 -AppRoot "D:\windal\apptest"
 
-powershell -ExecutionPolicy Bypass -File .\update-from-git.ps1 -Branch main
-
-powershell -ExecutionPolicy Bypass -File .\start-apptest-services.ps1
-
-# If npm fails in PowerShell, use npm.cmd in scripts or run:
-#   Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+# If you see "process cannot access the file":
+# 1) Close API / Vite / Tunnel PowerShell windows
+# 2) Run stop script with -StopScheduledTasks (stops auto-restart tasks)
+# 3) Do not open desktop-update.log in Notepad while updating
+# 4) Run update again

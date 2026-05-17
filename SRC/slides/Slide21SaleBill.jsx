@@ -5,7 +5,9 @@ import { toInputDateString, toOracleDate, toDisplayDate, normalizeHtmlDateValue 
 import SaleBillPrintModal from '../components/SaleBillPrintModal';
 import ReportHelpButton from '../components/ReportHelpButton';
 import SaleEntryFinYearStrip from '../components/SaleEntryFinYearStrip';
+import MasterPartyCreateModal, { PartyAddButton } from '../components/MasterPartyCreateModal';
 import { clampYmdToFinYear, defaultDocDateInFinYear } from '../utils/saleEntryFinYear';
+import { upsertMasterParty } from '../utils/upsertMasterParty';
 
 const reqOpts = { withCredentials: true, timeout: 120000 };
 
@@ -435,6 +437,8 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
   const billSlotFetchGenRef = useRef(0);
   const billNoRef = useRef('');
   const modeRef = useRef('new');
+  const brokerSearchRef = useRef(null);
+  const brokerPickLockRef = useRef(false);
   /** When Prev/Next lands on an empty slot from Edit, we set mode to `new` without re-running Edit→New reset. */
   const skipClearOnEditToNewEffectRef = useRef(false);
   const compCode = formData.comp_code ?? formData.COMP_CODE;
@@ -443,6 +447,8 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
   const compE = toInputDateString(formData.comp_e_dt ?? formData.COMP_E_DT);
 
   const [perm, setPerm] = useState(null);
+  const [masterPartyPerm, setMasterPartyPerm] = useState(null);
+  const [masterPartyModal, setMasterPartyModal] = useState(null);
   const [ctx, setCtx] = useState(null);
   const [parties, setParties] = useState([]);
   const [brokers, setBrokers] = useState([]);
@@ -533,35 +539,41 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
 
   const filteredBilledParties = useMemo(() => {
     const q = billedSearch.trim().toLowerCase();
-    if (!q) return parties.slice(0, 150);
-    return parties.filter((p) => {
-      const pc = String(p.CODE ?? p.code ?? '').toLowerCase();
-      const name = String(p.NAME ?? p.name ?? '').toLowerCase();
-      const city = String(p.CITY ?? p.city ?? '').toLowerCase();
-      return pc.includes(q) || name.includes(q) || city.includes(q);
-    });
+    if (!q) return [];
+    return parties
+      .filter((p) => {
+        const pc = String(p.CODE ?? p.code ?? '').toLowerCase();
+        const name = String(p.NAME ?? p.name ?? '').toLowerCase();
+        const city = String(p.CITY ?? p.city ?? '').toLowerCase();
+        return pc.includes(q) || name.includes(q) || city.includes(q);
+      })
+      .slice(0, 50);
   }, [parties, billedSearch]);
 
   const filteredShippedParties = useMemo(() => {
     const q = shippedSearch.trim().toLowerCase();
-    if (!q) return parties.slice(0, 150);
-    return parties.filter((p) => {
-      const pc = String(p.CODE ?? p.code ?? '').toLowerCase();
-      const name = String(p.NAME ?? p.name ?? '').toLowerCase();
-      const city = String(p.CITY ?? p.city ?? '').toLowerCase();
-      return pc.includes(q) || name.includes(q) || city.includes(q);
-    });
+    if (!q) return [];
+    return parties
+      .filter((p) => {
+        const pc = String(p.CODE ?? p.code ?? '').toLowerCase();
+        const name = String(p.NAME ?? p.name ?? '').toLowerCase();
+        const city = String(p.CITY ?? p.city ?? '').toLowerCase();
+        return pc.includes(q) || name.includes(q) || city.includes(q);
+      })
+      .slice(0, 50);
   }, [parties, shippedSearch]);
 
   const filteredBrokersList = useMemo(() => {
     const q = brokerSearch.trim().toLowerCase();
-    if (!q) return brokers.slice(0, 150);
-    return brokers.filter((p) => {
-      const pc = String(p.CODE ?? p.code ?? '').toLowerCase();
-      const name = String(p.NAME ?? p.name ?? '').toLowerCase();
-      const city = String(p.CITY ?? p.city ?? '').toLowerCase();
-      return pc.includes(q) || name.includes(q) || city.includes(q);
-    });
+    if (!q) return [];
+    return brokers
+      .filter((p) => {
+        const pc = String(p.CODE ?? p.code ?? '').toLowerCase();
+        const name = String(p.NAME ?? p.name ?? '').toLowerCase();
+        const city = String(p.CITY ?? p.city ?? '').toLowerCase();
+        return pc.includes(q) || name.includes(q) || city.includes(q);
+      })
+      .slice(0, 50);
   }, [brokers, brokerSearch]);
 
   useEffect(() => {
@@ -578,8 +590,33 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
     if (!code) {
       setBilledFinderOpen(true);
       setShippedFinderOpen(false);
+      setBrokerFinderOpen(false);
     }
   }, [code]);
+
+  useEffect(() => {
+    if (code && !String(bCode ?? '').trim()) {
+      setBrokerFinderOpen(true);
+    }
+  }, [code, bCode]);
+
+  const focusBrokerSearch = useCallback(() => {
+    window.setTimeout(() => brokerSearchRef.current?.focus(), 0);
+  }, []);
+
+  const applyBrokerPick = useCallback((partyCode) => {
+    const pc = String(partyCode ?? '').trim();
+    if (!pc) return;
+    brokerPickLockRef.current = true;
+    setBCode(pc);
+    setBrokerSearch('');
+    setBrokerFinderOpen(false);
+    setBrokerHi(0);
+    brokerSearchRef.current?.blur();
+    window.setTimeout(() => {
+      brokerPickLockRef.current = false;
+    }, 450);
+  }, []);
 
   const safeBilledHi = Math.min(billedHi, Math.max(0, filteredBilledParties.length - 1));
   const safeShippedHi = Math.min(shippedHi, Math.max(0, filteredShippedParties.length - 1));
@@ -630,7 +667,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
     setLoading(true);
     setErr('');
     try {
-      const [pRes, cRes, ptRes, brRes, luRes] = await Promise.all([
+      const [pRes, cRes, ptRes, brRes, luRes, mpRes] = await Promise.all([
         axios.get(`${apiBase}/api/sale-bill-user-permissions`, { params, ...reqOpts }),
         axios.get(`${apiBase}/api/sale-bill-form-context`, {
           params: {
@@ -649,8 +686,13 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
           ...reqOpts,
         }),
         axios.get(`${apiBase}/api/sale-bill-lookups`, { params: { comp_code: compCode, comp_uid: compUid }, ...reqOpts }),
+        axios.get(`${apiBase}/api/master-party-user-permissions`, {
+          params: { comp_uid: compUid, user_name: userName || '' },
+          ...reqOpts,
+        }),
       ]);
       setPerm(pRes.data);
+      setMasterPartyPerm(mpRes.data);
       setCtx(cRes.data);
       const roffC = String(cRes.data?.G_ROFF_CODE ?? cRes.data?.g_roff_code ?? '').trim();
       if (roffC) {
@@ -779,10 +821,80 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
       const gst = String(row?.GST_NO ?? row?.gst_no ?? '').trim();
       setPartyGst(gst);
       setTdsOnAmt(0);
+      setBilledSearch('');
       setBilledFinderOpen(false);
       setShippedFinderOpen(false);
+      setBrokerHi(0);
+      if (!String(bCode ?? '').trim()) {
+        setBrokerSearch('');
+        setBrokerFinderOpen(true);
+        focusBrokerSearch();
+      }
     },
-    [parties, ctx]
+    [parties, ctx, bCode, focusBrokerSearch]
+  );
+
+  const tryOpenNewParty = useCallback(
+    (target, schedule, lockSchedule = true) => {
+      const p = masterPartyPerm;
+      if (!p?.canOpen) {
+        alert('Access Denied');
+        return;
+      }
+      if (!p?.canAdd) {
+        alert('You Can Not Add');
+        return;
+      }
+      setMasterPartyModal({ target, schedule, lockSchedule });
+    },
+    [masterPartyPerm]
+  );
+
+  const handleMasterPartyCreated = useCallback(
+    (row) => {
+      const target = masterPartyModal?.target;
+      setMasterPartyModal(null);
+      const entry = {
+        CODE: row.CODE ?? row.code,
+        NAME: row.NAME ?? row.name,
+        CITY: row.CITY ?? row.city,
+        GST_NO: row.GST_NO ?? row.gst_no,
+        PAN: row.PAN ?? row.pan,
+        SELF_BROK: row.SELF_BROK ?? 'N',
+      };
+      const pc = String(entry.CODE ?? '').trim();
+      if (target === 'broker') {
+        setBrokers((prev) => upsertMasterParty(prev, entry));
+        setBCode(pc);
+        setBrokerFinderOpen(false);
+        setBrokerSearch('');
+        return;
+      }
+      if (target === 'billed') {
+        setParties((prev) => upsertMasterParty(prev, entry));
+        setCode(pc);
+        const defD = Number(ctx?.G_DEF_DAYS ?? 0) || 0;
+        setDays(defD);
+        setDelvCode(pc);
+        setPartyGst(String(entry.GST_NO ?? '').trim());
+        setTdsOnAmt(0);
+        setBilledSearch('');
+        setBilledFinderOpen(false);
+        setShippedFinderOpen(false);
+        setBrokerHi(0);
+        if (!String(bCode ?? '').trim()) {
+          setBrokerSearch('');
+          setBrokerFinderOpen(true);
+          focusBrokerSearch();
+        }
+      } else if (target === 'shipped') {
+        setParties((prev) => upsertMasterParty(prev, entry));
+        setDelvCode(pc === String(code) ? '' : pc);
+        setShippedFinderOpen(false);
+        setShippedSearch('');
+      }
+    },
+    [masterPartyModal, code, ctx, bCode, focusBrokerSearch]
   );
 
   const applyItemToLine = (idx, itemCode) => {
@@ -1208,7 +1320,9 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
       setBrokerSearch('');
       setBilledFinderOpen(false);
       setShippedFinderOpen(false);
-      setBrokerFinderOpen(false);
+      const bk = first.B_CODE != null ? String(first.B_CODE).trim() : '';
+      setBrokerFinderOpen(!bk);
+      if (!bk) focusBrokerSearch();
       setLabourText(null);
       setFreightText(null);
       setInsText(null);
@@ -1266,7 +1380,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         })
       );
     },
-    [lookups.items, parties]
+    [focusBrokerSearch, lookups.items, parties]
   );
 
   const tryLoadSaleBillByBillNoRelaxed = useCallback(
@@ -1824,8 +1938,13 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         <div className="sale-bill-party-grid">
           <div className="sale-bill-party-col">
             <div className="sale-bill-field sale-bill-field--block">
-              <span className="sale-bill-field__label" id="sb-billed-search-lbl">
-                Billed to (schedule 8.1)
+              <span className="sale-bill-field__label sale-bill-field__label-row" id="sb-billed-search-lbl">
+                <span>Billed to (schedule 8.1)</span>
+                <PartyAddButton
+                  onClick={() => tryOpenNewParty('billed', 8.1)}
+                  disabled={!canEditSaleBillFields}
+                  title="Add new billed-to party"
+                />
               </span>
               {code && billedPartyInfo ? (
                 <p className="account-selected-hint sale-bill-search-current" id="sb-billed-current">
@@ -1886,6 +2005,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                     }
                   }}
                 />
+                {billedSearch.trim() ? (
                 <div className="account-search-results party-search-results" id="sb-billed-list" role="listbox" aria-label="Billed-to matches">
                   <div className="account-search-header party-search-header" aria-hidden="true">
                     <span>Code</span>
@@ -1893,9 +2013,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                     <span>City</span>
                   </div>
                   {filteredBilledParties.length === 0 ? (
-                    <div className="account-search-empty">
-                      {billedSearch.trim() ? 'No matches — try different letters.' : 'Type to narrow the list, or pick from the parties below.'}
-                    </div>
+                    <div className="account-search-empty">No matches — try different letters.</div>
                   ) : (
                     filteredBilledParties.map((row, index) => {
                       const pc = String(row.CODE ?? row.code ?? '');
@@ -1923,6 +2041,9 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                     })
                   )}
                 </div>
+                ) : (
+                  <p className="sale-bill-section__hint dc-party-search-hint">Type code, name, or city to search.</p>
+                )}
                 {billedFinderOpen && code ? (
                   <div className="sale-bill-picker-actions sale-bill-picker-actions--after-list">
                     <button
@@ -1961,8 +2082,13 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
           </div>
           <div className="sale-bill-party-col">
             <div className="sale-bill-field sale-bill-field--block">
-              <span className="sale-bill-field__label" id="sb-shipped-search-lbl">
-                Shipped to (DELV_CODE)
+              <span className="sale-bill-field__label sale-bill-field__label-row" id="sb-shipped-search-lbl">
+                <span>Shipped to (DELV_CODE)</span>
+                <PartyAddButton
+                  onClick={() => tryOpenNewParty('shipped', 8.1)}
+                  disabled={!canEditSaleBillFields}
+                  title="Add new shipped-to party"
+                />
               </span>
               {code ? (
                 <div className="sale-bill-shipped-toolbar">
@@ -2055,6 +2181,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                     }
                   }}
                 />
+                {shippedSearch.trim() ? (
                 <div className="account-search-results party-search-results" id="sb-shipped-list" role="listbox" aria-label="Shipped-to matches">
                   <div className="account-search-header party-search-header" aria-hidden="true">
                     <span>Code</span>
@@ -2062,9 +2189,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                     <span>City</span>
                   </div>
                   {filteredShippedParties.length === 0 ? (
-                    <div className="account-search-empty">
-                      {shippedSearch.trim() ? 'No matches — try different letters.' : 'Type to narrow the list, or pick from the parties below.'}
-                    </div>
+                    <div className="account-search-empty">No matches — try different letters.</div>
                   ) : (
                     filteredShippedParties.map((row, index) => {
                       const pc = String(row.CODE ?? row.code ?? '');
@@ -2093,6 +2218,9 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                     })
                   )}
                 </div>
+                ) : (
+                  <p className="sale-bill-section__hint dc-party-search-hint">Type code, name, or city to search.</p>
+                )}
                 <div className="sale-bill-picker-actions sale-bill-picker-actions--after-list">
                   <button
                     type="button"
@@ -2131,8 +2259,18 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
 
         <div className="sale-bill-broker-row">
           <label className="sale-bill-field sale-bill-field--grow">
-            <span className="sale-bill-field__label" id="sb-broker-search-lbl">
-              Broker (schedule 11.2) <span className="sale-bill-field__req">*</span>
+            <span className="sale-bill-field__label sale-bill-field__label-row" id="sb-broker-search-lbl">
+              <span>
+                Broker (schedule 11.2) <span className="sale-bill-field__req">*</span>
+              </span>
+              <PartyAddButton
+                onClick={() => {
+                  if (brokerPickLockRef.current) return;
+                  tryOpenNewParty('broker', 11.2);
+                }}
+                disabled={!canEditSaleBillFields || (!!brokerSearch.trim() && !bCode)}
+                title="Add new broker"
+              />
             </span>
             {bCode && !brokerFinderOpen ? (
               <div className="sale-bill-broker-summary">
@@ -2149,6 +2287,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                     onClick={() => {
                       setBrokerFinderOpen(true);
                       setBrokerSearch('');
+                      focusBrokerSearch();
                     }}
                   >
                     Change broker
@@ -2156,24 +2295,10 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                 </div>
               </div>
             ) : null}
-            {!bCode && !brokerFinderOpen ? (
-              <div className="sale-bill-picker-actions">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  disabled={!canEditSaleBillFields}
-                  onClick={() => {
-                    setBrokerFinderOpen(true);
-                    setBrokerSearch('');
-                  }}
-                >
-                  Select broker (required)
-                </button>
-              </div>
-            ) : null}
-            {brokerFinderOpen ? (
+            {brokerFinderOpen || (code && !bCode) ? (
             <div className="account-search-group">
               <input
+                ref={brokerSearchRef}
                 id="sb-broker-search"
                 type="search"
                 className="form-input sale-bill-search-input"
@@ -2193,27 +2318,24 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                   } else if (e.key === 'ArrowUp') {
                     e.preventDefault();
                     setBrokerHi((h) => Math.max(0, h - 1));
-                  } else if (e.key === 'Enter') {
-                    const r = filteredBrokersList[safeBrokerHi];
-                    if (r) {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setBCode(String(r.CODE ?? r.code ?? '').trim());
-                      setBrokerSearch('');
-                      setBrokerFinderOpen(false);
+                    } else if (e.key === 'Enter') {
+                      const r = filteredBrokersList[safeBrokerHi];
+                      if (r) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        applyBrokerPick(String(r.CODE ?? r.code ?? '').trim());
+                      }
                     }
-                  }
                 }}
               />
+              {brokerSearch.trim() ? (
               <div className="account-search-results broker-search-results" id="sb-broker-list" role="listbox" aria-label="Broker matches">
                 <div className="account-search-header broker-search-header" aria-hidden="true">
                   <span>Code</span>
                   <span>Name</span>
                 </div>
                 {filteredBrokersList.length === 0 ? (
-                  <div className="account-search-empty">
-                    {brokerSearch.trim() ? 'No matches — try different letters.' : 'Type to narrow the list, or pick from the brokers below.'}
-                  </div>
+                  <div className="account-search-empty">No matches — try different letters.</div>
                 ) : (
                   filteredBrokersList.map((row, index) => {
                     const pc = String(row.CODE ?? row.code ?? '');
@@ -2227,12 +2349,13 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                         aria-selected={rowSel}
                         disabled={!canEditSaleBillFields}
                         className={`account-search-row broker-search-row${rowHi ? ' is-highlight' : ''}${rowSel ? ' is-active' : ''}`}
-                        onMouseEnter={() => setBrokerHi(index)}
-                        onClick={() => {
-                          setBCode(pc);
-                          setBrokerSearch('');
-                          setBrokerFinderOpen(false);
-                        }}
+                            onMouseEnter={() => setBrokerHi(index)}
+                            onPointerDown={(e) => e.preventDefault()}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              applyBrokerPick(pc);
+                            }}
                       >
                         <span className="account-search-code">{highlightMatch(pc, brokerSearch)}</span>
                         <span className="account-search-name">{highlightMatch(row.NAME ?? row.name, brokerSearch)}</span>
@@ -2241,19 +2364,24 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                   })
                 )}
               </div>
-              <div className="sale-bill-picker-actions sale-bill-picker-actions--after-list">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  disabled={!canEditSaleBillFields}
-                  onClick={() => {
-                    setBrokerFinderOpen(false);
-                    setBrokerSearch('');
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
+              ) : (
+                <p className="sale-bill-section__hint dc-party-search-hint">Type code, name, or city to search.</p>
+              )}
+              {bCode ? (
+                <div className="sale-bill-picker-actions sale-bill-picker-actions--after-list">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={!canEditSaleBillFields}
+                    onClick={() => {
+                      setBrokerFinderOpen(false);
+                      setBrokerSearch('');
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : null}
             </div>
             ) : null}
           </label>
@@ -2937,6 +3065,18 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         ) : null,
         document.body
       )}
+      <MasterPartyCreateModal
+        open={!!masterPartyModal}
+        onClose={() => setMasterPartyModal(null)}
+        apiBase={apiBase}
+        compCode={compCode}
+        compUid={compUid}
+        compYear={Number(compYear) || 0}
+        userName={userName}
+        defaultSchedule={masterPartyModal?.schedule}
+        lockSchedule={masterPartyModal?.lockSchedule !== false}
+        onCreated={handleMasterPartyCreated}
+      />
     </div>
   );
 }

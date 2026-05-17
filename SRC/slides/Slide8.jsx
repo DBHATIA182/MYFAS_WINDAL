@@ -7,6 +7,13 @@ import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
 import ReportHelpButton from '../components/ReportHelpButton';
+import {
+  filterCodeNameCityRows,
+  filterItemCodeNameRows,
+  SEARCH_ITEM_TYPE_HINT,
+  SEARCH_NO_MATCH,
+  SEARCH_TYPE_HINT,
+} from '../utils/masterSearchFilter';
 
 /** VFP9 PTYPE: Oracle SALE.TYPE is NUMBER 1–9 (not SL/CN text). */
 const SALE_LIST_NUMTYPE_TO_PRINT = {
@@ -179,37 +186,20 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
     load();
   }, [apiBase, compCode, compUid, startDate, endDate]);
 
-  const filteredParties = useMemo(() => {
-    const q = partySearch.trim().toLowerCase();
-    if (!q) return parties.slice(0, 150);
-    return parties.filter((p) => {
-      const code = String(p.CODE ?? p.code ?? '').toLowerCase();
-      const name = String(p.NAME ?? p.name ?? '').toLowerCase();
-      const city = String(p.CITY ?? p.city ?? '').toLowerCase();
-      return code.includes(q) || name.includes(q) || city.includes(q);
-    });
-  }, [parties, partySearch]);
+  const filteredParties = useMemo(
+    () => filterCodeNameCityRows(parties, partySearch, 50),
+    [parties, partySearch]
+  );
 
-  const filteredBrokers = useMemo(() => {
-    const q = brokerSearch.trim().toLowerCase();
-    if (!q) return brokers.slice(0, 150);
-    return brokers.filter((b) => {
-      const code = String(b.CODE ?? b.code ?? '').toLowerCase();
-      const name = String(b.NAME ?? b.name ?? '').toLowerCase();
-      const city = String(b.CITY ?? b.city ?? '').toLowerCase();
-      return code.includes(q) || name.includes(q) || city.includes(q);
-    });
-  }, [brokers, brokerSearch]);
+  const filteredBrokers = useMemo(
+    () => filterCodeNameCityRows(brokers, brokerSearch, 50),
+    [brokers, brokerSearch]
+  );
 
-  const filteredItems = useMemo(() => {
-    const q = itemSearch.trim().toLowerCase();
-    if (!q) return items.slice(0, 150);
-    return items.filter((row) => {
-      const code = String(row.ITEM_CODE ?? row.item_code ?? '').toLowerCase();
-      const name = String(row.ITEM_NAME ?? row.item_name ?? '').toLowerCase();
-      return code.includes(q) || name.includes(q);
-    });
-  }, [items, itemSearch]);
+  const filteredItems = useMemo(
+    () => filterItemCodeNameRows(items, itemSearch, 50),
+    [items, itemSearch]
+  );
 
   useEffect(() => {
     setPartyHi(0);
@@ -224,18 +214,6 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
   const safePartyHi = Math.min(partyHi, Math.max(0, filteredParties.length - 1));
   const safeBrokerHi = Math.min(brokerHi, Math.max(0, filteredBrokers.length - 1));
   const safeItemHi = Math.min(itemHi, Math.max(0, filteredItems.length - 1));
-
-  const partyListEmptyHint = partySearch.trim()
-    ? 'No matches — try different letters.'
-    : 'Type to search or leave empty for all parties.';
-
-  const brokerListEmptyHint = brokerSearch.trim()
-    ? 'No matches — try different letters.'
-    : 'Type to search or leave empty for all brokers.';
-
-  const itemListEmptyHint = itemSearch.trim()
-    ? 'No matches — try different letters.'
-    : 'Type to search or leave empty for all items.';
 
   const selectedPartyRow = parties.find((p) => String(p.CODE ?? p.code) === String(selectedMcode));
   const selectedBrokerRow = brokers.find((b) => String(b.CODE ?? b.code) === String(selectedBk));
@@ -652,7 +630,7 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
                 Clear
               </button>
             </p>
-          ) : (
+          ) : partySearch.trim() ? (
             <div className="account-search-results party-search-results" role="listbox">
               <div className="account-search-header party-search-header" aria-hidden="true">
                 <span>Code</span>
@@ -660,7 +638,7 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
                 <span>City</span>
               </div>
               {filteredParties.length === 0 ? (
-                <div className="account-search-empty">{partyListEmptyHint}</div>
+                <div className="account-search-empty">{SEARCH_NO_MATCH}</div>
               ) : (
                 filteredParties.map((row, index) => {
                   const code = row.CODE ?? row.code;
@@ -685,6 +663,8 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
                 })
               )}
             </div>
+          ) : (
+            <p className="sale-bill-section__hint dc-party-search-hint">{SEARCH_TYPE_HINT}</p>
           )}
         </div>
 
@@ -733,7 +713,7 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
                 Clear
               </button>
             </p>
-          ) : (
+          ) : brokerSearch.trim() ? (
             <div className="account-search-results party-search-results" role="listbox">
               <div className="account-search-header party-search-header" aria-hidden="true">
                 <span>Code</span>
@@ -741,7 +721,7 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
                 <span>City</span>
               </div>
               {filteredBrokers.length === 0 ? (
-                <div className="account-search-empty">{brokerListEmptyHint}</div>
+                <div className="account-search-empty">{SEARCH_NO_MATCH}</div>
               ) : (
                 filteredBrokers.map((row, index) => {
                   const code = row.CODE ?? row.code;
@@ -765,6 +745,8 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
                 })
               )}
             </div>
+          ) : (
+            <p className="sale-bill-section__hint dc-party-search-hint">{SEARCH_TYPE_HINT}</p>
           )}
         </div>
 
@@ -814,14 +796,14 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
                 Clear
               </button>
             </p>
-          ) : (
+          ) : itemSearch.trim() ? (
             <div className="account-search-results broker-search-results" role="listbox">
               <div className="account-search-header broker-search-header" aria-hidden="true">
                 <span>Code</span>
                 <span>Name</span>
               </div>
               {filteredItems.length === 0 ? (
-                <div className="account-search-empty">{itemListEmptyHint}</div>
+                <div className="account-search-empty">{SEARCH_NO_MATCH}</div>
               ) : (
                 filteredItems.map((row, index) => {
                   const code = row.ITEM_CODE ?? row.item_code;
@@ -846,6 +828,8 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
                 })
               )}
             </div>
+          ) : (
+            <p className="sale-bill-section__hint dc-party-search-hint">{SEARCH_ITEM_TYPE_HINT}</p>
           )}
         </div>
 

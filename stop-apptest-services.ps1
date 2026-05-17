@@ -2,59 +2,66 @@
 .SYNOPSIS
   Stops APPTEST runtime processes (API, frontend, tunnel) for this app folder.
 
-.DESCRIPTION
-  Safely stops only processes tied to the current AppRoot path:
-  - node.exe running server.cjs or vite
-  - cloudflared.exe using this app's config/path
-
-  Optional switches can also stop known scheduled tasks and Windows services
-  for the configured client.
-
-.PARAMETER AppRoot
-  App folder path. Defaults to this script's folder.
-
 .PARAMETER StopScheduledTasks
-  Also stop scheduled tasks:
-  FAS-<client>-API, FAS-<client>-AllServices, FAS-<client>-AppStack
-
-.PARAMETER StopWindowsServices
-  Also stop Windows services with names:
-  FAS-<client>-API or FAS-<client>-AllServices (if present).
+  Stop FAS-<client>-* scheduled tasks (recommended before git update on client PC).
 
 .PARAMETER ReleaseApiPort5001
-  After the normal stop, find anything listening on TCP port 5001 and stop it if the
-  process is node.exe (frees the API port when a stray Node process was missed).
+  Kill node.exe listening on TCP 5001.
 
-.EXAMPLE
-  .\stop-apptest-services.ps1
+.PARAMETER ReleasePorts5174
+  Free TCP 5174 (Vite) via free-windal-stack-ports.ps1.
 
-.EXAMPLE
-  .\stop-apptest-services.ps1 -StopScheduledTasks -StopWindowsServices
-
-.EXAMPLE
-  .\stop-apptest-services.ps1 -ReleaseApiPort5001
+.PARAMETER WaitSeconds
+  Pause after stop so file handles are released before npm ci / git pull.
 #>
 [CmdletBinding()]
 param(
     [string]$AppRoot = "",
     [switch]$StopScheduledTasks,
     [switch]$StopWindowsServices,
-    [switch]$ReleaseApiPort5001
+    [switch]$ReleaseApiPort5001,
+    [switch]$ReleasePorts5174,
+    [int]$WaitSeconds = 2
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 function Log([string]$Message, [ConsoleColor]$Color = [ConsoleColor]::Gray) {
     Write-Host $Message -ForegroundColor $Color
 }
 
-function Safe-StopProcessById([int]$ProcessId, [string]$Label) {
+function Normalize-PathForMatch([string]$path) {
+    if ([string]::IsNullOrWhiteSpace($path)) { return "" }
     try {
+        return [System.IO.Path]::GetFullPath($path).TrimEnd('\', '/')
+    } catch {
+        return $path.Trim().TrimEnd('\', '/')
+    }
+}
+
+function Test-CommandLineInAppRoot([string]$commandLine, [string]$rootNorm) {
+    if ([string]::IsNullOrWhiteSpace($commandLine) -or [string]::IsNullOrWhiteSpace($rootNorm)) {
+        return $false
+    }
+    $cmd = $commandLine -replace '/', '\'
+    return $cmd.IndexOf($rootNorm, [StringComparison]::OrdinalIgnoreCase) -ge 0
+}
+
+function Safe-StopProcessById([int]$ProcessId, [string]$Label) {
+    if ($ProcessId -le 4) { return }
+    try {
+        $alive = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+        if (-not $alive) { return }
         Stop-Process -Id $ProcessId -Force -ErrorAction Stop
         Log ("Stopped {0} (PID {1})" -f $Label, $ProcessId) Green
     } catch {
         Log ("Could not stop {0} (PID {1}): {2}" -f $Label, $ProcessId, $_.Exception.Message) Yellow
+        try {
+            & $env:SystemRoot\System32\taskkill.exe /F /PID $ProcessId 2>&1 | Out-Null
+            Log ("taskkill /F /PID {0}" -f $ProcessId) Yellow
+        } catch {
+            # ignore
+        }
     }
 }
 
@@ -63,70 +70,60 @@ if ([string]::IsNullOrWhiteSpace($AppRoot)) {
 }
 
 $AppRoot = (Resolve-Path -LiteralPath $AppRoot).Path
-$likeRoot = "*" + $AppRoot + "*"
+$rootNorm = Normalize-PathForMatch $AppRoot
 
 Log ""
 Log ("==> Stopping APPTEST processes for: {0}" -f $AppRoot) Cyan
 
-# 1) Stop Node processes tied to this app folder (API + Vite).
-$nodeCandidates = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+# 1) Any node.exe started from this app folder (API, Vite, npm, etc.).
+$nodeCandidates = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
     Where-Object {
-        $_.Name -eq "node.exe" -and
-        $_.CommandLine -and
-        $_.CommandLine -like $likeRoot -and
-        ($_.CommandLine -match "server\.cjs" -or $_.CommandLine -match "vite")
-    }
+        $_.Name -eq "node.exe" -and (Test-CommandLineInAppRoot $_.CommandLine $rootNorm)
+    })
 
-if ($nodeCandidates) {
-    foreach ($p in $nodeCandidates) {
-        Safe-StopProcessById -ProcessId $p.ProcessId -Label "node.exe"
-    }
-} else {
-    Log "No node.exe API/frontend process found for this app." DarkYellow
+foreach ($p in $nodeCandidates) {
+    Safe-StopProcessById -ProcessId $p.ProcessId -Label "node.exe"
+}
+if ($nodeCandidates.Count -eq 0) {
+    Log "No node.exe process found for this app folder." DarkYellow
 }
 
-# 2) Stop cloudflared processes tied to this app folder.
-$cloudCandidates = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+# 1b) esbuild (Vite / build) often outlives the parent node briefly.
+$esbuildCandidates = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
     Where-Object {
-        $_.Name -eq "cloudflared.exe" -and
-        $_.CommandLine -and
-        $_.CommandLine -like $likeRoot
-    }
-
-if ($cloudCandidates) {
-    foreach ($p in $cloudCandidates) {
-        Safe-StopProcessById -ProcessId $p.ProcessId -Label "cloudflared.exe"
-    }
-} else {
-    Log "No cloudflared.exe process found for this app." DarkYellow
+        $_.Name -eq "esbuild.exe" -and (Test-CommandLineInAppRoot $_.CommandLine $rootNorm)
+    })
+foreach ($p in $esbuildCandidates) {
+    Safe-StopProcessById -ProcessId $p.ProcessId -Label "esbuild.exe"
 }
 
-# 2b) Optional: free API port when a Node listener was not matched by path (EADDRINUSE on 5001).
-if ($ReleaseApiPort5001) {
-    Log ""
-    Log "==> Checking TCP port 5001 (API)..." Cyan
-    try {
-        $rawPids = Get-NetTCPConnection -LocalPort 5001 -State Listen -ErrorAction SilentlyContinue |
-            ForEach-Object { $_.OwningProcess }
-        $pids = @($rawPids | Sort-Object -Unique | Where-Object { $_ -and $_ -gt 4 })
-        if ($pids.Count -eq 0) {
-            Log "No LISTEN process found on port 5001." DarkYellow
-        }
-        foreach ($procId in $pids) {
-            $wp = Get-CimInstance Win32_Process -Filter "ProcessId = $procId" -ErrorAction SilentlyContinue
-            if (-not $wp) { continue }
-            if ($wp.Name -ne "node.exe") {
-                Log ("Port 5001: PID {0} is {1} - not stopped automatically. Close it manually if needed." -f $procId, $wp.Name) Yellow
-                continue
-            }
-            Safe-StopProcessById -ProcessId $procId -Label "node.exe (listener on :5001)"
-        }
-    } catch {
-        Log ("Port check failed: {0}" -f $_.Exception.Message) Yellow
+# 2) cloudflared using this app's config path.
+$cloudCandidates = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.Name -eq "cloudflared.exe" -and (Test-CommandLineInAppRoot $_.CommandLine $rootNorm)
+    })
+foreach ($p in $cloudCandidates) {
+    Safe-StopProcessById -ProcessId $p.ProcessId -Label "cloudflared.exe"
+}
+if ($cloudCandidates.Count -eq 0) {
+    Log "No cloudflared.exe process found for this app folder." DarkYellow
+}
+
+# 3) Free stack ports (node listeners not matched by command line).
+$freeScript = Join-Path $AppRoot "free-windal-stack-ports.ps1"
+if ($ReleaseApiPort5001 -or $ReleasePorts5174) {
+    $ports = @()
+    if ($ReleaseApiPort5001) { $ports += 5001 }
+    if ($ReleasePorts5174) { $ports += 5174 }
+    if (Test-Path -LiteralPath $freeScript) {
+        Log ""
+        Log ("==> Freeing ports: {0}" -f ($ports -join ", ")) Cyan
+        & $freeScript -Ports $ports
+    } else {
+        Log "free-windal-stack-ports.ps1 not found; skipping port cleanup." Yellow
     }
 }
 
-# 3) Optional: stop known scheduled tasks for this client.
 $clientKey = ""
 $cfgPath = Join-Path $AppRoot "connection.config.json"
 if (Test-Path -LiteralPath $cfgPath) {
@@ -134,74 +131,50 @@ if (Test-Path -LiteralPath $cfgPath) {
         $cfg = Get-Content -LiteralPath $cfgPath -Raw | ConvertFrom-Json
         if ($cfg.PSObject.Properties.Name -contains "clientName" -and -not [string]::IsNullOrWhiteSpace([string]$cfg.clientName)) {
             $clientKey = [string]$cfg.clientName
-        } elseif ($cfg.PSObject.Properties.Name -contains "defaultClientKey" -and -not [string]::IsNullOrWhiteSpace([string]$cfg.defaultClientKey)) {
+        } elseif ($cfg.PSObject.Properties.Name -contains "defaultClientKey") {
             $clientKey = [string]$cfg.defaultClientKey
-        } else {
-            $clientKey = ""
         }
     } catch {
         Log ("Could not parse connection.config.json: {0}" -f $_.Exception.Message) Yellow
     }
 }
 
-if ($StopScheduledTasks) {
-    if ([string]::IsNullOrWhiteSpace($clientKey)) {
-        Log "Skipping scheduled task stop: clientName/defaultClientKey not found in connection.config.json" Yellow
-    } else {
-        $taskNames = @(
-            "FAS-$clientKey-API",
-            "FAS-$clientKey-AllServices",
-            "FAS-$clientKey-AppStack"
-        )
-        foreach ($taskName in $taskNames) {
-            try {
-                Stop-ScheduledTask -TaskName $taskName -ErrorAction Stop | Out-Null
+if ($StopScheduledTasks -and -not [string]::IsNullOrWhiteSpace($clientKey)) {
+    Log ""
+    Log "==> Stopping scheduled tasks (prevent auto-restart during update)..." Cyan
+    foreach ($taskName in @("FAS-$clientKey-API", "FAS-$clientKey-AllServices", "FAS-$clientKey-AppStack")) {
+        try {
+            $t = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+            if ($t) {
+                Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue | Out-Null
                 Log ("Stopped scheduled task: {0}" -f $taskName) Green
-            } catch {
-                Log ("Task not running or not found: {0}" -f $taskName) DarkYellow
             }
+        } catch {
+            Log ("Task not found or not running: {0}" -f $taskName) DarkYellow
         }
     }
 }
 
-# 4) Optional: stop likely NSSM service names for this client.
-if ($StopWindowsServices) {
-    if ([string]::IsNullOrWhiteSpace($clientKey)) {
-        Log "Skipping service stop: clientName/defaultClientKey not found in connection.config.json" Yellow
-    } else {
-        $serviceNames = @(
-            "FAS-$clientKey-API",
-            "FAS-$clientKey-AllServices"
-        )
-        foreach ($serviceName in $serviceNames) {
-            try {
-                $svc = Get-Service -Name $serviceName -ErrorAction Stop
-                if ($svc.Status -ne "Stopped") {
-                    Stop-Service -Name $serviceName -Force -ErrorAction Stop
-                    Log ("Stopped Windows service: {0}" -f $serviceName) Green
-                } else {
-                    Log ("Service already stopped: {0}" -f $serviceName) DarkYellow
-                }
-            } catch {
-                Log ("Service not found or could not stop: {0}" -f $serviceName) DarkYellow
+if ($StopWindowsServices -and -not [string]::IsNullOrWhiteSpace($clientKey)) {
+    foreach ($serviceName in @("FAS-$clientKey-API", "FAS-$clientKey-AllServices")) {
+        try {
+            $svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+            if ($svc -and $svc.Status -ne "Stopped") {
+                Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+                Log ("Stopped Windows service: {0}" -f $serviceName) Green
             }
+        } catch {
+            Log ("Service not found: {0}" -f $serviceName) DarkYellow
         }
     }
 }
 
-Start-Sleep -Seconds 1
-
-try {
-    $still5001 = Get-NetTCPConnection -LocalPort 5001 -State Listen -ErrorAction SilentlyContinue
-    if ($still5001) {
-        Log ""
-        Log "Port 5001 is still in use (API will fail with EADDRINUSE). Run:" Yellow
-        Log "  .\stop-apptest-services.ps1 -ReleaseApiPort5001" Yellow
-        Log "Or stop the owning process in Task Manager (Details tab: find PID from netstat)." Yellow
-    }
-} catch {
-    # Get-NetTCPConnection not available on very old hosts; ignore.
+if ($WaitSeconds -gt 0) {
+    Log ""
+    Log ("Waiting {0}s for file handles to release..." -f $WaitSeconds) DarkGray
+    Start-Sleep -Seconds $WaitSeconds
 }
 
 Log ""
 Log "Done. APPTEST runtime processes are stopped for this app root." Cyan
+exit 0

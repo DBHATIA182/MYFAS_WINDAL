@@ -5,6 +5,7 @@ import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, getCurBal, formatCurBal } from '../utils/dateFormat';
 import ReportHelpButton from '../components/ReportHelpButton';
+import { filterCodeNameCityRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
 
 const DEFAULT_HISTORY_START_DATE = '2001-04-01';
 
@@ -118,16 +119,10 @@ export default function Slide6({ apiBase, onPrev, onReset, formData }) {
     loadInterestDefaults();
   }, [apiBase, compCode, compUid]);
 
-  const filteredParties = useMemo(() => {
-    const q = partySearch.trim().toLowerCase();
-    if (!q) return parties.slice(0, 150);
-    return parties.filter((p) => {
-      const code = String(p.CODE ?? p.code ?? '').toLowerCase();
-      const name = String(p.NAME ?? p.name ?? '').toLowerCase();
-      const city = String(p.CITY ?? p.city ?? '').toLowerCase();
-      return code.includes(q) || name.includes(q) || city.includes(q);
-    });
-  }, [parties, partySearch]);
+  const filteredParties = useMemo(
+    () => filterCodeNameCityRows(parties, partySearch, 50),
+    [parties, partySearch]
+  );
 
   useEffect(() => {
     setListHighlight(0);
@@ -410,7 +405,7 @@ export default function Slide6({ apiBase, onPrev, onReset, formData }) {
               </button>
             </p>
           ) : null}
-          {!selectedCode ? (
+          {!selectedCode && partySearch.trim() ? (
             <div className="account-search-results party-search-results" role="listbox" aria-label="Matching parties">
               <div className={`account-search-header party-search-header${showPartyBal ? ' party-search-header--with-bal' : ''}`} aria-hidden="true">
                 <span>Code</span>
@@ -419,7 +414,7 @@ export default function Slide6({ apiBase, onPrev, onReset, formData }) {
                 {showPartyBal ? <span className="account-search-bal-h">Bal</span> : null}
               </div>
               {filteredParties.length === 0 ? (
-                <div className="account-search-empty">No parties match your search.</div>
+                <div className="account-search-empty">{SEARCH_NO_MATCH}</div>
               ) : (
                 filteredParties.map((row, index) => {
                   const code = row.CODE ?? row.code;
@@ -456,6 +451,8 @@ export default function Slide6({ apiBase, onPrev, onReset, formData }) {
                 })
               )}
             </div>
+          ) : !selectedCode ? (
+            <p className="sale-bill-section__hint dc-party-search-hint">{SEARCH_TYPE_HINT}</p>
           ) : null}
         </div>
 

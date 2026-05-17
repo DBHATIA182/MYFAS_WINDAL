@@ -8,6 +8,7 @@ import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, formatCurBal, getCurBal } from '../utils/dateFormat';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
 import ReportHelpButton from '../components/ReportHelpButton';
+import { filterAccountRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
 
 function highlightMatch(text, q) {
   if (text == null) return null;
@@ -107,17 +108,10 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
     };
   }, [apiBase, formData.comp_code, formData.COMP_CODE, formData.comp_uid, formData.COMP_UID]);
 
-  const filteredAccounts = useMemo(() => {
-    const q = accountSearch.trim().toLowerCase();
-    if (!q) return accounts.slice(0, 120);
-    return accounts.filter((a) => {
-      const code = String(a.CODE ?? '').toLowerCase();
-      const name = String(a.NAME ?? '').toLowerCase();
-      const city = String(a.CITY ?? '').toLowerCase();
-      const bal = String(getCurBal(a) ?? '').toLowerCase();
-      return code.includes(q) || name.includes(q) || city.includes(q) || bal.includes(q);
-    });
-  }, [accounts, accountSearch]);
+  const filteredAccounts = useMemo(
+    () => filterAccountRows(accounts, accountSearch, getCurBal, 50),
+    [accounts, accountSearch]
+  );
 
   useEffect(() => {
     setListHighlight(0);
@@ -520,7 +514,7 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
               </button>
             </p>
           ) : null}
-          {!selectedAccount ? (
+          {!selectedAccount && accountSearch.trim() ? (
             <div className="account-search-results" role="listbox" aria-label="Matching accounts">
               <div className="account-search-header" aria-hidden="true">
                 <span>Code</span>
@@ -529,7 +523,7 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
                 <span className="account-search-bal-h">Bal</span>
               </div>
               {filteredAccounts.length === 0 ? (
-                <div className="account-search-empty">No accounts match your search.</div>
+                <div className="account-search-empty">{SEARCH_NO_MATCH}</div>
               ) : (
                 filteredAccounts.map((account, index) => {
                   const bal = getCurBal(account);
@@ -549,7 +543,12 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
                       aria-selected={rowHi}
                       className={`account-search-row${String(selectedAccount) === String(account.CODE) ? ' is-active' : ''}${rowHi ? ' is-highlight' : ''}`}
                       onMouseEnter={() => setListHighlight(index)}
-                      onClick={() => selectAccount(account)}
+                      onPointerDown={(e) => e.preventDefault()}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        selectAccount(account);
+                      }}
                     >
                       <span className="account-search-code">{highlightMatch(account.CODE, accountSearch)}</span>
                       <span className="account-search-name" title={account.NAME}>
@@ -569,6 +568,8 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
                 })
               )}
             </div>
+          ) : !selectedAccount ? (
+            <p className="sale-bill-section__hint dc-party-search-hint">{SEARCH_TYPE_HINT}</p>
           ) : null}
         </div>
 

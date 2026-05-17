@@ -714,6 +714,117 @@ function isLoginOptionalTableError(err) {
   );
 }
 
+function isOracleMissingObjectError(err) {
+  return isLoginOptionalTableError(err);
+}
+
+/** SCHEDULE list for new-party modal; falls back to distinct MASTER.SCHEDULE if SCHEDULE table missing. */
+async function fetchMasterPartyScheduleRows(comp_code, comp_uid) {
+  const sqlSched = `
+      SELECT NVL(S.NO, 0) AS NO, NVL(S.NAME, '') AS NAME
+      FROM SCHEDULE S
+      WHERE S.COMP_CODE = :comp_code
+      ORDER BY S.NAME, S.NO`;
+  try {
+    const rows = await runQuery(sqlSched, { comp_code }, comp_uid);
+    if (Array.isArray(rows) && rows.length > 0) return rows;
+  } catch (err) {
+    if (!isOracleMissingObjectError(err)) throw err;
+  }
+  const sqlMaster = `
+      SELECT DISTINCT ROUND(NVL(M.SCHEDULE, 0), 2) AS NO,
+             TO_CHAR(ROUND(NVL(M.SCHEDULE, 0), 2)) AS NAME
+      FROM MASTER M
+      WHERE M.COMP_CODE = :comp_code
+        AND NVL(M.SCHEDULE, 0) <> 0
+      ORDER BY 1`;
+  const rows = await runQuery(sqlMaster, { comp_code }, comp_uid);
+  return rows || [];
+}
+
+/** GST state lookup for new-party modal (Fox: gst_State); then STATE/STATES/MASTER fallbacks. */
+async function fetchMasterPartyStateRows(comp_uid, comp_code) {
+  const tableSqls = [
+    `SELECT TRIM(STATE) AS STATE, TRIM(STATE_CODE) AS STATE_CODE FROM GST_STATE WHERE TRIM(NVL(STATE_CODE, '')) IS NOT NULL ORDER BY STATE`,
+    `SELECT TRIM(STATE) AS STATE, TRIM(STATE_CODE) AS STATE_CODE FROM STATE WHERE TRIM(NVL(STATE_CODE, '')) IS NOT NULL ORDER BY STATE`,
+    `SELECT TRIM(STATE) AS STATE, TRIM(STATE_CODE) AS STATE_CODE FROM STATES WHERE TRIM(NVL(STATE_CODE, '')) IS NOT NULL ORDER BY STATE`,
+  ];
+  for (const sql of tableSqls) {
+    try {
+      const rows = await runQuery(sql, {}, comp_uid, { suppressDbErrorLog: true });
+      if (Array.isArray(rows) && rows.length > 0) return rows;
+    } catch (err) {
+      if (!isOracleMissingObjectError(err)) throw err;
+    }
+  }
+  if (comp_code) {
+    const sqlMaster = `
+        SELECT DISTINCT TRIM(M.STATE) AS STATE, TRIM(M.STATE_CODE) AS STATE_CODE
+        FROM MASTER M
+        WHERE M.COMP_CODE = :comp_code
+          AND TRIM(NVL(M.STATE_CODE, '')) IS NOT NULL
+        ORDER BY M.STATE`;
+    try {
+      const rows = await runQuery(sqlMaster, { comp_code }, comp_uid, { suppressDbErrorLog: true });
+      if (Array.isArray(rows) && rows.length > 0) return rows;
+    } catch (err) {
+      if (!isOracleMissingObjectError(err)) throw err;
+    }
+  }
+  return [];
+}
+
+/** INSERT MASTER for data-entry “new party”; probes optional USER_NAME / ENT_DATE columns. */
+async function insertMasterPartyRow(binds, comp_uid) {
+  const attempts = [
+    {
+      sql: `
+      INSERT INTO MASTER (
+        COMP_CODE, COMP_YEAR, SCHEDULE, CODE, NAME, ADD1, ADD2, ADD3, CITY,
+        GST_NO, STATE_CODE, STATE, PAN, TEL_NO_O, USER_NAME, ENT_DATE
+      ) VALUES (
+        :comp_code, :comp_year, :schedule, :code, :name, :add1, :add2, :add3, :city,
+        :gst_no, :state_code, :state, :pan, :tel_no_o, :user_name, SYSDATE
+      )`,
+      binds,
+    },
+    {
+      sql: `
+      INSERT INTO MASTER (
+        COMP_CODE, COMP_YEAR, SCHEDULE, CODE, NAME, ADD1, ADD2, ADD3, CITY,
+        GST_NO, STATE_CODE, STATE, PAN, TEL_NO_O, USER_NAME
+      ) VALUES (
+        :comp_code, :comp_year, :schedule, :code, :name, :add1, :add2, :add3, :city,
+        :gst_no, :state_code, :state, :pan, :tel_no_o, :user_name
+      )`,
+      binds,
+    },
+    {
+      sql: `
+      INSERT INTO MASTER (
+        COMP_CODE, COMP_YEAR, SCHEDULE, CODE, NAME, ADD1, ADD2, ADD3, CITY,
+        GST_NO, STATE_CODE, STATE, PAN, TEL_NO_O
+      ) VALUES (
+        :comp_code, :comp_year, :schedule, :code, :name, :add1, :add2, :add3, :city,
+        :gst_no, :state_code, :state, :pan, :tel_no_o
+      )`,
+      binds: (({ user_name, ...rest }) => rest)(binds),
+    },
+  ];
+  let lastErr;
+  for (const { sql, binds: b } of attempts) {
+    try {
+      await runQuery(sql, b, comp_uid);
+      return;
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err?.message || '');
+      if (!msg.includes('00904') && !/invalid identifier/i.test(msg)) throw err;
+    }
+  }
+  throw lastErr || new Error('MASTER insert failed');
+}
+
 /**
  * App login: USERS (and optional schema-qualified USERS for legacy installs).
  */
@@ -833,6 +944,64 @@ function saleBillPermissionsFromF1(f1) {
     canDelete: bit(3),
     flags: 'f1',
   };
+}
+
+/** Master maintenance (new party): DAL.USERS / USERS F4 — pos 1–4 = open, add, edit, delete. */
+async function fetchMasterPartyUserF4String(user_name, comp_uid) {
+  const u = String(user_name || '').trim().toUpperCase();
+  if (!u) return { f4: '', source: 'empty_user' };
+  const schemas = isEffectiveCompUid(comp_uid) ? [String(comp_uid).trim(), null] : [null];
+  const tables = ['DAL.USERS', 'USERS'];
+  for (const sch of schemas) {
+    for (const t of tables) {
+      const sql = `SELECT F4 FROM ${t} WHERE UPPER(TRIM(USER_NAME)) = :u AND ROWNUM = 1`;
+      try {
+        const rows = await runQuery(sql, { u }, sch, { suppressDbErrorLog: true });
+        const raw = rows?.[0]?.F4 ?? rows?.[0]?.f4;
+        if (raw != null && String(raw).trim() !== '') {
+          return { f4: String(raw).trim(), source: t };
+        }
+      } catch (err) {
+        if (!isLoginOptionalTableError(err) && !isUnknownUsersColumnError(err)) {
+          /* ignore */
+        }
+      }
+    }
+  }
+  return { f4: '', source: 'none' };
+}
+
+function masterPartyPermissionsFromF4(f4) {
+  const s = String(f4 || '');
+  const ch = (i) => (s.length > i ? s.charAt(i) : '');
+  const bit = (i) => ch(i) === '1';
+  if (!s) {
+    return {
+      canOpen: true,
+      canAdd: true,
+      canEdit: true,
+      canDelete: true,
+      flags: 'legacy_no_f4',
+    };
+  }
+  return {
+    canOpen: bit(0),
+    canAdd: bit(1),
+    canEdit: bit(2),
+    canDelete: bit(3),
+    flags: 'f4',
+  };
+}
+
+function masterPartyScheduleBind(schedule) {
+  const sch = Number(schedule);
+  return Number.isFinite(sch) ? Math.round(sch * 100) / 100 : 0;
+}
+
+function trimMasterPartyField(v, maxLen) {
+  const s = String(v ?? '').trim();
+  if (!maxLen || s.length <= maxLen) return s;
+  return s.slice(0, maxLen);
 }
 
 /** UI / Oracle parity: SALE line WEIGHT and header charges max precision (COMPDET does not cap these). */
@@ -1960,6 +2129,7 @@ ${extDelvCols}
         A.B_CODE,
         C.NAME AS BK_NAME,
         C.TEL_NO_O AS B_TEL_NO,
+        NVL(C.SELF_BROK, 'N') AS BROKER_SELF_BROK,
         ${othNameSelect},
         A.TRN_NO,
         A.ITEM_CODE,
@@ -2086,6 +2256,7 @@ function buildSaleBillPrintSqlNano(qrSelectFragment, typeMatch, relaxBillDate = 
         A.B_CODE,
         C.NAME AS BK_NAME,
         C.TEL_NO_O AS B_TEL_NO,
+        NVL(C.SELF_BROK, 'N') AS BROKER_SELF_BROK,
         CAST(NULL AS VARCHAR2(500)) AS OTH_NAME,
         A.TRN_NO,
         A.ITEM_CODE,
@@ -4161,6 +4332,156 @@ app.get('/api/sale-bill-master-by-schedule', async (req, res) => {
     res.json(rows || []);
   } catch (err) {
     console.error('❌ sale-bill-master-by-schedule error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/master-party-user-permissions', async (req, res) => {
+  try {
+    const { comp_uid, user_name } = req.query;
+    if (comp_uid == null || String(comp_uid).trim() === '' || !user_name) {
+      return res.status(400).json({ error: 'comp_uid and user_name are required' });
+    }
+    const { f4, source } = await fetchMasterPartyUserF4String(String(user_name), comp_uid);
+    res.json({ f4, source, ...masterPartyPermissionsFromF4(f4) });
+  } catch (err) {
+    console.error('❌ master-party-user-permissions error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/master-party-schedules', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const rows = await fetchMasterPartyScheduleRows(comp_code, comp_uid);
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ master-party-schedules error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/master-party-states', async (req, res) => {
+  try {
+    const { comp_uid, comp_code } = req.query;
+    if (comp_uid == null) {
+      return res.status(400).json({ error: 'comp_uid is required' });
+    }
+    const rows = await fetchMasterPartyStateRows(comp_uid, comp_code ? String(comp_code).trim() : '');
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ master-party-states error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/master-party-next-code', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, schedule } = req.query;
+    if (!comp_code || comp_uid == null || schedule == null || String(schedule).trim() === '') {
+      return res.status(400).json({ error: 'comp_code, comp_uid, and schedule are required' });
+    }
+    const sched = masterPartyScheduleBind(schedule);
+    const sql = `
+      SELECT NVL(MAX(NVL(M.CODE, 0)), 0) + 1 AS NEXT_CODE
+      FROM MASTER M
+      WHERE M.COMP_CODE = :comp_code
+        AND ROUND(NVL(M.SCHEDULE, 0), 2) = :schedule`;
+    const rows = await runQuery(sql, { comp_code, schedule: sched }, comp_uid);
+    const n = rows?.[0]?.NEXT_CODE ?? rows?.[0]?.next_code ?? 1;
+    res.json({ next_code: Number(n) || 1, schedule: sched });
+  } catch (err) {
+    console.error('❌ master-party-next-code error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/master-party', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const comp_code = String(body.comp_code ?? '').trim();
+    const comp_uid = body.comp_uid;
+    const user_name = String(body.user_name ?? '').trim();
+    const comp_year = Number(body.comp_year ?? body.compYear ?? 0) || 0;
+    if (!comp_code || comp_uid == null || String(comp_uid).trim() === '' || !user_name) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, comp_year, and user_name are required' });
+    }
+    const { f4 } = await fetchMasterPartyUserF4String(user_name, comp_uid);
+    const perms = masterPartyPermissionsFromF4(f4);
+    if (!perms.canOpen) return res.status(403).json({ error: 'Access Denied' });
+    if (!perms.canAdd) return res.status(403).json({ error: 'You Can Not Add' });
+
+    const schedule = masterPartyScheduleBind(body.schedule);
+    if (!schedule) return res.status(400).json({ error: 'schedule is required' });
+
+    let codeN = Number(body.code);
+    if (!Number.isFinite(codeN) || codeN <= 0) {
+      const nextRows = await runQuery(
+        `SELECT NVL(MAX(NVL(M.CODE, 0)), 0) + 1 AS NEXT_CODE
+         FROM MASTER M
+         WHERE M.COMP_CODE = :comp_code AND ROUND(NVL(M.SCHEDULE, 0), 2) = :schedule`,
+        { comp_code, schedule },
+        comp_uid
+      );
+      codeN = Number(nextRows?.[0]?.NEXT_CODE ?? nextRows?.[0]?.next_code ?? 1) || 1;
+    } else {
+      codeN = Math.floor(codeN);
+    }
+
+    const name = trimMasterPartyField(body.name, 50).toUpperCase();
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    const dup = await runQuery(
+      `SELECT COUNT(*) AS CNT FROM MASTER M
+       WHERE M.COMP_CODE = :comp_code AND M.CODE = :code AND ROWNUM = 1`,
+      { comp_code, code: codeN },
+      comp_uid
+    );
+    const dupCnt = Number(dup?.[0]?.CNT ?? dup?.[0]?.cnt ?? 0);
+    if (dupCnt > 0) {
+      return res.status(409).json({ error: `Account code ${codeN} already exists for this company.` });
+    }
+
+    const binds = {
+      comp_code,
+      comp_year,
+      schedule,
+      code: codeN,
+      name,
+      add1: trimMasterPartyField(body.add1, 40),
+      add2: trimMasterPartyField(body.add2, 40),
+      add3: trimMasterPartyField(body.add3, 40),
+      city: trimMasterPartyField(body.city, 20),
+      gst_no: trimMasterPartyField(body.gst_no, 15),
+      state_code: trimMasterPartyField(body.state_code, 2),
+      state: trimMasterPartyField(body.state, 30).toUpperCase(),
+      pan: trimMasterPartyField(body.pan, 10).toUpperCase(),
+      tel_no_o: trimMasterPartyField(body.tel_no_o ?? body.tel_no, 30),
+      user_name,
+    };
+
+    await insertMasterPartyRow(binds, comp_uid);
+
+    res.json({
+      ok: true,
+      CODE: codeN,
+      code: codeN,
+      NAME: name,
+      name,
+      CITY: binds.city,
+      city: binds.city,
+      GST_NO: binds.gst_no,
+      gst_no: binds.gst_no,
+      PAN: binds.pan,
+      pan: binds.pan,
+      SCHEDULE: schedule,
+      schedule,
+    });
+  } catch (err) {
+    console.error('❌ master-party POST error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

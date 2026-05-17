@@ -4,6 +4,7 @@ import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
 import { DcActionBar } from '../components/DispatchChallanActionBar';
+import { filterCodeNameCityRows, filterItemCodeNameRows } from '../utils/masterSearchFilter';
 
 const reqOpts = { withCredentials: true, timeout: 120000 };
 
@@ -73,25 +74,15 @@ export default function SalesOrderListScreen({
   const items = lookups?.items || [];
   const markas = lookups?.markas || [];
 
-  const filteredParties = useMemo(() => {
-    const q = partySearch.trim().toLowerCase();
-    if (!q) return parties.slice(0, 80);
-    return parties.filter((p) => {
-      const pc = String(p.CODE ?? p.code ?? '').toLowerCase();
-      const name = String(p.NAME ?? p.name ?? '').toLowerCase();
-      return pc.includes(q) || name.includes(q);
-    });
-  }, [partySearch, parties]);
+  const filteredParties = useMemo(
+    () => filterCodeNameCityRows(parties, partySearch, 50),
+    [partySearch, parties]
+  );
 
-  const filteredItems = useMemo(() => {
-    const q = itemSearch.trim().toLowerCase();
-    if (!q) return items.slice(0, 80);
-    return items.filter((it) => {
-      const ic = String(it.ITEM_CODE ?? it.item_code ?? '').toLowerCase();
-      const nm = String(it.ITEM_NAME ?? it.item_name ?? '').toLowerCase();
-      return ic.includes(q) || nm.includes(q);
-    });
-  }, [itemSearch, items]);
+  const filteredItems = useMemo(
+    () => filterItemCodeNameRows(items, itemSearch, 50),
+    [itemSearch, items]
+  );
 
   const reportRows = useMemo(() => rows.map(mapReportRow), [rows]);
 

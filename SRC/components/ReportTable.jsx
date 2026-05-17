@@ -14,7 +14,8 @@ const LEDGER_SALE_VR_TYPES = new Set(['SL', 'SE', 'CN']);
 
 /** <colgroup> px widths (no InvDate column — date is on the Day banner row only) */
 const SALE_LIST_COL_WIDTHS_PX = [
-  18, 32, 12, 44, 208, 96, 124, 118, 50, 168, 42, 56, 146, 20,
+  /* Tp, InvNo, Bt, Party, Name — wide enough for 5-digit bill no + party code on mobile */
+  22, 58, 14, 68, 196, 96, 124, 118, 50, 168, 42, 56, 146, 20,
   /* Qty, Wt, Rate, Amount, Taxable, CGST, SGST, IGST, Round off, Bill amt */
   78, 108, 78, 132, 92, 76, 76, 76, 58, 100,
 ];
@@ -24,6 +25,8 @@ const SALE_LIST_TABLE_WIDTH_PX = SALE_LIST_COL_WIDTHS_PX.reduce((s, w) => s + w,
 /** Locks lead columns via CSS vars (--sl-col-1 … 5) + exact table width (fixed layout). */
 const SALE_LIST_TABLE_STYLE = {
   width: `${SALE_LIST_TABLE_WIDTH_PX}px`,
+  minWidth: `${SALE_LIST_TABLE_WIDTH_PX}px`,
+  ['--sl-table-width']: `${SALE_LIST_TABLE_WIDTH_PX}px`,
   ...Object.fromEntries(SALE_LIST_COL_WIDTHS_PX.slice(0, 5).map((w, i) => [`--sl-col-${i + 1}`, `${w}px`])),
 };
 
