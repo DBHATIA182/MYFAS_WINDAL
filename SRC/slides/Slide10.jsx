@@ -5,6 +5,7 @@ import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, formatLedgerDateDisplay } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine from '../components/SessionInfoLine';
 
 function n(row, upper, lower) {
   const v = row?.[upper] ?? row?.[lower];
@@ -501,13 +502,12 @@ export default function Slide10({ apiBase, formData, onPrev, onReset }) {
   return (
     <div className="slide slide-10">
       <h2>Stock lot</h2>
-      <p className="company-info">
-        {compName} | FY {compYear}
+      <SessionInfoLine formData={formData}>
         <br />
         <span className="compdet-date-hint">
           Lot-wise stock position from <strong>LOTSTOCK</strong> with optional filters and Complete/Outstanding mode.
         </span>
-      </p>
+      </SessionInfoLine>
       {lookupError ? (
         <div className="form-api-error" role="alert">
           {lookupError}

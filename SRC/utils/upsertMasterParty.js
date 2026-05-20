@@ -15,6 +15,8 @@ export function upsertMasterParty(list, row) {
     pan: row.PAN ?? row.pan ?? '',
     SELF_BROK: row.SELF_BROK ?? row.self_brok ?? 'N',
     self_brok: row.SELF_BROK ?? row.self_brok ?? 'N',
+    L_C: row.L_C ?? row.l_c ?? 'L',
+    l_c: row.L_C ?? row.l_c ?? 'L',
   };
   const next = (list || []).filter((p) => String(p.CODE ?? p.code) !== pc);
   next.push(entry);

@@ -774,9 +774,42 @@ async function fetchMasterPartyStateRows(comp_uid, comp_code) {
   return [];
 }
 
-/** INSERT MASTER for data-entry “new party”; probes optional USER_NAME / ENT_DATE columns. */
+/** INSERT MASTER for data-entry “new party”; probes optional USER_NAME / ENT_DATE / L_C columns. */
 async function insertMasterPartyRow(binds, comp_uid) {
   const attempts = [
+    {
+      sql: `
+      INSERT INTO MASTER (
+        COMP_CODE, COMP_YEAR, SCHEDULE, CODE, NAME, ADD1, ADD2, ADD3, CITY,
+        GST_NO, STATE_CODE, STATE, PAN, TEL_NO_O, L_C, USER_NAME, ENT_DATE
+      ) VALUES (
+        :comp_code, :comp_year, :schedule, :code, :name, :add1, :add2, :add3, :city,
+        :gst_no, :state_code, :state, :pan, :tel_no_o, :l_c, :user_name, SYSDATE
+      )`,
+      binds,
+    },
+    {
+      sql: `
+      INSERT INTO MASTER (
+        COMP_CODE, COMP_YEAR, SCHEDULE, CODE, NAME, ADD1, ADD2, ADD3, CITY,
+        GST_NO, STATE_CODE, STATE, PAN, TEL_NO_O, L_C, USER_NAME
+      ) VALUES (
+        :comp_code, :comp_year, :schedule, :code, :name, :add1, :add2, :add3, :city,
+        :gst_no, :state_code, :state, :pan, :tel_no_o, :l_c, :user_name
+      )`,
+      binds,
+    },
+    {
+      sql: `
+      INSERT INTO MASTER (
+        COMP_CODE, COMP_YEAR, SCHEDULE, CODE, NAME, ADD1, ADD2, ADD3, CITY,
+        GST_NO, STATE_CODE, STATE, PAN, TEL_NO_O, L_C
+      ) VALUES (
+        :comp_code, :comp_year, :schedule, :code, :name, :add1, :add2, :add3, :city,
+        :gst_no, :state_code, :state, :pan, :tel_no_o, :l_c
+      )`,
+      binds: (({ user_name, ...rest }) => rest)(binds),
+    },
     {
       sql: `
       INSERT INTO MASTER (
@@ -786,7 +819,7 @@ async function insertMasterPartyRow(binds, comp_uid) {
         :comp_code, :comp_year, :schedule, :code, :name, :add1, :add2, :add3, :city,
         :gst_no, :state_code, :state, :pan, :tel_no_o, :user_name, SYSDATE
       )`,
-      binds,
+      binds: (({ l_c, ...rest }) => rest)(binds),
     },
     {
       sql: `
@@ -797,7 +830,7 @@ async function insertMasterPartyRow(binds, comp_uid) {
         :comp_code, :comp_year, :schedule, :code, :name, :add1, :add2, :add3, :city,
         :gst_no, :state_code, :state, :pan, :tel_no_o, :user_name
       )`,
-      binds,
+      binds: (({ l_c, ...rest }) => rest)(binds),
     },
     {
       sql: `
@@ -808,13 +841,13 @@ async function insertMasterPartyRow(binds, comp_uid) {
         :comp_code, :comp_year, :schedule, :code, :name, :add1, :add2, :add3, :city,
         :gst_no, :state_code, :state, :pan, :tel_no_o
       )`,
-      binds: (({ user_name, ...rest }) => rest)(binds),
+      binds: (({ user_name, l_c, ...rest }) => rest)(binds),
     },
   ];
   let lastErr;
   for (const { sql, binds: b } of attempts) {
     try {
-      await runQuery(sql, b, comp_uid);
+      await runQuery(sql, b, comp_uid, { autoCommit: true });
       return;
     } catch (err) {
       lastErr = err;
@@ -1002,6 +1035,16 @@ function trimMasterPartyField(v, maxLen) {
   const s = String(v ?? '').trim();
   if (!maxLen || s.length <= maxLen) return s;
   return s.slice(0, maxLen);
+}
+
+/** MASTER.L_C — L = Local, C = Central, I = Import */
+function normalizeMasterPartyLc(v) {
+  const x = String(v ?? 'L')
+    .trim()
+    .toUpperCase();
+  if (x === 'C' || x === 'CENTRAL') return 'C';
+  if (x === 'I' || x === 'IMPORT') return 'I';
+  return 'L';
 }
 
 /** UI / Oracle parity: SALE line WEIGHT and header charges max precision (COMPDET does not cap these). */
@@ -4434,6 +4477,12 @@ app.post('/api/master-party', async (req, res) => {
     const name = trimMasterPartyField(body.name, 50).toUpperCase();
     if (!name) return res.status(400).json({ error: 'Name is required' });
 
+    const lcRaw = String(body.l_c ?? body.L_C ?? '').trim();
+    if (!lcRaw) {
+      return res.status(400).json({ error: 'L_C (Local/Central/Import) is required. Use L, C, or I.' });
+    }
+    const l_c = normalizeMasterPartyLc(lcRaw);
+
     const dup = await runQuery(
       `SELECT COUNT(*) AS CNT FROM MASTER M
        WHERE M.COMP_CODE = :comp_code AND M.CODE = :code AND ROWNUM = 1`,
@@ -4460,10 +4509,24 @@ app.post('/api/master-party', async (req, res) => {
       state: trimMasterPartyField(body.state, 30).toUpperCase(),
       pan: trimMasterPartyField(body.pan, 10).toUpperCase(),
       tel_no_o: trimMasterPartyField(body.tel_no_o ?? body.tel_no, 30),
+      l_c,
       user_name,
     };
 
     await insertMasterPartyRow(binds, comp_uid);
+
+    const verifyRows = await runQuery(
+      `SELECT COUNT(*) AS CNT FROM MASTER M
+       WHERE M.COMP_CODE = :comp_code AND M.CODE = :code AND ROWNUM = 1`,
+      { comp_code, code: codeN },
+      comp_uid
+    );
+    const savedCnt = Number(verifyRows?.[0]?.CNT ?? verifyRows?.[0]?.cnt ?? 0);
+    if (savedCnt < 1) {
+      return res.status(500).json({
+        error: 'Account was not saved to MASTER. Restart the API server and try again.',
+      });
+    }
 
     res.json({
       ok: true,
@@ -4477,6 +4540,8 @@ app.post('/api/master-party', async (req, res) => {
       gst_no: binds.gst_no,
       PAN: binds.pan,
       pan: binds.pan,
+      L_C: binds.l_c,
+      l_c: binds.l_c,
       SCHEDULE: schedule,
       schedule,
     });
@@ -5839,6 +5904,38 @@ app.get('/api/sales-order-raw', async (req, res) => {
   }
 });
 
+/** Min/max SO no in date range (SORDER TYPE=SO) for print browse defaults. */
+async function resolveSalesOrderPrintNoRange(comp_code, comp_uid, s_date, e_date, s_no, e_no) {
+  const rangeSql = `
+    SELECT
+      MIN(TO_NUMBER(TRIM(TO_CHAR(A.SO_NO)))) AS MIN_NO,
+      MAX(TO_NUMBER(TRIM(TO_CHAR(A.SO_NO)))) AS MAX_NO
+    FROM SORDER A
+    WHERE A.COMP_CODE = :comp_code
+      AND UPPER(TRIM(NVL(TO_CHAR(A.TYPE), 'SO'))) = 'SO'
+      AND TRUNC(A.SO_DATE) >= TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))
+      AND TRUNC(A.SO_DATE) <= TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))`;
+  const rr = await runQuery(
+    rangeSql,
+    { comp_code, s_date: String(s_date).trim(), e_date: String(e_date).trim() },
+    comp_uid
+  );
+  const minNo = Number(rr?.[0]?.MIN_NO ?? rr?.[0]?.min_no) || 0;
+  const maxNo = Number(rr?.[0]?.MAX_NO ?? rr?.[0]?.max_no) || 0;
+  const hasS = s_no != null && String(s_no).trim() !== '';
+  const hasE = e_no != null && String(e_no).trim() !== '';
+  if (!hasS && !hasE) {
+    if (minNo <= 0 && maxNo <= 0) return { sno: 0, eno: 0, min_no: 0, max_no: 0, use_all: false };
+    return { sno: minNo, eno: maxNo, min_no: minNo, max_no: maxNo, use_all: true };
+  }
+  let sno = hasS ? Math.max(0, Math.floor(Number(s_no))) : minNo;
+  let eno = hasE ? Math.max(0, Math.floor(Number(e_no))) : maxNo;
+  if (!hasS && minNo > 0) sno = minNo;
+  if (!hasE && maxNo > 0) eno = maxNo;
+  eno = Math.max(sno, eno);
+  return { sno, eno, min_no: minNo, max_no: maxNo, use_all: false };
+}
+
 app.get('/api/sales-order-print', async (req, res) => {
   try {
     const { comp_code, comp_uid, s_date, e_date, s_no, e_no } = req.query;
@@ -5848,8 +5945,12 @@ app.get('/api/sales-order-print', async (req, res) => {
     if (!s_date || !e_date) {
       return res.status(400).json({ error: 's_date and e_date (DD-MM-YYYY) are required' });
     }
-    const sno = Math.max(0, Math.floor(Number(s_no) || 0));
-    const eno = Math.max(sno, Math.floor(Number(e_no) || 0));
+    const nr = await resolveSalesOrderPrintNoRange(comp_code, comp_uid, s_date, e_date, s_no, e_no);
+    const sno = nr.sno;
+    const eno = nr.eno;
+    if (nr.min_no <= 0 && nr.max_no <= 0 && nr.use_all) {
+      return res.json([]);
+    }
     const sql = `
       SELECT A.TYPE, A.SO_DATE, A.SO_NO, A.CODE,
         B.NAME, B.ADD1, B.ADD2, B.CITY, B.GST_NO, B.PAN, B.TEL_NO_O,
@@ -6088,6 +6189,482 @@ app.post('/api/sales-order-save', async (req, res) => {
       } catch (_) {}
     }
     console.error('❌ sales-order-save error:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) {
+      try {
+        await conn.close();
+      } catch (_) {}
+    }
+  }
+});
+
+/** Purchase order (SORDER TYPE=PO): DAL.USERS F13 — pos 1–4 = open, add, edit, delete. */
+const PURCHASE_ORDER_TYPE = 'PO';
+
+async function fetchPurchaseOrderUserF13String(user_name, comp_uid) {
+  const u = String(user_name || '').trim().toUpperCase();
+  if (!u) return { f13: '', source: 'empty_user' };
+  const schemas = isEffectiveCompUid(comp_uid) ? [String(comp_uid).trim(), null] : [null];
+  const tables = ['DAL.USERS', 'USERS'];
+  for (const sch of schemas) {
+    for (const t of tables) {
+      const sql = `SELECT F13 FROM ${t} WHERE UPPER(TRIM(USER_NAME)) = :u AND ROWNUM = 1`;
+      try {
+        const rows = await runQuery(sql, { u }, sch, { suppressDbErrorLog: true });
+        const raw = rows?.[0]?.F13 ?? rows?.[0]?.f13;
+        if (raw != null && String(raw).trim() !== '') {
+          return { f13: String(raw).trim(), source: t };
+        }
+      } catch (err) {
+        if (!isLoginOptionalTableError(err) && !isUnknownUsersColumnError(err)) {
+          /* ignore */
+        }
+      }
+    }
+  }
+  return { f13: '', source: 'none' };
+}
+
+function purchaseOrderPermissionsFromF13(f13) {
+  const s = String(f13 || '');
+  const bit = (i) => (s.length > i ? s.charAt(i) === '1' : false);
+  if (!s) {
+    return { canOpen: true, canAdd: true, canEdit: true, canDelete: true, flags: 'legacy_no_f13' };
+  }
+  return {
+    canOpen: bit(0),
+    canAdd: bit(1),
+    canEdit: bit(2),
+    canDelete: bit(3),
+    flags: 'f13',
+  };
+}
+
+app.get('/api/purchase-order-user-permissions', async (req, res) => {
+  try {
+    const { comp_uid, user_name } = req.query;
+    if (comp_uid == null || String(comp_uid).trim() === '' || !user_name) {
+      return res.status(400).json({ error: 'comp_uid and user_name are required' });
+    }
+    const { f13, source } = await fetchPurchaseOrderUserF13String(user_name, comp_uid);
+    res.json({ f13, source, ...purchaseOrderPermissionsFromF13(f13) });
+  } catch (err) {
+    console.error('❌ purchase-order-user-permissions error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/purchase-order-form-context', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, comp_year } = req.query;
+    if (!comp_code || comp_uid == null || String(comp_uid).trim() === '') {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const row = await runCompdetHeaderRow(comp_code, comp_uid, parseCompYearOpt(comp_year));
+    if (!row) return res.status(404).json({ error: 'compdet row not found' });
+    enrichCompdetSalePrintGlobals(row);
+    const tv = (k) => {
+      const v = rowValueCI(row, k);
+      if (v == null || typeof v === 'object') return null;
+      return String(v).trim();
+    };
+    res.json({
+      G_FIN_YEAR: row.G_FIN_YEAR ?? computeGFinYearFromCompdetRow(row),
+      G_COMP_YEAR: Number(row.COMP_YEAR ?? row.comp_year ?? 0) || 0,
+      G_AMT_CAL: String(tv('amt_cal') ?? 'K').trim().toUpperCase() || 'K',
+      COMP_S_DT: tv('comp_s_dt'),
+      COMP_E_DT: tv('comp_e_dt'),
+      MTYPE: PURCHASE_ORDER_TYPE,
+    });
+  } catch (err) {
+    console.error('❌ purchase-order-form-context error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/purchase-order-lookups', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const supplierSql = `
+      SELECT M.CODE, M.NAME, M.CITY
+      FROM MASTER M
+      WHERE M.COMP_CODE = :comp_code
+        AND (ROUND(NVL(M.SCHEDULE, 0), 2) = 11.1 OR ROUND(NVL(M.SCHEDULE, 0), 2) = 11.10)
+      ORDER BY M.NAME, M.CITY, M.CODE`;
+    const markaSql = `SELECT DISTINCT TRIM(MARKA) AS MARKA FROM marka WHERE COMP_CODE = :comp_code ORDER BY 1`;
+    const itemSql = `
+      SELECT ITEM_CODE, ITEM_NAME, NVL(UNIT_WGT, 0) AS UNIT_WGT
+      FROM ITEMMAST
+      WHERE COMP_CODE = :comp_code
+      ORDER BY ITEM_NAME, ITEM_CODE`;
+    const [suppliers, markas, items] = await Promise.all([
+      runQuery(supplierSql, { comp_code }, comp_uid).catch(() =>
+        runQuery(
+          `SELECT M.CODE, M.NAME, M.CITY FROM MASTER M WHERE M.COMP_CODE = :comp_code ORDER BY M.NAME, M.CITY, M.CODE`,
+          { comp_code },
+          comp_uid
+        )
+      ),
+      runQuery(markaSql, { comp_code }, comp_uid).catch(() => []),
+      runQuery(itemSql, { comp_code }, comp_uid).catch(() => []),
+    ]);
+    res.json({ suppliers: suppliers || [], markas: markas || [], items: items || [] });
+  } catch (err) {
+    console.error('❌ purchase-order-lookups error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/purchase-order-next-po-no', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const sql = `
+      SELECT NVL(MAX(TO_NUMBER(TRIM(TO_CHAR(A.SO_NO)))), 0) + 1 AS NEXT_PO_NO
+      FROM SORDER A
+      WHERE A.COMP_CODE = :comp_code
+        AND UPPER(TRIM(NVL(TO_CHAR(A.TYPE), 'PO'))) = 'PO'`;
+    const rows = await runQuery(sql, { comp_code }, comp_uid);
+    const n = rows?.[0]?.NEXT_PO_NO ?? rows?.[0]?.next_po_no ?? 1;
+    res.json({ next_po_no: Number(n) || 1, next_so_no: Number(n) || 1 });
+  } catch (err) {
+    console.error('❌ purchase-order-next-po-no error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/purchase-order-raw', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, po_no, so_no } = req.query;
+    const poNo = po_no ?? so_no;
+    if (!comp_code || comp_uid == null || poNo == null) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, and po_no are required' });
+    }
+    const sql = `
+      SELECT A.*, B.NAME, B.CITY, C.ITEM_NAME
+      FROM SORDER A
+      LEFT JOIN MASTER B ON B.COMP_CODE = A.COMP_CODE AND B.CODE = A.CODE
+      LEFT JOIN ITEMMAST C ON C.COMP_CODE = A.COMP_CODE AND C.ITEM_CODE = A.ITEM_CODE
+      WHERE A.COMP_CODE = :comp_code
+        AND UPPER(TRIM(NVL(TO_CHAR(A.TYPE), 'PO'))) = 'PO'
+        AND TRIM(TO_CHAR(A.SO_NO)) = TRIM(TO_CHAR(:po_no))
+      ORDER BY A.TRN_NO`;
+    const rows = await runQuery(sql, { comp_code, po_no: String(poNo).trim() }, comp_uid);
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ purchase-order-raw error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Min/max PO no in date range (SORDER TYPE=PO) for print browse defaults. */
+async function resolvePurchaseOrderPrintNoRange(comp_code, comp_uid, s_date, e_date, s_no, e_no) {
+  const rangeSql = `
+    SELECT
+      MIN(TO_NUMBER(TRIM(TO_CHAR(A.SO_NO)))) AS MIN_NO,
+      MAX(TO_NUMBER(TRIM(TO_CHAR(A.SO_NO)))) AS MAX_NO
+    FROM SORDER A
+    WHERE A.COMP_CODE = :comp_code
+      AND UPPER(TRIM(NVL(TO_CHAR(A.TYPE), 'PO'))) = 'PO'
+      AND TRUNC(A.SO_DATE) >= TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))
+      AND TRUNC(A.SO_DATE) <= TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))`;
+  const rr = await runQuery(
+    rangeSql,
+    { comp_code, s_date: String(s_date).trim(), e_date: String(e_date).trim() },
+    comp_uid
+  );
+  const minNo = Number(rr?.[0]?.MIN_NO ?? rr?.[0]?.min_no) || 0;
+  const maxNo = Number(rr?.[0]?.MAX_NO ?? rr?.[0]?.max_no) || 0;
+  const hasS = s_no != null && String(s_no).trim() !== '';
+  const hasE = e_no != null && String(e_no).trim() !== '';
+  if (!hasS && !hasE) {
+    if (minNo <= 0 && maxNo <= 0) return { sno: 0, eno: 0, min_no: 0, max_no: 0, use_all: false };
+    return { sno: minNo, eno: maxNo, min_no: minNo, max_no: maxNo, use_all: true };
+  }
+  let sno = hasS ? Math.max(0, Math.floor(Number(s_no))) : minNo;
+  let eno = hasE ? Math.max(0, Math.floor(Number(e_no))) : maxNo;
+  if (!hasS && minNo > 0) sno = minNo;
+  if (!hasE && maxNo > 0) eno = maxNo;
+  eno = Math.max(sno, eno);
+  return { sno, eno, min_no: minNo, max_no: maxNo, use_all: false };
+}
+
+app.get('/api/purchase-order-print-range', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (!s_date || !e_date) {
+      return res.status(400).json({ error: 's_date and e_date (DD-MM-YYYY) are required' });
+    }
+    const r = await resolvePurchaseOrderPrintNoRange(comp_code, comp_uid, s_date, e_date, null, null);
+    res.json({ min_po_no: r.min_no, max_po_no: r.max_no, min_so_no: r.min_no, max_so_no: r.max_no });
+  } catch (err) {
+    console.error('❌ purchase-order-print-range error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/purchase-order-print', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, s_no, e_no } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (!s_date || !e_date) {
+      return res.status(400).json({ error: 's_date and e_date (DD-MM-YYYY) are required' });
+    }
+    const nr = await resolvePurchaseOrderPrintNoRange(comp_code, comp_uid, s_date, e_date, s_no, e_no);
+    const sno = nr.sno;
+    const eno = nr.eno;
+    if (nr.min_no <= 0 && nr.max_no <= 0 && nr.use_all) {
+      return res.json([]);
+    }
+    const sql = `
+      SELECT A.TYPE, A.SO_DATE, A.SO_NO, A.CODE,
+        B.NAME, B.ADD1, B.ADD2, B.CITY, B.GST_NO, B.PAN, B.TEL_NO_O,
+        A.TRN_NO, A.ITEM_CODE, C.ITEM_NAME, A.MARKA, C.HSN_CODE, A.STATUS,
+        A.QNTY, A.WEIGHT, A.RATE, A.AMOUNT,
+        A.PO_NO, A.REMARKS, A.REMARKS2
+      FROM SORDER A
+      LEFT JOIN MASTER B ON B.COMP_CODE = A.COMP_CODE AND B.CODE = A.CODE
+      LEFT JOIN ITEMMAST C ON C.COMP_CODE = A.COMP_CODE AND C.ITEM_CODE = A.ITEM_CODE
+      WHERE A.COMP_CODE = :comp_code
+        AND UPPER(TRIM(NVL(TO_CHAR(A.TYPE), 'PO'))) = 'PO'
+        AND TO_NUMBER(TRIM(TO_CHAR(A.SO_NO))) >= :sno
+        AND TO_NUMBER(TRIM(TO_CHAR(A.SO_NO))) <= :eno
+        AND TRUNC(A.SO_DATE) >= TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))
+        AND TRUNC(A.SO_DATE) <= TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))
+      ORDER BY A.SO_NO, A.TRN_NO`;
+    const rows = await runQuery(
+      sql,
+      {
+        comp_code,
+        sno,
+        eno,
+        s_date: String(s_date).trim(),
+        e_date: String(e_date).trim(),
+      },
+      comp_uid
+    );
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ purchase-order-print error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/purchase-order-list-report', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, code, item_code, marka } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (!s_date || !e_date) {
+      return res.status(400).json({ error: 's_date and e_date (DD-MM-YYYY) are required' });
+    }
+    const binds = {
+      comp_code,
+      s_date: String(s_date).trim(),
+      e_date: String(e_date).trim(),
+    };
+    let extra = '';
+    const partyCode = code != null && String(code).trim() !== '' ? parseMasterCodeForSql(code) : undefined;
+    if (partyCode !== undefined) {
+      binds.party_code = partyCode;
+      extra += ` AND TRIM(TO_CHAR(A.CODE)) = TRIM(TO_CHAR(:party_code))`;
+    }
+    const itemTrim = item_code != null ? String(item_code).trim() : '';
+    if (itemTrim) {
+      binds.item_code = itemTrim;
+      extra += ` AND TRIM(A.ITEM_CODE) = TRIM(:item_code)`;
+    }
+    const markaTrim = marka != null ? String(marka).trim() : '';
+    if (markaTrim) {
+      binds.marka = markaTrim;
+      extra += ` AND TRIM(NVL(A.MARKA, ' ')) = TRIM(:marka)`;
+    }
+    const sql = `
+      SELECT A.SO_NO, A.SO_DATE, A.CODE, B.NAME AS PARTY_NAME,
+        A.ITEM_CODE, NVL(C.ITEM_NAME, A.ITEM_CODE) AS ITEM_NAME, A.MARKA,
+        A.QNTY, A.STATUS, A.WEIGHT, A.RATE, A.AMOUNT, A.TRN_NO,
+        A.PO_NO, A.REMARKS, A.REMARKS2
+      FROM SORDER A
+      LEFT JOIN MASTER B ON B.COMP_CODE = A.COMP_CODE AND B.CODE = A.CODE
+      LEFT JOIN ITEMMAST C ON C.COMP_CODE = A.COMP_CODE AND C.ITEM_CODE = A.ITEM_CODE
+      WHERE A.COMP_CODE = :comp_code
+        AND UPPER(TRIM(NVL(TO_CHAR(A.TYPE), 'PO'))) = 'PO'
+        AND TRUNC(A.SO_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))
+        ${extra}
+      ORDER BY A.SO_DATE, A.SO_NO, A.TRN_NO`;
+    const rows = await runQuery(sql, binds, comp_uid);
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ purchase-order-list-report error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/purchase-order-save', async (req, res) => {
+  let conn;
+  try {
+    const body = req.body || {};
+    const comp_code = String(body.comp_code || '').trim();
+    const comp_uid = String(body.comp_uid || '').trim();
+    const user_name = String(body.user_name || '').trim().toUpperCase();
+    const mode = String(body.mode || '').trim().toLowerCase();
+    const so_date = String(body.so_date || body.po_date || '').trim();
+    const so_no = body.so_no ?? body.po_no;
+    const header = body.header && typeof body.header === 'object' ? body.header : {};
+    const linesIn = Array.isArray(body.lines) ? body.lines : [];
+
+    if (!comp_code || !comp_uid || !user_name || !['add', 'edit', 'delete'].includes(mode)) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, user_name, mode=add|edit|delete required' });
+    }
+    if (!so_date) return res.status(400).json({ error: 'po_date / so_date (DD-MM-YYYY) required' });
+
+    const { f13 } = await fetchPurchaseOrderUserF13String(user_name, comp_uid);
+    const perms = purchaseOrderPermissionsFromF13(f13);
+    if (!perms.canOpen) return res.status(403).json({ error: 'Access denied (F13 position 1).' });
+    if (mode === 'add' && !perms.canAdd) return res.status(403).json({ error: 'You cannot add (F13 position 2).' });
+    if (mode === 'edit' && !perms.canEdit) return res.status(403).json({ error: 'You cannot edit (F13 position 3).' });
+    if (mode === 'delete' && !perms.canDelete) return res.status(403).json({ error: 'You cannot delete (F13 position 4).' });
+
+    const comp_year_sel = parseCompYearOpt(body.comp_year);
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid, comp_year_sel);
+    if (!compdet) return res.status(400).json({ error: 'compdet not found' });
+    const comp_year = Number(compdet?.COMP_YEAR ?? compdet?.comp_year ?? comp_year_sel ?? 0) || 0;
+    const fy = assertSaleBillDateInFinancialYear(so_date, compdet);
+    if (!fy.ok) return res.status(400).json({ error: fy.error });
+
+    const connCfg = {
+      user: comp_uid,
+      password: comp_uid,
+      connectString: activeDbConfig.connectString,
+    };
+    conn = await getDbConnection(connCfg);
+
+    const delSql = `
+      DELETE FROM SORDER A
+      WHERE A.COMP_CODE = :comp_code
+        AND UPPER(TRIM(NVL(TO_CHAR(A.TYPE), 'PO'))) = 'PO'
+        AND TRIM(TO_CHAR(A.SO_NO)) = TRIM(TO_CHAR(:so_no))`;
+
+    if (mode === 'delete') {
+      if (so_no == null) return res.status(400).json({ error: 'po_no required for delete' });
+      await conn.execute(delSql, { comp_code, so_no: String(so_no).trim() }, { autoCommit: false });
+      await conn.commit();
+      return res.json({ ok: true, mode: 'delete' });
+    }
+
+    let so_no_use = so_no;
+    if (mode === 'add') {
+      const manualSn = so_no != null && String(so_no).trim() !== '';
+      if (manualSn) {
+        so_no_use = String(so_no).trim();
+        const exRows = await conn.execute(
+          `SELECT COUNT(*) AS CNT FROM SORDER A
+           WHERE A.COMP_CODE = :cc
+             AND UPPER(TRIM(NVL(TO_CHAR(A.TYPE), 'PO'))) = 'PO'
+             AND TRIM(TO_CHAR(A.SO_NO)) = TRIM(TO_CHAR(:sn))`,
+          { cc: comp_code, sn: so_no_use },
+          { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+        const cnt = Number(exRows.rows?.[0]?.CNT ?? exRows.rows?.[0]?.cnt) || 0;
+        if (cnt > 0) {
+          await conn.rollback();
+          return res.status(400).json({ error: `Purchase order number ${so_no_use} already exists.` });
+        }
+      } else {
+        const maxRows = await conn.execute(
+          `SELECT NVL(MAX(TO_NUMBER(TRIM(TO_CHAR(A.SO_NO)))), 0) + 1 AS NB
+           FROM SORDER A
+           WHERE A.COMP_CODE = :cc
+             AND UPPER(TRIM(NVL(TO_CHAR(A.TYPE), 'PO'))) = 'PO'`,
+          { cc: comp_code },
+          { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+        so_no_use = Number(maxRows.rows?.[0]?.NB ?? maxRows.rows?.[0]?.nb) || 1;
+      }
+    }
+    if (so_no_use == null || String(so_no_use).trim() === '') {
+      return res.status(400).json({ error: 'po_no required for edit' });
+    }
+
+    const code = parseMasterCodeForSql(header.code);
+    if (code === undefined) return res.status(400).json({ error: 'Supplier code required' });
+    const po_no = String(header.po_no ?? header.ref_no ?? '').trim().slice(0, 50);
+    const remarks = String(header.remarks ?? '').trim().slice(0, 50);
+    const remarks2 = String(header.remarks2 ?? '').trim().slice(0, 50);
+
+    if (mode === 'edit') {
+      await conn.execute(delSql, { comp_code, so_no: String(so_no_use).trim() }, { autoCommit: false });
+    }
+
+    const linesFiltered = linesIn.filter((raw) => {
+      const ic = String(raw?.item_code ?? raw?.ITEM_CODE ?? '').trim();
+      return ic !== '';
+    });
+    if (linesFiltered.length === 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'At least one line with item_code is required' });
+    }
+
+    let trn = 1;
+    const bindRows = linesFiltered.map((raw) => {
+      const L = raw && typeof raw === 'object' ? raw : {};
+      const tno = Number(L.trn_no ?? L.TRN_NO ?? trn) || trn;
+      trn = tno + 1;
+      return {
+        comp_code,
+        comp_year,
+        mtype: PURCHASE_ORDER_TYPE,
+        so_date,
+        so_no: String(so_no_use).trim(),
+        code,
+        trn_no: tno,
+        item_code: String(L.item_code ?? L.ITEM_CODE ?? '').trim(),
+        marka: String(L.marka ?? L.MARKA ?? '').trim(),
+        qnty: Number(L.qnty ?? L.QNTY ?? 0) || 0,
+        status: String(L.status ?? L.STATUS ?? 'B').trim().toUpperCase().slice(0, 1) || 'B',
+        weight: clampDispatchWeightSql(L.weight ?? L.WEIGHT ?? 0),
+        rate: Number(L.rate ?? L.RATE ?? 0) || 0,
+        amount: clampDispatchAmountSql(L.amount ?? L.AMOUNT ?? 0),
+        po_no,
+        remarks,
+        remarks2,
+        user_name,
+      };
+    });
+
+    const insertSql = `
+      INSERT INTO SORDER (
+        COMP_CODE, COMP_YEAR, TYPE, SO_DATE, SO_NO, CODE,
+        TRN_NO, ITEM_CODE, MARKA, QNTY, STATUS, WEIGHT, RATE, AMOUNT,
+        PO_NO, REMARKS, REMARKS2, USER_NAME, ENT_DATE
+      ) VALUES (
+        :comp_code, :comp_year, :mtype, TO_DATE(:so_date, 'DD-MM-YYYY'), :so_no, :code,
+        :trn_no, :item_code, :marka, :qnty, :status, :weight, :rate, :amount,
+        :po_no, :remarks, :remarks2, :user_name, SYSDATE
+      )`;
+
+    await conn.executeMany(insertSql, bindRows, { autoCommit: false });
+    await conn.commit();
+    res.json({ ok: true, mode, po_no: so_no_use, so_no: so_no_use, lines: bindRows.length });
+  } catch (err) {
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (_) {}
+    }
+    console.error('❌ purchase-order-save error:', err.message);
     res.status(500).json({ error: err.message });
   } finally {
     if (conn) {

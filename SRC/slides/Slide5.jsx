@@ -8,6 +8,7 @@ import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, formatCurBal, getCurBal } from '../utils/dateFormat';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine from '../components/SessionInfoLine';
 import { filterAccountRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
 
 function highlightMatch(text, q) {
@@ -449,13 +450,12 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
     <div className="slide slide-5">
       <h2>{isLedgerInterest ? 'Ledger With Interest Parameters' : 'Ledger Report Parameters'}</h2>
       
-      <p className="company-info">
-        {formData.comp_name} | {formData.comp_year}
+      <SessionInfoLine formData={formData}>
         <br />
         <span className="compdet-date-hint">
           Dates below are comp_s_dt / comp_e_dt for this year (FY may span two calendar years).
         </span>
-      </p>
+      </SessionInfoLine>
 
       <form onSubmit={handleSubmit} className="report-form">
         <div className="button-group button-group--form-top">

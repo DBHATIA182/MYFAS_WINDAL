@@ -8,6 +8,7 @@ import LedgerReportHeader from '../components/LedgerReportHeader';
 import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 
 function num(v) {
   const n = Number(v);
@@ -473,7 +474,7 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
         </div>
         <div className="report-info">
           <p><strong>Schedule:</strong> {scheduleTitle}</p>
-          <p>{compName} | FY {compYear} | As on {toDisplayDate(edt)}</p>
+          <p><SessionLineText formData={formData} /> | As on {toDisplayDate(edt)}</p>
           <p className="compdet-date-hint">Tap a row to highlight it; tap the same row again to open its ledger.</p>
         </div>
         <div className="report-display table-responsive">
@@ -664,9 +665,7 @@ export default function Slide19BalanceSheet({ apiBase, formData = {}, onPrev, on
   if (screen === SCREEN.FORM) return (
     <div className="slide slide-report slide-19">
       <h2>Balance Sheet</h2>
-      <p className="company-info">
-        {compName} | FY {compYear}
-      </p>
+      <SessionInfoLine formData={formData} />
       {error ? <div className="form-api-error">{error}</div> : null}
 
       <form onSubmit={runReport} className="report-form report-form--trading">

@@ -7,6 +7,7 @@ import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 import {
   filterCodeNameCityRows,
   filterItemCodeNameRows,
@@ -461,7 +462,7 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
             <strong>B type</strong> {pdfMeta.bTypeLabel}
           </p>
           <p>
-            {compName} | FY {compYear}
+            <SessionLineText formData={formData} />
             <br />
             Click a row to open print when type maps to <strong>SL</strong>, <strong>SE</strong>, <strong>CN</strong>, <strong>CH</strong>, or{' '}
             <strong>RC</strong> (numeric TYPE 1–3, 6, 8–9). Current view:{' '}
@@ -490,8 +491,7 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
   return (
     <div className="slide slide-8">
       <h2>Sale bill list</h2>
-      <p className="company-info">
-        {compName} | FY {compYear}
+      <SessionInfoLine formData={formData}>
         <br />
         <span className="compdet-date-hint">
           Same as VFP9 <code>MVAR</code>: <code>SALE.TYPE</code> is a <strong>number</strong> (1–9) matching the document list; filter is{' '}
@@ -499,7 +499,7 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
           <code>MASTER</code> schedule ≈ 11.20), item, <code>PLANT</code>, marka, B type. Item is <code>LEFT JOIN</code>. Row click maps
           numeric type to SL / CH / SE / CN / RC for print where supported.
         </span>
-      </p>
+      </SessionInfoLine>
 
       {lookupError ? (
         <div className="form-api-error" role="alert">

@@ -4,6 +4,7 @@ import { downloadExcelRows } from '../utils/excelExport';
 import { formatLedgerDateDisplay, toDisplayDate, toInputDateString, toOracleDate } from '../utils/dateFormat';
 import ReportTable from '../components/ReportTable';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 
 function fmtAmt(v) {
   const n = parseFloat(v);
@@ -246,7 +247,7 @@ export default function Slide14({ apiBase, formData, onPrev, onReset }) {
 
         <div className="report-info">
           <p>
-            <strong>{compName}</strong> | FY {compYear}
+            <SessionLineText formData={formData} />
             <br />
             {toDisplayDate(startDate)} - {toDisplayDate(endDate)} · Voucher type: {vrType || 'All'} · Party:{' '}
             {partyCode || 'All'} · Cash/Bank code: {cashBankCode || 'All'} · Entries: {drcrFlag || 'Both'}
@@ -345,9 +346,7 @@ export default function Slide14({ apiBase, formData, onPrev, onReset }) {
   return (
     <div className="slide slide-14">
       <h2>Cash/Bank/Journal Voucher List</h2>
-      <p className="company-info">
-        {compName} | FY {compYear}
-      </p>
+      <SessionInfoLine formData={formData} />
       <form className="report-form" onSubmit={handleSubmit}>
         <div className="button-group button-group--form-top">
           <button type="button" className="btn btn-secondary" onClick={onPrev}>

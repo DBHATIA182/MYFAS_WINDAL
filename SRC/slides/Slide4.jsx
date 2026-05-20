@@ -9,6 +9,7 @@ import { downloadExcelRows } from '../utils/excelExport';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
 import { sortTrialBalanceRows } from '../utils/trialBalanceSort';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine from '../components/SessionInfoLine';
 
 const VIEW = { FORM: 'form', TRIAL: 'trial', LEDGER: 'ledger', VOUCHER: 'voucher' };
 
@@ -425,11 +426,10 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
             </button>
           </div>
         </div>
-        <div className="company-info">
-          {compName} | FY {compYear}
+        <SessionInfoLine formData={formData} as="div">
           <br />
           As of {toDisplayDate(endDate)}
-        </div>
+        </SessionInfoLine>
         <ReportTable
           data={trialRows}
           type="trial-balance"
@@ -459,14 +459,13 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
           {loading ? 'Loading…' : 'Run'}
         </button>
       </div>
-      <p className="company-info">
-        <strong>{compName}</strong> | FY {compYear}
+      <SessionInfoLine formData={formData}>
         <br />
         <span className="compdet-date-hint">
           Set the as-of date (comp_e_dt) and optional schedule. Only Trial Balance runs from this screen; open a ledger
           from a row after the report loads.
         </span>
-      </p>
+      </SessionInfoLine>
 
       <div className="form-group">
         <label htmlFor="tb-end-date">Ending date — as-of (comp_e_dt)</label>

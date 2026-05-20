@@ -1,0 +1,461 @@
+/* Desktop-optimized sale bill / dispatch / sales order — fit one screen, minimal chrome */
+
+.app--desktop .app-main:has(.sale-entry-desktop) {
+  padding: 0.3rem 0.45rem;
+  align-items: stretch;
+}
+
+.app--desktop .sale-entry-desktop.slide {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 0.4rem 0.55rem 0.45rem;
+  min-height: 0;
+  height: calc(100dvh - 52px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.14);
+  background: linear-gradient(165deg, #f8fafc 0%, #ffffff 38%, #f1f5f9 100%);
+}
+
+.app--desktop .slide-22-dispatch-challan.sale-entry-desktop,
+.app--desktop .slide-23-sales-order.sale-entry-desktop,
+.app--desktop .slide-24-purchase-order.sale-entry-desktop {
+  padding-bottom: 0.45rem;
+}
+
+/* —— Compact screen header —— */
+.app--desktop .sale-entry-screen-header {
+  flex-shrink: 0;
+  margin: 0 0 0.3rem;
+  padding: 0;
+  border: none;
+}
+
+.app--desktop .sale-entry-screen-header .sale-entry-top-bar {
+  margin-bottom: 0.28rem;
+  padding: 0.3rem 0.45rem;
+  font-size: 0.66rem;
+  line-height: 1.3;
+  border-radius: 6px;
+}
+
+.app--desktop .sale-entry-screen-header__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  flex-wrap: nowrap;
+  padding: 0.35rem 0.5rem;
+  background: linear-gradient(135deg, #1e40af 0%, #2563eb 48%, #3b82f6 100%);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+}
+
+.app--desktop .sale-entry-screen-header__title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.app--desktop .sale-entry-screen-header__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.app--desktop .sale-entry-screen-header__title-wrap .report-help-btn {
+  color: #dbeafe;
+  border-color: rgba(255, 255, 255, 0.35);
+  font-size: 0.72rem;
+  padding: 0.15rem 0.4rem;
+}
+
+.app--desktop .sale-entry-screen-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.app--desktop .sale-entry-screen-header__nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.app--desktop .sale-entry-screen-header__btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.app--desktop .sale-entry-screen-header .dc-action-bar,
+.app--desktop .sale-entry-screen-header__btns.dc-action-bar__inner,
+.app--desktop .sale-entry-screen-header__actions .button-group {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  gap: 0.28rem;
+}
+
+.app--desktop .sale-entry-screen-header .btn {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  min-height: 1.75rem;
+  border-radius: 6px;
+}
+
+.app--desktop .sale-entry-screen-header .btn-primary {
+  background: #fff;
+  color: #1d4ed8;
+  border-color: #fff;
+  font-weight: 700;
+}
+
+.app--desktop .sale-entry-screen-header .btn-secondary {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.app--desktop .sale-entry-screen-header .btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* Hide legacy title row when using screen header */
+.app--desktop .sale-entry-desktop .sale-bill-page__header:not(.sale-entry-screen-header) {
+  display: none;
+}
+
+.app--desktop .sale-entry-desktop > .dc-action-bar {
+  display: none;
+}
+
+/* —— Body layout: form + lines fill viewport —— */
+.app--desktop .sale-entry-desktop__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+  overflow: hidden;
+}
+
+.app--desktop .sale-entry-desktop__err {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.78rem;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-section--card {
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+}
+
+.app--desktop .sale-entry-desktop .dc-header-card {
+  flex-shrink: 0;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  border-left-width: 3px;
+}
+
+.app--desktop .sale-entry-desktop {
+  --dc-header-control-h: 1.75rem;
+}
+
+.app--desktop .sale-entry-desktop .dc-header-row--top {
+  gap: 0.4rem 0.65rem;
+  align-items: flex-end;
+}
+
+.app--desktop .sale-entry-desktop .dc-header-row--top .dc-header-control,
+.app--desktop .sale-entry-desktop .dc-header-row--top select.dc-header-control {
+  min-height: var(--dc-header-control-h);
+  height: var(--dc-header-control-h);
+  padding: 0.2rem 0.45rem;
+  font-size: 0.82rem;
+  border-radius: 6px;
+}
+
+.app--desktop .sale-entry-desktop .dc-header-k {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #64748b;
+  padding-top: 0;
+  margin-bottom: 0.1rem;
+}
+
+.app--desktop .sale-entry-desktop .dc-header-row--party {
+  grid-template-columns: 4.25rem minmax(0, 1fr);
+  gap: 0.25rem 0.5rem;
+  align-items: center;
+}
+
+.app--desktop .sale-entry-desktop .dc-party-entry .btn-master-party-add {
+  width: 1.65rem;
+  height: 1.65rem;
+  min-height: 1.65rem;
+  margin-top: 0;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.app--desktop .sale-entry-desktop .dc-party-selected__text,
+.app--desktop .sale-entry-desktop .sale-bill-search-input {
+  font-size: 0.82rem;
+  min-height: var(--dc-header-control-h);
+  height: var(--dc-header-control-h);
+  padding: 0.2rem 0.45rem;
+}
+
+.app--desktop .sale-entry-desktop .dc-party-search-hint {
+  margin: 0.15rem 0 0;
+  font-size: 0.72rem;
+}
+
+.app--desktop .sale-entry-desktop__lines {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left-width: 3px;
+}
+
+.app--desktop .sale-entry-desktop__lines .sale-bill-section__title {
+  margin: 0 0 0.2rem;
+  padding: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #0f172a;
+}
+
+.app--desktop .sale-entry-desktop__lines .sale-bill-section__title::before {
+  height: 0.85rem;
+  width: 3px;
+}
+
+.app--desktop .sale-entry-desktop .dc-lines-scroll-top {
+  display: none;
+}
+
+.app--desktop .sale-entry-desktop .dc-lines-wrap,
+.app--desktop .sale-entry-desktop .sale-bill-lines-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none !important;
+  overflow: auto;
+  border-radius: 6px;
+}
+
+.app--desktop .sale-entry-desktop .dc-lines-table thead th {
+  padding: 0.35rem 0.25rem;
+  font-size: 0.65rem;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.app--desktop .sale-entry-desktop .dc-lines-table td {
+  padding: 0.2rem 0.2rem;
+  vertical-align: middle;
+}
+
+.app--desktop .sale-entry-desktop .dc-lines-table input,
+.app--desktop .sale-entry-desktop .dc-lines-table select {
+  min-height: 1.55rem;
+  height: 1.55rem;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.8rem;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-totals-summary {
+  flex-shrink: 0;
+  margin-top: 0.25rem;
+  padding: 0.3rem 0.45rem;
+  font-size: 0.82rem;
+}
+
+/* Sale bill — toolbar + lines on one screen */
+.app--desktop .sale-entry-desktop .sale-bill-section--toolbar {
+  flex-shrink: 0;
+  padding: 0.4rem 0.5rem;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-toolbar {
+  gap: 0.35rem 0.5rem;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-toolbar-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.55rem;
+  align-items: flex-end;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-field__label {
+  font-size: 0.68rem;
+  margin-bottom: 0.08rem;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-field input,
+.app--desktop .sale-entry-desktop .sale-bill-field select {
+  min-height: 1.75rem;
+  height: 1.75rem;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.82rem;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-section--lines {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-page__context {
+  font-size: 0.72rem;
+  margin: 0.2rem 0 0;
+  padding: 0.2rem 0.4rem;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-page__perms {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+}
+
+.app--desktop .sale-entry-desktop .dc-action-bar--bottom {
+  display: none;
+}
+
+.app--desktop .sale-entry-desktop__footer:not(.sale-entry-desktop__footer-fields) {
+  flex-shrink: 0;
+}
+
+.app--desktop .sale-entry-desktop__footer-fields .sale-bill-section__title {
+  margin: 0 0 0.2rem;
+  font-size: 0.72rem;
+  padding: 0;
+}
+
+.app--desktop .sale-entry-desktop__footer-fields .sale-bill-totals-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.3rem 0.45rem;
+}
+
+.app--desktop .sale-entry-desktop__footer-fields .sale-bill-field__label {
+  font-size: 0.65rem;
+}
+
+.app--desktop .sale-entry-desktop__footer-fields input {
+  min-height: 1.55rem;
+  height: 1.55rem;
+  font-size: 0.78rem;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-footer {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.32rem 0.5rem;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #1e40af 0%, #2563eb 50%, #3b82f6 100%);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.22);
+  border: none;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.28rem;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-footer .btn {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.78rem;
+  min-height: 1.75rem;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-footer .btn-primary {
+  background: #fff;
+  color: #1d4ed8;
+  border-color: #fff;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-add-line {
+  margin-top: 0.2rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.78rem;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-section--pick {
+  display: none;
+}
+
+.app--desktop .sale-entry-desktop .account-selected-hint {
+  margin: 0.1rem 0;
+  font-size: 0.74rem;
+  line-height: 1.25;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-picker-actions {
+  margin: 0.12rem 0;
+}
+
+.app--desktop .sale-entry-desktop .sale-bill-picker-actions .btn {
+  padding: 0.18rem 0.4rem;
+  font-size: 0.74rem;
+  min-height: 1.5rem;
+}
+
+.app--desktop .sale-entry-screen-header .sale-bill-page__context,
+.app--desktop .sale-entry-screen-header .sale-bill-page__perms {
+  margin: 0.15rem 0 0;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.72rem;
+  border-radius: 6px;
+}
+
+/* Sale bill: classic full form (not compact flex) — all party/line fields visible, page scrolls */
+.app--desktop .app-main:has(.slide-21-sale-bill) {
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-items: flex-start;
+}
+
+.app--desktop .slide-21-sale-bill.sale-bill-page {
+  max-width: min(1080px, calc(100vw - 2rem));
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  display: block;
+}

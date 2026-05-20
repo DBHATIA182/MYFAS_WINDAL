@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Windal Accounting — Client PC Installation Guide (D:\WINDAL)</title>
+  <style>
+    @page { margin: 16mm 14mm; }
+    * { box-sizing: border-box; }
+    body { font-family: "Segoe UI", Calibri, Arial, sans-serif; font-size: 10.5pt; line-height: 1.42; color: #1a1a1a; max-width: 210mm; margin: 0 auto; padding: 10mm; }
+    h1 { font-size: 17pt; color: #0f3d7a; border-bottom: 3px solid #1a5fb4; padding-bottom: 8px; margin: 0 0 12px; }
+    h2 { font-size: 12.5pt; color: #1a5fb4; margin: 1.3em 0 0.4em; page-break-after: avoid; border-bottom: 1px solid #d0e3f7; padding-bottom: 4px; }
+    h3 { font-size: 11pt; margin: 1em 0 0.35em; page-break-after: avoid; color: #333; }
+    p, li { margin: 0.3em 0; }
+    ul, ol { margin: 0.35em 0 0.55em 1.15em; }
+    code, .cmd { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; background: #f0f4f8; padding: 1px 5px; border-radius: 3px; }
+    pre { font-family: Consolas, "Courier New", monospace; font-size: 8.8pt; background: #f6f8fa; border: 1px solid #c5d0dc; padding: 9px 11px; border-radius: 4px; white-space: pre-wrap; word-break: break-word; page-break-inside: avoid; margin: 8px 0; }
+    .cover { text-align: center; padding: 24px 0 32px; page-break-after: always; }
+    .cover h1 { border: none; font-size: 22pt; }
+    .cover p { font-size: 11pt; color: #444; }
+    .note { background: #fff8e6; border-left: 4px solid #e6a800; padding: 8px 11px; margin: 10px 0; page-break-inside: avoid; }
+    .warn { background: #ffecec; border-left: 4px solid #c62828; padding: 8px 11px; margin: 10px 0; page-break-inside: avoid; }
+    .ok { background: #ecfdf5; border-left: 4px solid #059669; padding: 8px 11px; margin: 10px 0; page-break-inside: avoid; }
+    table { border-collapse: collapse; width: 100%; font-size: 9.5pt; margin: 8px 0; page-break-inside: avoid; }
+    th, td { border: 1px solid #b8c5d4; padding: 5px 7px; text-align: left; vertical-align: top; }
+    th { background: #e8f0fa; }
+    .toc { font-size: 10pt; page-break-after: always; }
+    .toc li { margin: 0.25em 0; }
+    footer { font-size: 8.5pt; color: #666; margin-top: 2em; border-top: 1px solid #ccc; padding-top: 8px; }
+    @media print { body { padding: 0; } a { color: #000; text-decoration: none; } }
+  </style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>Windal Accounting</h1>
+  <p><strong>Client PC installation guide</strong></p>
+  <p>Folder layout: <code>D:\WINDAL</code> · App: <code>D:\WINDAL\apptest</code></p>
+  <p>Includes: Oracle, Node.js, Cloudflare tunnel, Git clone/setup, and updates</p>
+  <p style="margin-top:2em;font-size:9pt;color:#888;">Document version: May 2026 · APPTEST / Windal</p>
+</div>
+
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li>Overview and folder layout</li>
+    <li>Prerequisites checklist</li>
+    <li>Install Git for Windows (one time)</li>
+    <li>First-time install — copy or clone from GitHub</li>
+    <li>Install Node.js and Cloudflare (cloudflared)</li>
+    <li>Configure Oracle and connection.config.json</li>
+    <li>Run setup-client.ps1</li>
+    <li>Cloudflare tunnel (config.yml)</li>
+    <li>Start services and verify</li>
+    <li>Scheduled tasks (auto-start after reboot)</li>
+    <li>Updating the app from Git (routine)</li>
+    <li>One-click desktop update</li>
+    <li>Troubleshooting</li>
+  </ol>
+</div>
+
+<h1>Windal — Client installation (D:\WINDAL)</h1>
+<p>This guide is for installing <strong>Windal Accounting</strong> (APPTEST web app + API) on a <strong>client PC</strong>. Example paths use <code>D:\WINDAL</code>; you may use another drive if needed.</p>
+
+<h2>1. Overview and folder layout</h2>
+<pre>D:\WINDAL\
+  apptest\                         ← Application (Git clone target)
+    server.cjs, package.json, SRC, scripts (.ps1, .cmd)
+    connection.config.json         ← Per-client Oracle + client key (secrets)
+    config.yml                     ← Cloudflare tunnel ingress
+    xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.json   ← Tunnel credentials
+  oracle_bridge\
+    instantclient_23_0\            ← Oracle Instant Client (required)
+  tnsnames.ora, sqlnet.ora           ← Optional TNS (if used)</pre>
+<p>The API reads Oracle from <code>..\oracle_bridge\instantclient_23_0</code> relative to <code>apptest</code>.</p>
+
+<table>
+  <tr><th>Service</th><th>Local URL</th><th>Public URL (example client <code>dal-pushkar</code>)</th></tr>
+  <tr><td>Web (Vite)</td><td>http://localhost:5174</td><td>https://dal-pushkar.fasaccountingsoftware.in</td></tr>
+  <tr><td>API</td><td>http://localhost:5001</td><td>https://dal-pushkar-api.fasaccountingsoftware.in</td></tr>
+</table>
+
+<h2>2. Prerequisites checklist</h2>
+<ul>
+  <li>Windows 10 or 11 (64-bit).</li>
+  <li><strong>PowerShell as Administrator</strong> for setup and scheduled tasks.</li>
+  <li>Internet for first install (Git clone, npm, winget).</li>
+  <li>Oracle database reachable from this PC; Instant Client at <code>D:\WINDAL\oracle_bridge\instantclient_23_0</code>.</li>
+  <li>Cloudflare account access for zone <code>fasaccountingsoftware.in</code> (tunnel).</li>
+</ul>
+
+<h2>3. Install Git for Windows (one time per PC)</h2>
+<p>Git is required to <strong>clone</strong> the app the first time and to <strong>pull updates</strong> later.</p>
+
+<h3>3.1 Download and install</h3>
+<ol>
+  <li>Open <strong>https://git-scm.com/download/win</strong></li>
+  <li>Download <strong>64-bit Git for Windows Setup</strong>.</li>
+  <li>Run the installer → accept defaults (ensure <strong>Git from the command line and also from 3rd-party software</strong> is selected).</li>
+  <li>Finish and open a <strong>new</strong> PowerShell window.</li>
+</ol>
+
+<h3>3.2 Verify Git</h3>
+<pre>git --version</pre>
+<p>Expected: <code>git version 2.x.x</code></p>
+
+<div class="note"><strong>Optional — winget:</strong><br>
+<pre>winget install --id Git.Git -e --accept-source-agreements --accept-package-agreements</pre>
+Close PowerShell and open a new window, then run <code>git --version</code> again.
+</div>
+
+<h3>3.3 Configure Git (recommended once per PC)</h3>
+<pre>git config --global user.name "Your Name"
+git config --global user.email "you@company.com"</pre>
+<p>For private GitHub repos, use a <strong>Personal Access Token</strong> as password when Git prompts during clone/pull, or set up SSH keys.</p>
+
+<h2>4. First-time install — get the app from GitHub</h2>
+<p><strong>Repository:</strong> <code>https://github.com/DBHATIA182/MYFAS_WINDAL.git</code><br>
+<strong>Branch:</strong> <code>main</code></p>
+
+<h3>4.1 Option A — Fresh clone (recommended for new client PC)</h3>
+<ol>
+  <li>Create parent folder if needed:
+<pre>mkdir D:\WINDAL -Force</pre>
+  </li>
+  <li>Clone the repository:
+<pre>cd D:\WINDAL
+git clone https://github.com/DBHATIA182/MYFAS_WINDAL.git apptest
+cd D:\WINDAL\apptest</pre>
+  </li>
+  <li>If you have an <strong>old copy</strong> of the app (not from Git), copy these files from the old folder into <code>D:\WINDAL\apptest</code> after clone:
+    <ul>
+      <li><code>connection.config.json</code></li>
+      <li><code>config.yml</code></li>
+      <li>Tunnel credentials file: <code>&lt;tunnel-uuid&gt;.json</code> (same name as in config.yml)</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>4.2 Option B — Automated first-time Git install script</h3>
+<p>Copy <code>git_client_installation.ps1</code> to <code>D:\WINDAL</code> (parent folder, <strong>not</strong> inside apptest). Edit paths inside the script if your drive differs.</p>
+<pre>cd D:\WINDAL
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+.\git_client_installation.ps1</pre>
+<p>This script: renames existing <code>APPTEST</code> to <code>APPTEST_OLD</code> if needed, clones the repo, copies <code>connection.config.json</code> / tunnel files from backup, runs <code>npm ci</code> and <code>npm run build</code>.</p>
+
+<h3>4.3 What NOT to copy from dev PC</h3>
+<ul>
+  <li>Do <strong>not</strong> copy <code>node_modules</code> — install on client with <code>npm ci</code>.</li>
+  <li><code>dist</code> is optional — setup rebuilds the UI.</li>
+</ul>
+
+<h2>5. Install Node.js and Cloudflare (cloudflared)</h2>
+<h3>5.1 Check if already installed</h3>
+<pre>node --version
+npm --version
+cloudflared --version</pre>
+<p>Need <strong>Node.js 18 or newer</strong> (LTS recommended).</p>
+
+<h3>5.2 Automatic (recommended) — via setup-client.ps1</h3>
+<p><code>setup-client.ps1</code> installs Node LTS and cloudflared using <strong>winget</strong> when missing (Step 7).</p>
+
+<h3>5.3 Manual install with winget (Administrator)</h3>
+<pre>winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements --accept-package-agreements
+winget install --id Cloudflare.cloudflared -e --accept-source-agreements --accept-package-agreements</pre>
+<p>Close PowerShell, open a <strong>new</strong> window, verify commands again.</p>
+
+<h3>5.4 Manual install from websites</h3>
+<ul>
+  <li><strong>Node.js:</strong> https://nodejs.org/ — download LTS, install with defaults.</li>
+  <li><strong>cloudflared:</strong> https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/ — Windows 64-bit.</li>
+</ul>
+
+<h3>5.5 Cloudflare login (one time per PC)</h3>
+<pre>cloudflared tunnel login</pre>
+<p>Browser opens → log in → select zone <strong>fasaccountingsoftware.in</strong>.</p>
+
+<h2>6. Configure connection.config.json</h2>
+<p>Edit <code>D:\WINDAL\apptest\connection.config.json</code> for this client:</p>
+<ul>
+  <li><code>clientName</code> / <code>defaultClientKey</code> — e.g. <code>dal-pushkar</code> (use hyphens in DNS, not underscores)</li>
+  <li><code>oracle.primary</code> — user, password, connect string (e.g. <code>XE</code> or <code>HOST:1521/SERVICE</code>)</li>
+</ul>
+<p>Setup script can write this file for you (next step).</p>
+
+<h2>7. Run setup-client.ps1 (one-time setup)</h2>
+<p>Open <strong>PowerShell as Administrator</strong>:</p>
+<pre>cd D:\WINDAL\apptest
+
+powershell -ExecutionPolicy Bypass -File .\setup-client.ps1 `
+  -ClientKey "dal-pushkar" `
+  -OraclePrimaryUser "DAL" `
+  -OraclePrimaryPassword "YOUR_PASSWORD" `
+  -OracleConnectString "XE" `
+  -OracleSecondaryUser "DAL" `
+  -OracleSecondaryPassword "YOUR_PASSWORD"</pre>
+<p>This typically:</p>
+<ul>
+  <li>Updates <code>connection.config.json</code></li>
+  <li>Installs Node / cloudflared if missing</li>
+  <li>Runs <code>npm install</code> and <code>npm run build</code></li>
+  <li>Creates scheduled task <code>FAS-dal-pushkar-API</code> (API auto-start on reboot)</li>
+</ul>
+<div class="note">After Node install, if <code>node</code> is not found, close PowerShell and open a new window.</div>
+
+<h2>8. Cloudflare tunnel (config.yml)</h2>
+<p>If tunnel <strong>dal-pushkar</strong> already exists in Cloudflare, you do <strong>not</strong> create it again. On this PC you need:</p>
+<ul>
+  <li><code>D:\WINDAL\apptest\config.yml</code></li>
+  <li><code>D:\WINDAL\apptest\&lt;tunnel-uuid&gt;.json</code> (credentials)</li>
+</ul>
+
+<h3>8.1 Example config.yml</h3>
+<pre>tunnel: YOUR-TUNNEL-UUID-HERE
+credentials-file: ./YOUR-TUNNEL-UUID-HERE.json
+
+ingress:
+  - hostname: dal-pushkar.fasaccountingsoftware.in
+    service: http://localhost:5174
+  - hostname: dal-pushkar-api.fasaccountingsoftware.in
+    service: http://localhost:5001
+  - service: http_status:404</pre>
+
+<h3>8.2 Regenerate config on client (same tunnel name)</h3>
+<pre>cloudflared tunnel login
+cd D:\WINDAL\apptest
+powershell -ExecutionPolicy Bypass -File .\setup-new-client-tunnel.ps1 -ClientKey "dal-pushkar" -SkipClientSetup</pre>
+
+<h3>8.3 List tunnels</h3>
+<pre>cloudflared tunnel list</pre>
+
+<h2>9. Start services and verify</h2>
+<h3>9.1 Option A — Script (three windows)</h3>
+<pre>cd D:\WINDAL\apptest
+powershell -ExecutionPolicy Bypass -File .\start-apptest-services.ps1</pre>
+
+<h3>9.2 Option B — Manual (three PowerShell windows)</h3>
+<p><strong>Window 1 — API:</strong></p>
+<pre>cd D:\WINDAL\apptest
+npm.cmd run server</pre>
+<p><strong>Window 2 — Web:</strong></p>
+<pre>cd D:\WINDAL\apptest
+npm.cmd run dev -- --host 0.0.0.0 --port 5174</pre>
+<p><strong>Window 3 — Tunnel:</strong></p>
+<pre>cd D:\WINDAL\apptest
+cloudflared tunnel --config .\config.yml run</pre>
+
+<h3>9.3 Option C — Batch</h3>
+<pre>cd D:\WINDAL\apptest
+.\run-all-services.cmd</pre>
+
+<h3>9.4 Verification</h3>
+<table>
+  <tr><th>Check</th><th>Expected</th></tr>
+  <tr><td>Local web</td><td>http://localhost:5174</td></tr>
+  <tr><td>Local API</td><td>http://localhost:5001</td></tr>
+  <tr><td>Public web</td><td>https://dal-pushkar.fasaccountingsoftware.in</td></tr>
+  <tr><td>Public API</td><td>https://dal-pushkar-api.fasaccountingsoftware.in</td></tr>
+  <tr><td>API log</td><td>D:\WINDAL\apptest\logs\server.log</td></tr>
+</table>
+
+<h2>10. Scheduled tasks (auto-start after reboot)</h2>
+<table>
+  <tr><th>Task name</th><th>What starts</th><th>How to register</th></tr>
+  <tr><td>FAS-&lt;client&gt;-API</td><td>API only</td><td>Default from setup-client.ps1</td></tr>
+  <tr><td>FAS-&lt;client&gt;-AllServices</td><td>API + Vite + tunnel</td><td>setup-scheduled-task-all-services.ps1 (Admin)</td></tr>
+</table>
+<div class="warn">Use only <strong>one</strong> auto-start method to avoid port conflicts on 5001 and 5174.
+</div>
+<pre>powershell -ExecutionPolicy Bypass -File .\setup-scheduled-task-all-services.ps1</pre>
+
+<h2>11. Updating the app from Git (routine)</h2>
+<p>When developers publish changes to GitHub, update the client PC:</p>
+
+<h3>11.1 Stop services first</h3>
+<pre>cd D:\WINDAL\apptest
+powershell -ExecutionPolicy Bypass -File .\stop-apptest-services.ps1 `
+  -AppRoot "D:\WINDAL\apptest" -StopScheduledTasks -ReleaseApiPort5001 -ReleasePorts5174</pre>
+
+<h3>11.2 Pull and rebuild</h3>
+<pre>cd D:\WINDAL\apptest
+powershell -ExecutionPolicy Bypass -File .\update-from-git.ps1 -Branch main</pre>
+<p>This runs: <code>git fetch</code>, <code>git pull origin main</code>, <code>npm ci</code>, <code>npm run build</code>.</p>
+
+<h3>11.3 Start services again</h3>
+<pre>powershell -ExecutionPolicy Bypass -File .\start-apptest-services.ps1 -AppRoot "D:\WINDAL\apptest"</pre>
+
+<h3>11.4 Manual Git commands (if scripts fail)</h3>
+<pre>cd D:\WINDAL\apptest
+git fetch origin
+git checkout main
+git pull origin main --autostash
+npm.cmd ci
+npm.cmd run build</pre>
+
+<div class="warn"><strong>Files Git must NOT overwrite:</strong> Keep local copies of <code>connection.config.json</code>, <code>config.yml</code>, and tunnel <code>*.json</code>. If pull changes them, restore from backup.
+</div>
+
+<h2>12. One-click desktop update</h2>
+<p>Use the desktop shortcut <strong>Update APPTEST</strong> (or run):</p>
+<pre>cd D:\WINDAL\apptest
+powershell -ExecutionPolicy Bypass -File .\run-desktop-update.ps1 -AppRoot "D:\WINDAL\apptest" -Branch main</pre>
+<p>Log file: <code>D:\WINDAL\apptest\logs\desktop-update.log</code></p>
+<p>Steps: stop services → git pull + npm ci + build → start services.</p>
+
+<h2>13. Troubleshooting</h2>
+<table>
+  <tr><th>Problem</th><th>Action</th></tr>
+  <tr><td><code>node</code> / <code>npm</code> not found</td><td>Reopen PowerShell after install; or add <code>C:\Program Files\nodejs</code> to PATH.</td></tr>
+  <tr><td><code>git</code> not found</td><td>Install Git for Windows; reopen PowerShell.</td></tr>
+  <tr><td>Not a Git repository</td><td>Run first-time clone (Section 4) or <code>git_client_installation.ps1</code>.</td></tr>
+  <tr><td>git pull failed</td><td>Run <code>git status</code>; stash local changes: <code>git stash -u</code>, pull, then <code>git stash pop</code>.</td></tr>
+  <tr><td>File locked during update</td><td>Close API/Vite/tunnel windows; run stop script with <code>-StopScheduledTasks</code>; do not open log files in Notepad while updating.</td></tr>
+  <tr><td>Oracle init error</td><td>Confirm <code>D:\WINDAL\oracle_bridge\instantclient_23_0</code> exists; check TNS files.</td></tr>
+  <tr><td>Tunnel credentials missing</td><td>Place <code>config.yml</code> + <code>&lt;uuid&gt;.json</code> in apptest folder.</td></tr>
+  <tr><td>Wrong site on public URL</td><td>Vite must use port <strong>5174</strong>; match <code>config.yml</code> ingress.</td></tr>
+</table>
+
+<h2>Quick reference — paths and commands</h2>
+<pre>App folder:     D:\WINDAL\apptest
+Git repo:       https://github.com/DBHATIA182/MYFAS_WINDAL.git
+First clone:    cd D:\WINDAL && git clone ... MYFAS_WINDAL.git apptest
+Setup:          .\setup-client.ps1 -ClientKey "..." -Oracle...
+Update:         .\run-desktop-update.ps1 -AppRoot "D:\WINDAL\apptest"
+Start:          .\start-apptest-services.ps1</pre>
+
+<footer>
+  Windal Accounting — Client installation guide · Rebuild PDF: run <code>build-windal-install-guide-pdf.ps1</code> from the apptest folder.
+</footer>
+
+</body>
+</html>

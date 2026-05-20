@@ -3004,7 +3004,7 @@ function buildSalesOrderPrintReportHtml(data, metadata) {
     <header class="dc-pdf-page-header">
       ${logoBlock}
       <div class="dc-pdf-page-header-main">
-        <div class="dc-pdf-doc-title">SALES ORDER</div>
+        <div class="dc-pdf-doc-title">${escHtml(String(metadata?.orderDocTitle || 'SALES ORDER').toUpperCase())}</div>
         <div class="dc-pdf-co-name">${company}</div>
         ${compLines.map((line) => `<div class="dc-pdf-co-line">${escHtml(line)}</div>`).join('')}
       </div>
@@ -3233,7 +3233,7 @@ function buildSalesOrderListReportHtml(data, metadata) {
     <div class="pdf-report-wrap sales-order-list-pdf-wrap">
       <div class="pdf-report-header">
         <h1>${company}</h1>
-        <h2>Sales order list</h2>
+        <h2>${escHtml(metadata?.listDocTitle || 'Sales order list')}</h2>
         <p>Period: ${sdt} to ${edt} · Party: ${party} · Item: ${item} · Marka: ${marka}</p>
         <p class="pdf-meta">Generated: ${generated}</p>
       </div>
@@ -3773,6 +3773,18 @@ export function buildReportHtml(reportType, data, metadata) {
   if (reportType === 'dispatch-challan-print') return buildDispatchChallanPrintReportHtml(data, metadata);
   if (reportType === 'sales-order-list') return buildSalesOrderListReportHtml(data, metadata);
   if (reportType === 'sales-order-print') return buildSalesOrderPrintReportHtml(data, metadata);
+  if (reportType === 'purchase-order-list') {
+    return buildSalesOrderListReportHtml(data, {
+      ...metadata,
+      listDocTitle: metadata?.listDocTitle || 'Purchase order list',
+    });
+  }
+  if (reportType === 'purchase-order-print') {
+    return buildSalesOrderPrintReportHtml(data, {
+      ...metadata,
+      orderDocTitle: metadata?.orderDocTitle || 'PURCHASE ORDER',
+    });
+  }
   return buildTrialBalanceReportHtml(data, metadata);
 }
 
@@ -3836,7 +3848,11 @@ function getPdfOptions(metadata, reportType, data) {
 
   const base = {
     margin:
-      reportType === 'sale-bill' || reportType === 'purchase-bill' || reportType === 'dispatch-challan-print' || reportType === 'sales-order-print'
+      reportType === 'sale-bill' ||
+      reportType === 'purchase-bill' ||
+      reportType === 'dispatch-challan-print' ||
+      reportType === 'sales-order-print' ||
+      reportType === 'purchase-order-print'
         ? 8
         : reportType === 'balance-sheet'
           ? 6
@@ -3846,7 +3862,11 @@ function getPdfOptions(metadata, reportType, data) {
     html2canvas,
     jsPDF: {
       orientation:
-        reportType === 'sale-bill' || reportType === 'purchase-bill' || reportType === 'dispatch-challan-print' || reportType === 'sales-order-print'
+        reportType === 'sale-bill' ||
+        reportType === 'purchase-bill' ||
+        reportType === 'dispatch-challan-print' ||
+        reportType === 'sales-order-print' ||
+        reportType === 'purchase-order-print'
           ? 'portrait'
           : 'landscape',
       unit: 'mm',
@@ -3854,7 +3874,7 @@ function getPdfOptions(metadata, reportType, data) {
     },
   };
 
-  if (reportType === 'dispatch-challan-print' || reportType === 'sales-order-print') {
+  if (reportType === 'dispatch-challan-print' || reportType === 'sales-order-print' || reportType === 'purchase-order-print') {
     base.pagebreak = {
       mode: ['css', 'legacy'],
       before: '.dc-pdf-page--new',

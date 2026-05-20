@@ -4,6 +4,7 @@ import { downloadExcelWorkbook } from '../utils/excelExport';
 import { toDisplayDate, toInputDateString, toOracleDate } from '../utils/dateFormat';
 import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 
 function num(v) {
   const n = Number(v);
@@ -807,7 +808,7 @@ export default function Slide16({ apiBase, formData, onPrev, onReset, reportMode
             <strong>Schedule</strong> {schedule || 'All'} · <strong>Party</strong> {code || 'All'}
           </p>
           <p>
-            {compName} | FY {compYear}
+            <SessionLineText formData={formData} />
           </p>
           <p>
             <button type="button" className="btn btn-secondary" onClick={() => setMainFilters({})}>
@@ -999,9 +1000,7 @@ export default function Slide16({ apiBase, formData, onPrev, onReset, reportMode
   return (
     <div className="slide slide-16">
       <h2>{titleBase}</h2>
-      <p className="company-info">
-        {compName} | FY {compYear}
-      </p>
+      <SessionInfoLine formData={formData} />
       {lookupError ? <div className="form-api-error">{lookupError}</div> : null}
       {error ? <div className="form-api-error">{error}</div> : null}
 

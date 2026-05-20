@@ -4,7 +4,8 @@ import axios from 'axios';
 import { toInputDateString, toOracleDate, toDisplayDate, normalizeHtmlDateValue } from '../utils/dateFormat';
 import SaleBillPrintModal from '../components/SaleBillPrintModal';
 import ReportHelpButton from '../components/ReportHelpButton';
-import SaleEntryFinYearStrip from '../components/SaleEntryFinYearStrip';
+import SaleEntryTopBar from '../components/SaleEntryTopBar';
+import SaleEntryScreenHeader from '../components/SaleEntryScreenHeader';
 import MasterPartyCreateModal, { PartyAddButton } from '../components/MasterPartyCreateModal';
 import { clampYmdToFinYear, defaultDocDateInFinYear } from '../utils/saleEntryFinYear';
 import { upsertMasterParty } from '../utils/upsertMasterParty';
@@ -1702,82 +1703,29 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         billParams={billPrintParams}
         companyName={formData.comp_name ?? formData.COMP_NAME ?? ''}
       />
-      <header className="sale-bill-page__header">
-        <SaleEntryFinYearStrip
-          screenTitle="Sale bill"
-          formData={formData}
-          ctx={ctx}
-          userName={userName}
-          companyName={formData.comp_name ?? formData.COMP_NAME}
-        />
-        <div className="sale-bill-page__title-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <h2 className="sale-bill-page__title">Sale bill</h2>
-          <ReportHelpButton reportId="sale-bill-entry" />
-        </div>
-        <div className="sale-bill-page__user-power" role="status" aria-label="User and sale bill F1 rights">
-          <span className="sale-bill-page__user-power-user">
-            <span className="sale-bill-page__user-power-k">USER</span>
-            <span className="sale-bill-page__user-power-colon">:</span>
-            <strong className="sale-bill-page__user-power-name">{userName || '—'}</strong>
-          </span>
-          <span className="sale-bill-page__user-power-vsep" aria-hidden>
-            |
-          </span>
-          <span className="sale-bill-page__user-power-rights" aria-label="F1 rights; X means not permitted">
-            <span className={can.canOpen ? 'sale-bill-power sale-bill-power--on' : 'sale-bill-power sale-bill-power--off'}>
-              ACCESS
-              {!can.canOpen ? <span className="sale-bill-power__x">X</span> : null}
-            </span>
-            <span className={can.canAdd ? 'sale-bill-power sale-bill-power--on' : 'sale-bill-power sale-bill-power--off'}>
-              ADD
-              {!can.canAdd ? <span className="sale-bill-power__x">X</span> : null}
-            </span>
-            <span className={can.canEdit ? 'sale-bill-power sale-bill-power--on' : 'sale-bill-power sale-bill-power--off'}>
-              EDIT
-              {!can.canEdit ? <span className="sale-bill-power__x">X</span> : null}
-            </span>
-            <span className={can.canDelete ? 'sale-bill-power sale-bill-power--on' : 'sale-bill-power sale-bill-power--off'}>
-              DELETE
-              {!can.canDelete ? <span className="sale-bill-power__x">X</span> : null}
-            </span>
-          </span>
-        </div>
-        <p className="sale-bill-page__perms" role="status">
-          {permSummary}
-        </p>
-        <div className="sale-bill-page__meta">
-          <span className="sale-bill-page__meta-item">
-            <span className="sale-bill-page__meta-k">Company</span> {formData.comp_name ?? '—'}
-          </span>
-          <span className="sale-bill-page__meta-item">
-            <span className="sale-bill-page__meta-k">FY</span> {formData.comp_year ?? '—'}
-          </span>
-          {!can.canOpen && !can.canAdd && !can.canEdit && !can.canDelete ? (
-            <span className="sale-bill-page__meta-item sale-bill-page__meta-item--warn">Access denied (F1)</span>
-          ) : null}
-        </div>
-        {ctx ? (
-          <div className="sale-bill-page__context">
-            <span>Fin year {ctx.G_FIN_YEAR}</span>
-            <span className="sale-bill-page__dot" aria-hidden>
-              ·
-            </span>
-            <span>
-              Bill dates <strong>{toDisplayDate(fyMinYmd)}</strong> – <strong>{toDisplayDate(fyMaxYmd)}</strong>
-            </span>
-            <span className="sale-bill-page__dot" aria-hidden>
-              ·
-            </span>
-            <span>AMT_CAL {ctx.G_AMT_CAL ?? '—'}</span>
-            <span className="sale-bill-page__dot" aria-hidden>
-              ·
-            </span>
-            <span>GST {String(ctx.G_GST_NO || '').slice(0, 14)}…</span>
-          </div>
-        ) : null}
-      </header>
+      <SaleEntryScreenHeader
+        title="Sale bill"
+        reportId="sale-bill-entry"
+        topBar={<SaleEntryTopBar formData={formData} ctx={ctx} userName={userName} can={can} />}
+        extra={
+          <>
+            {!can.canOpen && !can.canAdd && !can.canEdit && !can.canDelete ? (
+              <p className="sale-bill-page__perms deploy-update-msg deploy-update-msg--err" role="status">
+                Access denied (F1)
+              </p>
+            ) : null}
+            {ctx && String(ctx.G_GST_NO || '').trim() ? (
+              <div className="sale-bill-page__context">
+                <span>GST {String(ctx.G_GST_NO || '').trim()}</span>
+              </div>
+            ) : null}
+          </>
+        }
+      />
 
-      {err ? <p className="deploy-update-msg deploy-update-msg--err sale-bill-page__alert">{err}</p> : null}
+      {err ? (
+        <p className="deploy-update-msg deploy-update-msg--err">{err}</p>
+      ) : null}
 
       <section className="sale-bill-section sale-bill-section--toolbar sale-bill-section--card">
         <div className="sale-bill-toolbar">

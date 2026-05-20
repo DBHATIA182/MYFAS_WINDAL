@@ -5,6 +5,7 @@ import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { toDisplayDate, toInputDateString, toOracleDate } from '../utils/dateFormat';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 
 function todayInputValue() {
   const d = new Date();
@@ -222,7 +223,7 @@ export default function Slide12({ apiBase, onPrev, onReset, formData }) {
             <strong>{detailTitle}</strong>
           </p>
           <p>
-            {compName} | FY {compYear}
+            <SessionLineText formData={formData} />
             <br />
             Up to {toDisplayDate(endDate)} · {mlb === 'B' ? 'Outstanding bills only' : 'FIFO pending ledger balance'}
           </p>
@@ -287,7 +288,7 @@ export default function Slide12({ apiBase, onPrev, onReset, formData }) {
             <strong>Schedule</strong> {schedule.trim()} · <strong>Source</strong> {mlb === 'L' ? 'Ledger' : 'Bills'}
           </p>
           <p>
-            {compName} | FY {compYear}
+            <SessionLineText formData={formData} />
             <br />
             Ending date {toDisplayDate(endDate)}
             <br />
@@ -319,11 +320,10 @@ export default function Slide12({ apiBase, onPrev, onReset, formData }) {
     <div className="slide slide-ageing-form">
       <h2>Ageing report — parameters</h2>
 
-      <p className="company-info">
-        {compName} | FY {compYear}
+      <SessionInfoLine formData={formData}>
         <br />
         <span className="compdet-date-hint">Select schedule, ending date, source, and the five ageing buckets.</span>
-      </p>
+      </SessionInfoLine>
 
       <form onSubmit={handleSubmit} className="report-form report-form--ageing">
         <div className="button-group button-group--form-top">

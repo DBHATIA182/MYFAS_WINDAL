@@ -7,6 +7,7 @@ import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFor
 import { formatApiOrigin } from '../utils/apiLabel';
 import { filterBrokerOsRawRowsByMinClosingAbs, parseBrokerOsRangeForUi } from '../utils/brokerOsDisplay';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 import { filterCodeNameCityRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
 
 const DEFAULT_HISTORY_START_DATE = '2001-04-01';
@@ -383,7 +384,7 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
             )}
           </p>
           <p>
-            {compName} | FY {compYear}
+            <SessionLineText formData={formData} />
             <br />
             Bills {toDisplayDate(startDate)} – {toDisplayDate(endDate)} · Payment cut-off {toDisplayDate(payEndDate)} ·{' '}
             {mco === 'O' ? 'Outstanding only' : 'All'}
@@ -413,15 +414,14 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
     <div className="slide slide-7">
       <h2>Broker outstanding (BrokerOs)</h2>
 
-      <p className="company-info">
-        {compName} | FY {compYear}
+      <SessionInfoLine formData={formData}>
         <br />
         <span className="compdet-date-hint">
           Each included bill has at least one <strong>BILLS</strong> line with numeric <strong>b_code</strong> (column{' '}
           <strong>B_CODE</strong>) in your broker range and <strong>VR_TYPE</strong> in <strong>S</strong>, SE, or PU — not SL.
           Credits after the payment ending date are ignored in balances.
         </span>
-      </p>
+      </SessionInfoLine>
 
       {lookupError ? (
         <div className="form-api-error" role="alert">

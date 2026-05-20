@@ -6,6 +6,7 @@ import { toInputDateString, toOracleDate, toDisplayDate, formatLedgerDateDisplay
 import { formatApiOrigin } from '../utils/apiLabel';
 import PurchaseBillPrintModal from '../components/PurchaseBillPrintModal';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 
 function n(row, upper, lower) {
   const v = row?.[upper] ?? row?.[lower];
@@ -349,7 +350,7 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
             {itemCode || 'All'} · <strong>Plant</strong> {plantCode || 'All'}
           </p>
           <p>
-            {compName} | FY {compYear}. Click any data row to open purchase bill print. Current view:{' '}
+            <SessionLineText formData={formData} />. Click any data row to open purchase bill print. Current view:{' '}
             <strong>{purchaseSortLabel}</strong>.
           </p>
         </div>
@@ -528,13 +529,12 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
   return (
     <div className="slide slide-11">
       <h2>Purchase list</h2>
-      <p className="company-info">
-        {compName} | FY {compYear}
+      <SessionInfoLine formData={formData}>
         <br />
         <span className="compdet-date-hint">
           Purchase report with filters for type, party, broker, item and plant.
         </span>
-      </p>
+      </SessionInfoLine>
       {lookupError ? (
         <div className="form-api-error" role="alert">
           {lookupError}

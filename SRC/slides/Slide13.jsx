@@ -4,6 +4,7 @@ import SaleBillPrintModal from '../components/SaleBillPrintModal';
 import { toDisplayDate, toInputDateString, toOracleDate } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 import { filterCodeNameCityRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
 
 /** Maps Oracle SALE.TYPE (1–9) to print/API letter bucket (same as sale list / Slide8). */
@@ -277,7 +278,7 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
             <strong>Gross/Dane</strong> {printGrossDane} · <strong>Packing</strong> {printPacking}
           </p>
           <p>
-            {compName} | FY {compYear}
+            <SessionLineText formData={formData} />
             <br />
             Click a row to open the printable sale bill. (PAGETYPE / COPY NO apply to the Fox-style print stack; values are passed for future PDF parity.)
           </p>
@@ -350,14 +351,13 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
   return (
     <div className="slide slide-13">
       <h2>Sale Bill Printing</h2>
-      <p className="company-info">
-        {compName} | FY {compYear}
+      <SessionInfoLine formData={formData}>
         <br />
         <span className="compdet-date-hint">
           VFP-style filters: <strong>date range</strong>, <strong>bill no range</strong>, <strong>SALETYPE</strong>, <strong>PAGETYPE</strong>,{' '}
           <strong>COPY NO</strong>, <strong>BTYPE</strong>, <strong>REVCHG</strong>, optional party and broker.
         </span>
-      </p>
+      </SessionInfoLine>
 
       {lookupError ? (
         <div className="form-api-error" role="alert">

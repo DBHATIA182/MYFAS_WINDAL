@@ -238,6 +238,18 @@ export const REPORT_HELP = {
     ],
   },
 
+  'purchase-order-entry': {
+    title: 'Purchase Order Entry',
+    summary: 'Add, edit, delete purchase orders (SORDER type PO).',
+    sections: [
+      section('Use', [
+        'F13 permissions: open/add/edit/delete from DAL.USERS (SUBSTR F13,1–4).',
+        'Supplier schedule 11.1; PO no/date, lines, Ref no in footer; Prev/Next/List/Print.',
+        'G_AMT_CAL and G_COMP_YEAR from COMPDET.',
+      ]),
+    ],
+  },
+
   'dispatch-challan-entry': {
     title: 'Dispatch Challan Entry',
     summary: 'Dispatch challans (ISSUE type S).',
@@ -344,6 +356,7 @@ const PDF_ORDER = [
   'sale-list',
   'gstr1',
   'sales-order-entry',
+  'purchase-order-entry',
   'dispatch-challan-entry',
   'sale-bill-entry',
   'purchase-list',

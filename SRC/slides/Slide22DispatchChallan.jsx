@@ -6,7 +6,8 @@ import DispatchChallanListScreen from './DispatchChallanListScreen';
 import DispatchChallanPrintScreen from './DispatchChallanPrintScreen';
 import { DcActionBar } from '../components/DispatchChallanActionBar';
 import ReportHelpButton from '../components/ReportHelpButton';
-import SaleEntryFinYearStrip from '../components/SaleEntryFinYearStrip';
+import SaleEntryTopBar from '../components/SaleEntryTopBar';
+import SaleEntryScreenHeader from '../components/SaleEntryScreenHeader';
 import MasterPartyCreateModal, { PartyAddButton } from '../components/MasterPartyCreateModal';
 import LineMarkaCombo from '../components/LineMarkaCombo';
 import {
@@ -929,63 +930,26 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
   }
 
   return (
-    <div className="slide slide-22-dispatch-challan sale-bill-page" onKeyDown={handleEnterAsTab} role="presentation">
-      <header className="sale-bill-page__header">
-        <SaleEntryFinYearStrip
-          screenTitle="Dispatch challan"
-          formData={formData}
-          ctx={ctx}
-          userName={userName}
-          companyName={formData.comp_name ?? formData.COMP_NAME}
-        />
-        <div className="sale-bill-page__title-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <h2 className="sale-bill-page__title">Dispatch challan</h2>
-          <ReportHelpButton reportId="dispatch-challan-entry" />
-        </div>
-        <div className="sale-bill-page__user-power" role="status">
-          <span className="sale-bill-page__user-power-user">
-            <span className="sale-bill-page__user-power-k">USER</span>
-            <strong className="sale-bill-page__user-power-name">{userName || '—'}</strong>
-          </span>
-          <span className="sale-bill-page__user-power-rights">
-            <span className={can.canOpen ? 'sale-bill-power sale-bill-power--on' : 'sale-bill-power sale-bill-power--off'}>
-              ACCESS{!can.canOpen ? <span className="sale-bill-power__x">X</span> : null}
-            </span>
-            <span className={can.canAdd ? 'sale-bill-power sale-bill-power--on' : 'sale-bill-power sale-bill-power--off'}>
-              ADD{!can.canAdd ? <span className="sale-bill-power__x">X</span> : null}
-            </span>
-            <span className={can.canEdit ? 'sale-bill-power sale-bill-power--on' : 'sale-bill-power sale-bill-power--off'}>
-              EDIT{!can.canEdit ? <span className="sale-bill-power__x">X</span> : null}
-            </span>
-            <span className={can.canDelete ? 'sale-bill-power sale-bill-power--on' : 'sale-bill-power sale-bill-power--off'}>
-              DELETE{!can.canDelete ? <span className="sale-bill-power__x">X</span> : null}
-            </span>
-          </span>
-        </div>
-        <div className="sale-bill-page__meta">
-          <span className="sale-bill-page__meta-item">
-            <span className="sale-bill-page__meta-k">Company</span> {formData.comp_name ?? '—'}
-          </span>
-          {ctx ? (
-            <span className="sale-bill-page__meta-item">
-              <span className="sale-bill-page__meta-k">Amt cal</span> {gAmtCal}
-            </span>
-          ) : null}
-        </div>
-      </header>
-
-      <DcActionBar position="top" label="Screen actions">
-        {showChNav ? (
-          <span className="dc-action-bar__nav" role="group" aria-label="Challan navigation">
-            {chNavButtons}
-          </span>
-        ) : null}
+    <div
+      className="slide slide-22-dispatch-challan sale-bill-page sale-entry-desktop"
+      onKeyDown={handleEnterAsTab}
+      role="presentation"
+    >
+      <SaleEntryScreenHeader
+        title="Dispatch challan"
+        reportId="dispatch-challan-entry"
+        topBar={<SaleEntryTopBar formData={formData} ctx={ctx} userName={userName} can={can} />}
+        nav={showChNav ? chNavButtons : null}
+      >
         {screenActionButtons}
-      </DcActionBar>
+      </SaleEntryScreenHeader>
 
-      {err ? <p className="deploy-update-msg deploy-update-msg--err sale-bill-page__alert">{err}</p> : null}
+      {err ? (
+        <p className="deploy-update-msg deploy-update-msg--err sale-entry-desktop__err">{err}</p>
+      ) : null}
 
-      <section className="sale-bill-section sale-bill-section--card dc-header-card">
+      <div className="sale-entry-desktop__body">
+      <section className="sale-bill-section sale-bill-section--card dc-header-card sale-entry-desktop__form">
         <div className="dc-header-row dc-header-row--top">
           <label className="dc-header-field dc-header-field--mode">
             <span className="dc-header-k">Mode</span>
@@ -1157,7 +1121,7 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
         </div>
       </section>
 
-      <section className="sale-bill-section sale-bill-section--card dc-lines-section">
+      <section className="sale-bill-section sale-bill-section--card dc-lines-section sale-entry-desktop__lines">
         <h3 className="sale-bill-section__title">Lines</h3>
         <div className="sale-list-scroll-sync sale-list-scroll-sync--top dc-lines-scroll-top" ref={dcLinesTopScrollRef} aria-hidden="true">
           <div className="sale-list-scroll-sync-inner" ref={dcLinesTopInnerRef} />
@@ -1347,7 +1311,9 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
         </p>
       </section>
 
-      <section className="sale-bill-section sale-bill-section--card">
+      </div>
+
+      <section className="sale-bill-section sale-bill-section--card sale-entry-desktop__footer sale-entry-desktop__footer-fields">
         <h3 className="sale-bill-section__title">Footer</h3>
         <div className="sale-bill-totals-grid">
           <label className="sale-bill-field sale-bill-field--block">
@@ -1388,15 +1354,6 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
           </label>
         </div>
       </section>
-
-      <DcActionBar position="bottom" label="Screen actions">
-        {showChNav ? (
-          <span className="dc-action-bar__nav" role="group" aria-label="Challan navigation">
-            {chNavButtons}
-          </span>
-        ) : null}
-        {screenActionButtons}
-      </DcActionBar>
 
       <DispatchPickModal
         open={soPick.open}

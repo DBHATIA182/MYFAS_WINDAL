@@ -7,6 +7,7 @@ import { formatApiOrigin } from '../utils/apiLabel';
 import PurchaseBillPrintModal from '../components/PurchaseBillPrintModal';
 import SaleBillPrintModal from '../components/SaleBillPrintModal';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 
 /** Maps Oracle SALE.TYPE (1–9) to print/API letter bucket (same as Slide13). */
 const SALE_LIST_NUMTYPE_TO_PRINT = {
@@ -581,7 +582,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
             <strong>Date</strong> {toDisplayDate(startDate)} – {toDisplayDate(endDate)} · <strong>Item</strong> {itemLabel}
           </p>
           <p>
-            {compName} | FY {compYear} · <strong>Plant</strong> {plantCode || 'All'} · <strong>Cat</strong> {catCode || 'All'} ·{' '}
+            <SessionLineText formData={formData} /> · <strong>Plant</strong> {plantCode || 'All'} · <strong>Cat</strong> {catCode || 'All'} ·{' '}
             <strong>R/F</strong> {rf || 'All'}
           </p>
         </div>
@@ -770,7 +771,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
                 <strong>Period</strong> {toDisplayDate(startDate)} – {toDisplayDate(endDate)}
               </p>
               <p>
-                {compName} | FY {compYear} · Tap a row for voucher detail or purchase/sale bill.
+                <SessionLineText formData={formData} /> · Tap a row for voucher detail or purchase/sale bill.
               </p>
             </div>
             {ledgerLoading ? <p>Loading…</p> : null}
@@ -912,7 +913,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
             </div>
             <div className="report-info">
               <p>
-                {compName} | FY {compYear} · <strong>Item</strong> {ledgerMeta?.itemCode || '—'} · <strong>Plant</strong>{' '}
+                <SessionLineText formData={formData} /> · <strong>Item</strong> {ledgerMeta?.itemCode || '—'} · <strong>Plant</strong>{' '}
                 {ledgerMeta?.plantCode || '—'}
               </p>
             </div>
@@ -1031,13 +1032,12 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
   return (
     <div className="slide slide-9">
       <h2>Stock sum</h2>
-      <p className="company-info">
-        {compName} | FY {compYear}
+      <SessionInfoLine formData={formData}>
         <br />
         <span className="compdet-date-hint">
           Item-wise stock movement summary by date range with optional filters.
         </span>
-      </p>
+      </SessionInfoLine>
 
       {error ? (
         <div className="form-api-error" role="alert">

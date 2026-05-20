@@ -4,6 +4,7 @@ import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFor
 import { downloadExcelWorkbook } from '../utils/excelExport';
 import { generatePDF } from '../utils/pdfgenerator';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 
 function toYesNo(v, defVal = 'Y') {
   const t = String(v ?? '').trim().toUpperCase();
@@ -747,7 +748,7 @@ export default function Slide15({ apiBase, formData, onPrev, onReset }) {
           </div>
           <div className="report-info">
             <p>
-              <strong>{compName}</strong> | FY {compYear} | {toDisplayDate(sDate)} - {toDisplayDate(eDate)}
+              <SessionLineText formData={formData} /> | {toDisplayDate(sDate)} - {toDisplayDate(eDate)}
             </p>
           </div>
           <div className="report-display table-responsive table-responsive--gstr1" ref={saleDetailGridScrollRef}>
@@ -818,7 +819,7 @@ export default function Slide15({ apiBase, formData, onPrev, onReset }) {
         </div>
         <div className="report-info">
           <p>
-            <strong>{compName}</strong> | FY {compYear} | {toDisplayDate(sDate)} - {toDisplayDate(eDate)}
+            <SessionLineText formData={formData} /> | {toDisplayDate(sDate)} - {toDisplayDate(eDate)}
           </p>
         </div>
         <div className="report-sort-switch" role="group" aria-label="GSTR1 sheets">
@@ -898,9 +899,7 @@ export default function Slide15({ apiBase, formData, onPrev, onReset }) {
   return (
     <div className="slide slide-11">
       <h2>GSTR-1 parameters</h2>
-      <p className="company-info">
-        {compName} | FY {compYear}
-      </p>
+      <SessionInfoLine formData={formData} />
       <form onSubmit={runReport} className="report-form">
         <div className="button-group button-group--form-top">
           <button type="button" className="btn btn-secondary" onClick={onPrev}>← Back</button>

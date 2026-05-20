@@ -7,7 +7,7 @@ import { DcActionBar } from '../components/DispatchChallanActionBar';
 
 const reqOpts = { withCredentials: true, timeout: 120000 };
 
-function groupSalesOrderPrintRows(rows) {
+function groupPurchaseOrderPrintRows(rows) {
   const map = new Map();
   for (const r of rows) {
     const rn = r.SO_NO ?? r.so_no;
@@ -40,7 +40,7 @@ function groupSalesOrderPrintRows(rows) {
 }
 
 /** Same iframe document wrapper as sale bill print — styles come from buildReportHtml body. */
-function buildSalesOrderIframeDoc(bodyHtml) {
+function buildPurchaseOrderIframeDoc(bodyHtml) {
   return `<!doctype html>
 <html>
   <head>
@@ -55,11 +55,11 @@ function buildSalesOrderIframeDoc(bodyHtml) {
 </html>`;
 }
 
-export default function SalesOrderPrintScreen({
+export default function PurchaseOrderPrintScreen({
   apiBase,
   formData,
-  defaultSoNo = '',
-  defaultSoDateYmd = '',
+  defaultPoNo = '',
+  defaultPoDateYmd = '',
   onClose,
 }) {
   const compCode = formData.comp_code ?? formData.COMP_CODE;
@@ -69,11 +69,11 @@ export default function SalesOrderPrintScreen({
   const fyStart = toInputDateString(formData.comp_s_dt ?? formData.COMP_S_DT);
   const fyEnd = toInputDateString(formData.comp_e_dt ?? formData.COMP_E_DT);
 
-  const [sDate, setSDate] = useState(() => (defaultSoDateYmd || defaultSoNo ? defaultSoDateYmd : fyStart));
-  const [eDate, setEDate] = useState(() => defaultSoDateYmd || fyEnd);
-  const [sNo, setSNo] = useState(() => String(defaultSoNo ?? '').trim());
-  const [eNo, setENo] = useState(() => String(defaultSoNo ?? '').trim());
-    const [compdet, setCompdet] = useState(null);
+  const [sDate, setSDate] = useState(() => (defaultPoDateYmd || defaultPoNo ? defaultPoDateYmd : fyStart));
+  const [eDate, setEDate] = useState(() => defaultPoDateYmd || fyEnd);
+  const [sNo, setSNo] = useState(() => String(defaultPoNo ?? '').trim());
+  const [eNo, setENo] = useState(() => String(defaultPoNo ?? '').trim());
+  const [compdet, setCompdet] = useState(null);
   const [rawRows, setRawRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -89,7 +89,7 @@ export default function SalesOrderPrintScreen({
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const orders = useMemo(() => groupSalesOrderPrintRows(rawRows), [rawRows]);
+  const orders = useMemo(() => groupPurchaseOrderPrintRows(rawRows), [rawRows]);
 
   const pdfData = useMemo(
     () => ({
@@ -113,19 +113,19 @@ export default function SalesOrderPrintScreen({
 
   const shareText = [
     compName,
-    'Sales order',
+    'Purchase order',
     `${toDisplayDate(sDate)} to ${toDisplayDate(eDate)}`,
     `SO ${sNo || '0'}–${eNo || '0'}`,
   ].join('\n');
 
   const previewBodyHtml = useMemo(() => {
     if (!ran || !orders.length) return '';
-    return buildReportHtml('sales-order-print', pdfData, pdfMeta);
+    return buildReportHtml('purchase-order-print', pdfData, pdfMeta);
   }, [ran, orders.length, pdfData, pdfMeta]);
 
   const previewIframeHtml = useMemo(() => {
     if (!previewBodyHtml) return '';
-    return buildSalesOrderIframeDoc(previewBodyHtml);
+    return buildPurchaseOrderIframeDoc(previewBodyHtml);
   }, [previewBodyHtml]);
 
   const excelRows = useMemo(
@@ -187,7 +187,7 @@ export default function SalesOrderPrintScreen({
       };
       if (sTrim !== '') params.s_no = Math.max(0, Math.floor(Number(sTrim)));
       if (eTrim !== '') params.e_no = Math.max(0, Math.floor(Number(eTrim)));
-      const { data } = await axios.get(`${apiBase}/api/sales-order-print`, {
+      const { data } = await axios.get(`${apiBase}/api/purchase-order-print`, {
         params,
         ...reqOpts,
       });
@@ -219,11 +219,11 @@ export default function SalesOrderPrintScreen({
   const closePreviewModal = () => setPreviewModalOpen(false);
 
   const handlePdf = useCallback(() => {
-    generatePDF('sales-order-print', pdfData, pdfMeta).catch((e) => alert(e?.message || String(e)));
+    generatePDF('purchase-order-print', pdfData, pdfMeta).catch((e) => alert(e?.message || String(e)));
   }, [pdfData, pdfMeta]);
 
   const handleWhatsApp = useCallback(() => {
-    sharePdfWithWhatsApp('sales-order-print', pdfData, pdfMeta, shareText).catch((e) =>
+    sharePdfWithWhatsApp('purchase-order-print', pdfData, pdfMeta, shareText).catch((e) =>
       alert(e?.message || String(e))
     );
   }, [pdfData, pdfMeta, shareText]);
@@ -267,7 +267,7 @@ export default function SalesOrderPrintScreen({
         type="button"
         className="btn btn-excel"
         disabled={!rawRows.length}
-        onClick={() => downloadExcelRows(excelRows, 'SalesOrderPrint', `${compName}_DispatchOrder_Print`)}
+        onClick={() => downloadExcelRows(excelRows, 'PurchaseOrderPrint', `${compName}_DispatchOrder_Print`)}
       >
         Excel
       </button>
@@ -287,12 +287,12 @@ export default function SalesOrderPrintScreen({
         <div
           className="sale-bill-modal sale-bill-print-modal"
           role="dialog"
-          aria-labelledby="dc-print-modal-title"
+          aria-labelledby="po-print-modal-title"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="sale-bill-modal-head no-print">
-            <h3 id="dc-print-modal-title">
-              Sales order · {orders.length} · {rawRows.length} line(s)
+            <h3 id="po-print-modal-title">
+              Purchase order · {orders.length} · {rawRows.length} line(s)
             </h3>
             <div className="sale-bill-print-actions">
               <button type="button" className="btn btn-secondary" disabled={!previewReady} onClick={handleBrowserPrint}>
@@ -305,7 +305,7 @@ export default function SalesOrderPrintScreen({
                 type="button"
                 className="btn btn-excel"
                 disabled={!rawRows.length}
-                onClick={() => downloadExcelRows(excelRows, 'SalesOrderPrint', `${compName}_DispatchOrder_Print`)}
+                onClick={() => downloadExcelRows(excelRows, 'PurchaseOrderPrint', `${compName}_DispatchOrder_Print`)}
               >
                 Excel
               </button>
@@ -319,7 +319,7 @@ export default function SalesOrderPrintScreen({
           </div>
           <div className="sale-bill-modal-body sale-bill-print-body">
             <iframe
-              title="Sales order mobile preview"
+              title="Purchase order mobile preview"
               className="sale-bill-mobile-pdf-preview"
               srcDoc={previewIframeHtml}
             />
@@ -329,9 +329,9 @@ export default function SalesOrderPrintScreen({
     ) : null;
 
   return (
-    <div className="slide slide-23-sales-order-print dc-print-screen">
+    <div className="slide slide-24-purchase-order-print dc-print-screen">
       <header className="dc-print-screen__head">
-        <h2 className="sale-bill-page__title">Sales order print</h2>
+        <h2 className="sale-bill-page__title">Purchase order print</h2>
       </header>
 
       {!mobilePdfPreview ? (
@@ -406,7 +406,7 @@ export default function SalesOrderPrintScreen({
           </div>
           {orders.length ? (
             <iframe
-              title="Sales order print preview"
+              title="Purchase order print preview"
               className="dc-print-preview-frame"
               srcDoc={previewIframeHtml}
             />

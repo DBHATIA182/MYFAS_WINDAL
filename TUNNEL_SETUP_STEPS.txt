@@ -5,13 +5,13 @@ App folder: use the real path on that PC (e.g. D:\windal\apptest or E:\WINDAL\AP
 Scripts do NOT require E: — only cd to your APPTEST folder first.
 
 Public URLs (after DNS routes):
-  https://dal-pushkar.fasaccountingsoftware.in          (Vite / web UI)
-  https://dal-pushkar-api.fasaccountingsoftware.in      (Node API)
+  https://dal-demo.fasaccountingsoftware.in          (Vite / web UI)
+  https://dal-demo-api.fasaccountingsoftware.in      (Node API)
 
 ONE-COMMAND SETUP (PowerShell — from your APPTEST folder):
   cd D:\windal\apptest
   powershell -ExecutionPolicy Bypass -File .\setup-new-client-tunnel.ps1 `
-    -ClientKey "dal-pushkar" `
+    -ClientKey "dal-demo" `
     -SkipClientSetup `
     -OraclePrimaryUser "DAL" `
     -OraclePrimaryPassword "DAL" `
@@ -21,8 +21,8 @@ ONE-COMMAND SETUP (PowerShell — from your APPTEST folder):
 
 That script:
   - Runs setup-client.ps1 (unless -SkipClientSetup)
-  - Creates or reuses Cloudflare tunnel "dal-pushkar"
-  - Creates DNS CNAMEs dal-pushkar.fasaccountingsoftware.in and dal-pushkar-api.fasaccountingsoftware.in
+  - Creates or reuses Cloudflare tunnel "dal-demo"
+  - Creates DNS CNAMEs dal-demo.fasaccountingsoftware.in and dal-demo-api.fasaccountingsoftware.in
   - Writes config.yml (web UI -> localhost:5174) and copies <tunnel-uuid>.json next to config.yml
 
 Then start (3 terminals or use run-all-services.cmd):

@@ -8,6 +8,7 @@ import LedgerReportHeader from '../components/LedgerReportHeader';
 import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine from '../components/SessionInfoLine';
 
 function num(v) {
   const n = Number(v);
@@ -678,9 +679,7 @@ export default function Slide18PlProfitLoss({ apiBase, formData = {}, onPrev, on
   if (screen === SCREEN.FORM) return (
     <div className="slide slide-report slide-18 pl-profit-loss pl-profit-loss--setup">
       <h2>Profit &amp; Loss Account</h2>
-      <p className="company-info">
-        {compName} | FY {compYear}
-      </p>
+      <SessionInfoLine formData={formData} />
       <p className="report-info">Uses current project Trading logic (TDG) with standard setup.</p>
       {error ? <div className="form-api-error">{error}</div> : null}
 

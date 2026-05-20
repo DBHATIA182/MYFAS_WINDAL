@@ -9,6 +9,7 @@ import { generatePDF, sharePdfWithWhatsApp, buildLedgerStatementPdfMetadata } fr
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
 import { sortTrialBalanceRows } from '../utils/trialBalanceSort';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 
 function num(v) {
   const n = Number(v);
@@ -949,9 +950,10 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
     return (
       <div className="slide slide-report slide-17">
         <h2>Trading A/C - Enter Closing Stock</h2>
-        <p className="company-info">
-          {compName} | FY {compYear} | As on {toDisplayDate(edt)}
-        </p>
+        <SessionInfoLine formData={formData}>
+          {' '}
+          | As on {toDisplayDate(edt)}
+        </SessionInfoLine>
         {error ? <div className="form-api-error">{error}</div> : null}
         {debugInfo ? (
           <div className="report-info">
@@ -1092,7 +1094,7 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
         </div>
         <div className="report-info">
           <p>
-            <strong>{compName}</strong> | FY {compYear}
+            <SessionLineText formData={formData} />
           </p>
           <p>
             <strong>As on:</strong> {toDisplayDate(edt)}
@@ -1475,7 +1477,7 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
         </div>
         <div className="report-info">
           <p><strong>{ledgerTitle}</strong></p>
-          <p>{compName} | FY {compYear} | As on {toDisplayDate(edt)}</p>
+          <p><SessionLineText formData={formData} /> | As on {toDisplayDate(edt)}</p>
         </div>
         {error ? <div className="form-api-error">{error}</div> : null}
         <div className="report-display table-responsive">
@@ -1589,7 +1591,7 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
         </div>
         <div className="report-info">
           <p><strong>{catTrialTitle}</strong></p>
-          <p>{compName} | FY {compYear} | As on {toDisplayDate(edt)}</p>
+          <p><SessionLineText formData={formData} /> | As on {toDisplayDate(edt)}</p>
         </div>
         {error ? <div className="form-api-error">{error}</div> : null}
         <div className="report-display">
@@ -1813,9 +1815,7 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
   return (
     <div className="slide slide-report slide-17">
       <h2>Trading A/C</h2>
-      <p className="company-info">
-        {compName} | FY {compYear}
-      </p>
+      <SessionInfoLine formData={formData} />
       {error ? <div className="form-api-error">{error}</div> : null}
 
       <form onSubmit={runReport} className="report-form report-form--trading">

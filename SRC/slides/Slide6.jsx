@@ -5,6 +5,7 @@ import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, getCurBal, formatCurBal } from '../utils/dateFormat';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine from '../components/SessionInfoLine';
 import { filterCodeNameCityRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
 
 const DEFAULT_HISTORY_START_DATE = '2001-04-01';
@@ -332,15 +333,14 @@ export default function Slide6({ apiBase, onPrev, onReset, formData }) {
     <div className="slide slide-6">
       <h2>{ledgerTitle} — parameters</h2>
 
-      <p className="company-info">
-        {compName} | FY {compYear}
+      <SessionInfoLine formData={formData}>
         <br />
         <span className="compdet-date-hint">
           {isSupplierLedger
             ? 'Search supplier (schedule 11.10). Bill dates and payment ending date match your legacy prompts.'
             : 'Search customer (schedule 8-9). Bill dates and payment ending date match your legacy prompts.'}
         </span>
-      </p>
+      </SessionInfoLine>
 
       <form onSubmit={handleSubmit} className="report-form">
         <div className="button-group button-group--form-top">

@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
-import SalesOrderListScreen from './SalesOrderListScreen';
-import SalesOrderPrintScreen from './SalesOrderPrintScreen';
+import PurchaseOrderListScreen from './PurchaseOrderListScreen';
+import PurchaseOrderPrintScreen from './PurchaseOrderPrintScreen';
 import { DcActionBar } from '../components/DispatchChallanActionBar';
 import ReportHelpButton from '../components/ReportHelpButton';
 import SaleEntryTopBar from '../components/SaleEntryTopBar';
@@ -131,7 +131,7 @@ function focusNextInForm(rootEl, currentEl) {
 
 function focusLineQnty(lineIdx) {
   window.requestAnimationFrame(() => {
-    const root = document.querySelector('.slide-23-sales-order');
+    const root = document.querySelector('.slide-24-purchase-order');
     const el = root?.querySelector(`input[data-dc-line-qty="${lineIdx}"]`);
     if (!el || el.disabled) return;
     try {
@@ -144,10 +144,10 @@ function focusLineQnty(lineIdx) {
 function handleEnterAsTab(e) {
   if (e.key !== 'Enter') return;
   const t = e.target;
-  if (!t || t.closest('.slide-23-sales-order-ignore-enter')) return;
+  if (!t || t.closest('.slide-24-purchase-order-ignore-enter')) return;
   if (t.tagName === 'TEXTAREA') return;
   e.preventDefault();
-  const root = t.closest('.slide-23-sales-order');
+  const root = t.closest('.slide-24-purchase-order');
   if (root) focusNextInForm(root, t);
 }
 
@@ -214,7 +214,7 @@ function DispatchPickModal({ open, title, hint, emptyMessage, loading, rows, col
   if (!open) return null;
 
   return createPortal(
-    <div className="sale-bill-pick-overlay slide-23-sales-order-ignore-enter" role="presentation" onClick={onClose}>
+    <div className="sale-bill-pick-overlay slide-24-purchase-order-ignore-enter" role="presentation" onClick={onClose}>
       <div
         ref={cardRef}
         className="sale-bill-pick-card"
@@ -288,8 +288,8 @@ function highlightMatch(text, q) {
   );
 }
 
-export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev, onReset }) {
-  const soNoRef = useRef('');
+export default function Slide24PurchaseOrder({ apiBase, formData, userName, onPrev, onReset }) {
+  const poNoRef = useRef('');
   const slotGenRef = useRef(0);
 
   const compCode = formData.comp_code ?? formData.COMP_CODE;
@@ -300,21 +300,21 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
   const [masterPartyPerm, setMasterPartyPerm] = useState(null);
   const [masterPartyOpen, setMasterPartyOpen] = useState(false);
   const [ctx, setCtx] = useState(null);
-  const [lookups, setLookups] = useState({ customers: [], markas: [], items: [] });
+  const [lookups, setLookups] = useState({ suppliers: [], markas: [], items: [] });
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
   const [mode, setMode] = useState('new');
-  const [soNo, setSoNo] = useState('');
-  const [soDateYmd, setSoDateYmd] = useState(() => toInputDateString(new Date()));
+  const [poNo, setPoNo] = useState('');
+  const [poDateYmd, setPoDateYmd] = useState(() => toInputDateString(new Date()));
   const [code, setCode] = useState('');
     const [partySearch, setPartySearch] = useState('');
   const [partyHi, setPartyHi] = useState(0);
   const [partyFinderOpen, setPartyFinderOpen] = useState(true);
   const [postedNew, setPostedNew] = useState(false);
 
-  const [poNo, setPoNo] = useState('');
+  const [refNo, setRefNo] = useState('');
   const [remarks, setRemarks] = useState('');
   const [remarks2, setRemarks2] = useState('');
   const [lines, setLines] = useState([emptyLine()]);
@@ -326,7 +326,7 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
   const dcLinesTopInnerRef = useRef(null);
   const dcLinesGridScrollRef = useRef(null);
 
-  const soDateOracle = useMemo(() => toOracleDate(soDateYmd), [soDateYmd]);
+  const poDateOracle = useMemo(() => toOracleDate(poDateYmd), [poDateYmd]);
   const gAmtCal = ctx?.G_AMT_CAL ?? 'K';
   const { compYear, fyMinYmd, fyMaxYmd } = useMemo(
     () => resolveSaleEntryFinYear(formData, ctx),
@@ -335,12 +335,12 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
 
   useEffect(() => {
     if (!ctx) return;
-    setSoDateYmd((prev) => clampYmdToFinYear(prev, fyMinYmd, fyMaxYmd) || defaultDocDateInFinYear(fyMinYmd, fyMaxYmd));
+    setPoDateYmd((prev) => clampYmdToFinYear(prev, fyMinYmd, fyMaxYmd) || defaultDocDateInFinYear(fyMinYmd, fyMaxYmd));
   }, [ctx, fyMinYmd, fyMaxYmd]);
 
   useEffect(() => {
-    soNoRef.current = String(soNo ?? '').trim();
-  }, [soNo]);
+    poNoRef.current = String(poNo ?? '').trim();
+  }, [poNo]);
   useEffect(() => {
     const top = dcLinesTopScrollRef.current;
     const topInner = dcLinesTopInnerRef.current;
@@ -380,12 +380,12 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
 
   const partyInfo = useMemo(() => {
     if (!code) return null;
-    return lookups.customers.find((p) => String(p.CODE ?? p.code) === String(code)) ?? null;
-  }, [code, lookups.customers]);
+    return lookups.suppliers.find((p) => String(p.CODE ?? p.code) === String(code)) ?? null;
+  }, [code, lookups.suppliers]);
 
   const filteredParties = useMemo(() => {
     const q = partySearch.trim().toLowerCase();
-    const list = lookups.customers || [];
+    const list = lookups.suppliers || [];
     if (!q) return [];
     return list
       .filter((p) => {
@@ -395,7 +395,7 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
         return pc.includes(q) || name.includes(q) || city.includes(q);
       })
       .slice(0, 50);
-  }, [partySearch, lookups.customers]);
+  }, [partySearch, lookups.suppliers]);
 
   const safePartyHi = Math.min(Math.max(0, partyHi), Math.max(0, filteredParties.length - 1));
 
@@ -429,7 +429,7 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
       };
       setLookups((prev) => ({
         ...prev,
-        customers: upsertMasterParty(prev.customers, entry),
+        suppliers: upsertMasterParty(prev.suppliers, entry),
       }));
       applyPartyPick(String(entry.CODE ?? '').trim());
     },
@@ -457,7 +457,7 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
     [accessOnlyBrowse, mode, can]
   );
   const fieldsDisabled = !can.canOpen || accessOnlyBrowse || mode === 'delete';
-  const showSoNav = !!can.canOpen;
+  const showPoNav = !!can.canOpen;
 
   const showNotice = useCallback((text) => {
     setErr('');
@@ -517,7 +517,7 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
       if (!rows?.length) return;
       const h0 = rows[0];
       setCode(String(h0.CODE ?? h0.code ?? '').trim());
-      setPoNo(String(h0.PO_NO ?? h0.po_no ?? '').trim());
+      setRefNo(String(h0.PO_NO ?? h0.po_no ?? '').trim());
       setRemarks(String(h0.REMARKS ?? h0.remarks ?? '').trim());
       setRemarks2(String(h0.REMARKS2 ?? h0.remarks2 ?? '').trim());
       setPartyFinderOpen(false);
@@ -549,8 +549,8 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
     try {
       const params = { comp_uid: compUid, user_name: userName };
       const [pRes, cRes, lRes, mpRes] = await Promise.all([
-        axios.get(`${apiBase}/api/sales-order-user-permissions`, { params, ...reqOpts }),
-        axios.get(`${apiBase}/api/sales-order-form-context`, {
+        axios.get(`${apiBase}/api/purchase-order-user-permissions`, { params, ...reqOpts }),
+        axios.get(`${apiBase}/api/purchase-order-form-context`, {
           params: {
             comp_code: compCode,
             comp_uid: compUid,
@@ -558,7 +558,7 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
           },
           ...reqOpts,
         }),
-        axios.get(`${apiBase}/api/sales-order-lookups`, {
+        axios.get(`${apiBase}/api/purchase-order-lookups`, {
           params: { comp_code: compCode, comp_uid: compUid },
           ...reqOpts,
         }),
@@ -568,11 +568,11 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
       setMasterPartyPerm(mpRes.data);
       setCtx(cRes.data);
       setLookups({
-        customers: lRes.data?.customers || [],
+        suppliers: lRes.data?.suppliers || [],
         markas: lRes.data?.markas || [],
         items: lRes.data?.items || [],
       });
-      if (!pRes.data?.canOpen) setErr('Access denied (F12 position 1).');
+      if (!pRes.data?.canOpen) setErr('Access denied (F13 position 1).');
     } catch (e) {
       setErr(e?.response?.data?.error || e.message || 'Load failed');
     } finally {
@@ -584,71 +584,71 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
     void loadBootstrap();
   }, [loadBootstrap]);
 
-  const fetchNextSoNo = useCallback(async () => {
-    const { data } = await axios.get(`${apiBase}/api/sales-order-next-so-no`, {
+  const fetchNextPoNo = useCallback(async () => {
+    const { data } = await axios.get(`${apiBase}/api/purchase-order-next-po-no`, {
       params: { comp_code: compCode, comp_uid: compUid },
       ...reqOpts,
     });
-    setSoNo(String(data?.next_so_no ?? ''));
+    setPoNo(String(data?.next_po_no ?? ''));
   }, [apiBase, compCode, compUid]);
 
   useEffect(() => {
     if (loading || mode !== 'new' || postedNew) return;
-    void fetchNextSoNo().catch(() => {});
-  }, [loading, mode, postedNew, fetchNextSoNo]);
+    void fetchNextPoNo().catch(() => {});
+  }, [loading, mode, postedNew, fetchNextPoNo]);
 
-  const loadBySlot = useCallback(
-    async (targetSoNo) => {
+  const loadByPoSlot = useCallback(
+    async (targetPoNo) => {
       const gen = ++slotGenRef.current;
       try {
-        const { data } = await axios.get(`${apiBase}/api/sales-order-raw`, {
+        const { data } = await axios.get(`${apiBase}/api/purchase-order-raw`, {
           params: {
             comp_code: compCode,
             comp_uid: compUid,
-            so_no: targetSoNo,
+            po_no: targetPoNo,
           },
           ...reqOpts,
         });
         if (gen !== slotGenRef.current) return;
         const rows = Array.isArray(data) ? data : [];
         if (rows.length === 0) {
-          setSoNo(String(targetSoNo));
+          setPoNo(String(targetPoNo));
           setMode('new');
           setPostedNew(false);
           setLines([emptyLine()]);
-          showNotice('No sales order at this number — ready for new entry.');
+          showNotice('No purchase order at this number — ready for new entry.');
           return;
         }
         const rd = rows[0].SO_DATE ?? rows[0].so_date;
-        setSoDateYmd(toInputDateString(rd) || soDateYmd);
-        setSoNo(String(targetSoNo));
+        setPoDateYmd(toInputDateString(rd) || poDateYmd);
+        setPoNo(String(targetPoNo));
         applyRowsFromApi(rows);
         if (can.canEdit) setMode('edit');
       } catch (e) {
         setErr(e?.response?.data?.error || e.message || 'Load failed');
       }
     },
-    [apiBase, compCode, compUid, applyRowsFromApi, can.canEdit, soDateYmd, showNotice]
+    [apiBase, compCode, compUid, applyRowsFromApi, can.canEdit, poDateYmd, showNotice]
   );
 
-  const stepSoNo = (delta) => {
-    const cur = Number(String(soNoRef.current).replace(/\D/g, '')) || 0;
+  const stepPoNo = (delta) => {
+    const cur = Number(String(poNoRef.current).replace(/\D/g, '')) || 0;
     const next = Math.max(1, cur + delta);
     const ct = '';
-    void loadBySlot(next);
+    void loadByPoSlot(next);
   };
 
   const clearForNew = useCallback(() => {
     setCode('');
     setPartySearch('');
     setPartyFinderOpen(true);
-    setPoNo('');
+    setRefNo('');
     setRemarks('');
     setRemarks2('');
     setLines([emptyLine()]);
     setPostedNew(false);
-    void fetchNextSoNo();
-  }, [fetchNextSoNo]);
+    void fetchNextPoNo();
+  }, [fetchNextPoNo]);
 
   const handleSave = async (saveMode) => {
     setMsg('');
@@ -661,8 +661,8 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
       showNotice('Select party (master list).');
       return;
     }
-    if (fyMinYmd && fyMaxYmd && soDateYmd && (soDateYmd < fyMinYmd || soDateYmd > fyMaxYmd)) {
-      showNotice(`SO date must be between ${toDisplayDate(fyMinYmd)} and ${toDisplayDate(fyMaxYmd)}.`);
+    if (fyMinYmd && fyMaxYmd && poDateYmd && (poDateYmd < fyMinYmd || poDateYmd > fyMaxYmd)) {
+      showNotice(`PO date must be between ${toDisplayDate(fyMinYmd)} and ${toDisplayDate(fyMaxYmd)}.`);
       return;
     }
     const validLines = lines.filter((L) => String(L.item_code ?? '').trim());
@@ -677,9 +677,9 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
         comp_year: compYear || compYearLogin || undefined,
         user_name: userName,
         mode: saveMode,
-        so_date: soDateOracle,
-        so_no: String(soNo ?? '').trim() || undefined,
-        header: { code: Number(code), po_no: poNo, remarks, remarks2 },
+        so_date: poDateOracle,
+        so_no: String(poNo ?? '').trim() || undefined,
+        header: { code: Number(code), po_no: refNo, remarks, remarks2 },
         lines: validLines.map((L, i) => ({
           trn_no: i + 1,
           item_code: L.item_code,
@@ -691,17 +691,17 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
           amount: Number(L.amount) || 0,
         })),
       };
-      const { data } = await axios.post(`${apiBase}/api/sales-order-save`, payload, reqOpts);
+      const { data } = await axios.post(`${apiBase}/api/purchase-order-save`, payload, reqOpts);
       if (saveMode === 'delete') {
-        setMsg('Sales order deleted.');
+        setMsg('Purchase order deleted.');
         setPostedNew(false);
         setMode('new');
         clearForNew();
       } else {
-        setSoNo(String(data?.so_no ?? soNo));
+        setPoNo(String(data?.po_no ?? data?.so_no ?? poNo));
         setPostedNew(saveMode === 'add');
         setMode('edit');
-        setMsg(saveMode === 'add' ? 'Sales order saved.' : 'Sales order updated.');
+        setMsg(saveMode === 'add' ? 'Purchase order saved.' : 'Purchase order updated.');
       }
     } catch (e) {
       setErr(e?.response?.data?.error || e.message || 'Save failed');
@@ -712,7 +712,7 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
     const sn = row.SO_NO ?? row.so_no;
     setListScreenOpen(false);
     setMode('edit');
-    await loadBySlot(sn);
+    await loadByPoSlot(sn);
   };
 
   const lineNumDisplay = (idx, field, value, formatter) => {
@@ -738,12 +738,12 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
     }
   };
 
-  const soNavButtons = (
+  const poNavButtons = (
     <>
-      <button type="button" className="btn btn-secondary" onClick={() => stepSoNo(-1)}>
+      <button type="button" className="btn btn-secondary" onClick={() => stepPoNo(-1)}>
         ← Prev
       </button>
-      <button type="button" className="btn btn-secondary" onClick={() => stepSoNo(1)}>
+      <button type="button" className="btn btn-secondary" onClick={() => stepPoNo(1)}>
         Next →
       </button>
     </>
@@ -783,7 +783,7 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
 
   if (listScreenOpen) {
     return (
-      <SalesOrderListScreen
+      <PurchaseOrderListScreen
         apiBase={apiBase}
         formData={formData}
         lookups={lookups}
@@ -795,11 +795,11 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
 
   if (printScreenOpen) {
     return (
-      <SalesOrderPrintScreen
+      <PurchaseOrderPrintScreen
         apiBase={apiBase}
         formData={formData}
-        defaultSoNo={soNo}
-        defaultSoDateYmd={soDateYmd}
+        defaultPoNo={poNo}
+        defaultPoDateYmd={poDateYmd}
         onClose={() => setPrintScreenOpen(false)}
       />
     );
@@ -807,9 +807,9 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
 
   if (loading) {
     return (
-      <div className="slide slide-23-sales-order slide-23-sales-order--loading">
+      <div className="slide slide-24-purchase-order slide-24-purchase-order--loading">
         <div className="sale-bill-loading-card">
-          <h2 className="sale-bill-page__title">Sales order</h2>
+          <h2 className="sale-bill-page__title">Purchase order</h2>
           <p className="sale-bill-loading-card__text">Loading…</p>
           <button type="button" className="btn btn-secondary" onClick={onPrev}>
             ← Back
@@ -821,9 +821,9 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
 
   if (!can.canOpen) {
     return (
-      <div className="slide slide-23-sales-order">
-        <h2 className="sale-bill-page__title">Sales order</h2>
-        <p className="deploy-update-msg deploy-update-msg--err">{err || 'Access denied (F12).'}</p>
+      <div className="slide slide-24-purchase-order">
+        <h2 className="sale-bill-page__title">Purchase order</h2>
+        <p className="deploy-update-msg deploy-update-msg--err">{err || 'Access denied (F13).'}</p>
         <button type="button" className="btn btn-secondary" onClick={onPrev}>
           ← Back
         </button>
@@ -833,15 +833,15 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
 
   return (
     <div
-      className="slide slide-22-dispatch-challan slide-23-sales-order sale-bill-page sale-entry-desktop"
+      className="slide slide-22-dispatch-challan slide-24-purchase-order sale-bill-page sale-entry-desktop"
       onKeyDown={handleEnterAsTab}
       role="presentation"
     >
       <SaleEntryScreenHeader
-        title="Sales order"
-        reportId="sales-order-entry"
+        title="Purchase order"
+        reportId="purchase-order-entry"
         topBar={<SaleEntryTopBar formData={formData} ctx={ctx} userName={userName} can={can} />}
-        nav={showSoNav ? soNavButtons : null}
+        nav={showPoNav ? poNavButtons : null}
       >
         {screenActionButtons}
       </SaleEntryScreenHeader>
@@ -871,36 +871,36 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
             </select>
           </label>
           <label className="dc-header-field dc-header-field--chno">
-            <span className="dc-header-k">SO no</span>
+            <span className="dc-header-k">PO no</span>
             <input
               className="form-input dc-header-control"
-              value={soNo}
+              value={poNo}
               disabled={fieldsDisabled}
-              onChange={(e) => setSoNo(e.target.value.replace(/\D/g, '').slice(0, 8))}
+              onChange={(e) => setPoNo(e.target.value.replace(/\D/g, '').slice(0, 8))}
             />
           </label>
           <label className="dc-header-field dc-header-field--chdate">
-            <span className="dc-header-k">SO date</span>
+            <span className="dc-header-k">PO date</span>
             <input
               type="date"
               className="form-input dc-header-control"
-              value={soDateYmd}
+              value={poDateYmd}
               disabled={fieldsDisabled}
               min={fyMinYmd || undefined}
               max={fyMaxYmd || undefined}
-              onChange={(e) => setSoDateYmd(e.target.value)}
+              onChange={(e) => setPoDateYmd(e.target.value)}
             />
           </label>
 
         </div>
 
         <div className="dc-header-row dc-header-row--party">
-          <span className="dc-header-k">Customer</span>
+          <span className="dc-header-k">Supplier</span>
           <div className="dc-header-row__body dc-party-entry">
             <PartyAddButton
               onClick={tryOpenNewParty}
               disabled={fieldsDisabled}
-              title="Add new customer (Master)"
+              title="Add new supplier (Master)"
             />
             <div className="dc-party-entry__main">
             {partyInfo && !partyFinderOpen ? (
@@ -924,7 +924,7 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
                 <input
                   type="search"
                   className="form-input sale-bill-search-input"
-                  placeholder="Search customer — code, name, or city"
+                  placeholder="Search supplier — code, name, or city"
                   autoComplete="off"
                   value={partySearch}
                   disabled={fieldsDisabled}
@@ -949,7 +949,7 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
                   }}
                 />
                 {partySearch.trim() ? (
-                  <div className="account-search-results party-search-results dc-party-list" role="listbox" aria-label="Customer matches">
+                  <div className="account-search-results party-search-results dc-party-list" role="listbox" aria-label="Supplier matches">
                     <div className="account-search-header party-search-header" aria-hidden="true">
                       <span>Code</span>
                       <span>Name</span>
@@ -1151,12 +1151,12 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
         <h3 className="sale-bill-section__title">Footer</h3>
         <div className="sale-bill-totals-grid">
           <label className="sale-bill-field sale-bill-field--block">
-            <span className="sale-bill-field__label">PO no</span>
+            <span className="sale-bill-field__label">Ref no</span>
             <input
               className="form-input dc-footer-field-input"
-              value={poNo}
+              value={refNo}
               disabled={fieldsDisabled}
-              onChange={(e) => setPoNo(e.target.value)}
+              onChange={(e) => setRefNo(e.target.value)}
               maxLength={50}
             />
           </label>
@@ -1213,7 +1213,7 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
         compUid={compUid}
         compYear={Number(compYear) || Number(compYearLogin) || 0}
         userName={userName}
-        defaultSchedule={8.1}
+        defaultSchedule={11.1}
         lockSchedule={false}
         onCreated={handleMasterPartyCreated}
       />

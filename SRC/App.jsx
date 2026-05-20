@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import LoginSlide from './slides/LoginSlide';
+import AppSessionLine from './components/AppSessionLine';
+import { AppSessionContext } from './components/AppSessionContext';
 import Slide1 from './slides/Slide1';
 import Slide2 from './slides/slide2';
 import Slide3 from './slides/Slide3';
@@ -22,9 +24,11 @@ import Slide19BalanceSheet from './slides/Slide19BalanceSheet';
 import Slide21SaleBill from './slides/Slide21SaleBill';
 import Slide22DispatchChallan from './slides/Slide22DispatchChallan';
 import Slide23SalesOrder from './slides/Slide23SalesOrder';
+import Slide24PurchaseOrder from './slides/Slide24PurchaseOrder';
 import { exitApp, performExitWindow } from './utils/exitApp';
 import connectionConfig from '../connection.config.json';
 import './App.css';
+import './saleEntryDesktop.css';
 
 // Local: Vite dev uses '' so /api/* is proxied to port 5001 (see vite.config.js). Run `npm run server` in another terminal.
 // Vite preview / static file open on localhost still calls :5001 directly.
@@ -549,6 +553,7 @@ function App() {
     else if (reportType === 'sale-bill-entry') setCurrentSlide(21);
     else if (reportType === 'dispatch-challan-entry') setCurrentSlide(22);
     else if (reportType === 'sales-order-entry') setCurrentSlide(23);
+    else if (reportType === 'purchase-order-entry') setCurrentSlide(24);
     else setCurrentSlide(4);
   };
 
@@ -634,6 +639,12 @@ function App() {
         { phrases: ['open stock summary', 'stock summary', 'open stock sum', 'stock sum'], reportType: 'stock-sum', slideNo: 9, title: 'Stock Summary' },
         { phrases: ['open ageing report', 'ageing report', 'aging report', 'open aging report'], reportType: 'ageing', slideNo: 12, title: 'Ageing Report' },
         { phrases: ['open purchase list', 'purchase list'], reportType: 'purchase-list', slideNo: 11, title: 'Purchase List' },
+        {
+          phrases: ['open purchase order', 'purchase order', 'purchase order entry'],
+          reportType: 'purchase-order-entry',
+          slideNo: 24,
+          title: 'Purchase Order',
+        },
         { phrases: ['open voucher list', 'voucher list'], reportType: 'voucher-list', slideNo: 14, title: 'Voucher List' },
         { phrases: ['open gstr1', 'gstr1', 'open gstr 1', 'gstr 1'], reportType: 'gstr1', slideNo: 15, title: 'GSTR1' },
         { phrases: ['open hsn sales', 'hsn sales', 'open hsn sale', 'hsn sale'], reportType: 'hsn-sales', slideNo: 16, title: 'HSN Sales' },
@@ -800,6 +811,14 @@ function App() {
     );
   }
 
+  const hideGlobalSessionInHeader = [21, 22, 23, 24].includes(currentSlide);
+  const headerSessionLineEl =
+    authenticated &&
+    !hideGlobalSessionInHeader &&
+    (formData.comp_code != null || formData.comp_uid != null) ? (
+      <AppSessionLine formData={formData} userName={loginUserName} className="app-header-session-line" />
+    ) : null;
+
   const appClassName = `app ${viewMode === 'desktop' ? 'app--desktop' : 'app--mobile'}`;
 
   if (!clientGuardChecked) {
@@ -886,7 +905,10 @@ function App() {
     <>
     <div className={appClassName}>
       <header className="app-header">
-        {renderHeaderBrand()}
+        <div className="app-header-start">
+          {renderHeaderBrand()}
+          {headerSessionLineEl}
+        </div>
         <div className="app-header-actions">
           {renderViewSettings()}
           {voiceSupported ? (
@@ -901,6 +923,7 @@ function App() {
         </div>
       </header>
 
+      <AppSessionContext.Provider value={{ formData, userName: loginUserName }}>
       <main className="app-main">
         {currentSlide === 1 && (
           <Slide1 companies={companies} onNext={handleSlide1Next} onExit={handleExitApp} />
@@ -978,7 +1001,17 @@ function App() {
             onReset={handleReset}
           />
         )}
+        {currentSlide === 24 && (
+          <Slide24PurchaseOrder
+            apiBase={API_BASE}
+            formData={formData}
+            userName={loginUserName}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+          />
+        )}
       </main>
+      </AppSessionContext.Provider>
     </div>
     {renderDeployUpdateModal()}
     </>

@@ -21,6 +21,17 @@ function capsField(v) {
   return String(v ?? '').toUpperCase();
 }
 
+const LC_OPTIONS = [
+  { value: 'L', label: 'Local (L)' },
+  { value: 'C', label: 'Central (C)' },
+  { value: 'I', label: 'Import (I)' },
+];
+
+function isValidLc(v) {
+  const x = String(v ?? '').trim().toUpperCase();
+  return x === 'L' || x === 'C' || x === 'I';
+}
+
 export default function MasterPartyCreateModal({
   open,
   onClose,
@@ -49,6 +60,7 @@ export default function MasterPartyCreateModal({
   const [stateName, setStateName] = useState('');
   const [pan, setPan] = useState('');
   const [telNo, setTelNo] = useState('');
+  const [lC, setLC] = useState('L');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
@@ -109,6 +121,7 @@ export default function MasterPartyCreateModal({
     setStateName('');
     setPan('');
     setTelNo('');
+    setLC('L');
     setErr('');
     setSaving(false);
 
@@ -193,6 +206,11 @@ export default function MasterPartyCreateModal({
       focusField('name');
       return;
     }
+    if (!isValidLc(lC)) {
+      setErr('Local / Central / Import (L_C) is required. Select L, C, or I.');
+      focusField('lc');
+      return;
+    }
     setSaving(true);
     setErr('');
     try {
@@ -215,6 +233,7 @@ export default function MasterPartyCreateModal({
           state: capsField(stateName),
           pan: capsField(pan),
           tel_no_o: telNo,
+          l_c: String(lC).trim().toUpperCase(),
         },
         reqOpts
       );
@@ -346,8 +365,26 @@ export default function MasterPartyCreateModal({
                   maxLength={20}
                   disabled={saving}
                   onChange={(e) => setCity(capsField(e.target.value))}
-                  onKeyDown={(e) => onEnterNext(e, 'gst')}
+                  onKeyDown={(e) => onEnterNext(e, 'lc')}
                 />
+              </label>
+              <label className="sale-bill-field master-party-field master-party-field--lc">
+                <span className="sale-bill-field__label">Local / Central / Import (L_C) *</span>
+                <select
+                  className="form-input master-party-lc-select"
+                  data-mp-field="lc"
+                  value={lC}
+                  required
+                  disabled={saving}
+                  onChange={(e) => setLC(e.target.value)}
+                  onKeyDown={(e) => onEnterNext(e, 'gst')}
+                >
+                  {LC_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <div className="master-party-row master-party-row--4">
                 <label className="master-party-cell master-party-cell--gst">

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReportHelpButton from '../components/ReportHelpButton';
+import SessionInfoLine from '../components/SessionInfoLine';
 
 /** Grouped report / module menu (order matches business workflow). */
 const REPORT_MENU = [
@@ -69,6 +70,7 @@ const REPORT_MENU = [
     title: 'Purchase Module',
     subtitle: 'Purchase documents',
     items: [
+      { id: 'purchase-order-entry', title: 'Purchase Order', description: 'Add, edit, or delete purchase orders (SORDER type PO)' },
       { id: 'purchase-list', title: 'Purchase List', description: 'PURCHASE lines (PU, DN) with filters; DN shown as negative' },
     ],
   },
@@ -258,9 +260,7 @@ export default function Slide3({ onPrev, onNext, formData }) {
 
   return (
     <div className="slide slide-3">
-      <p className="company-info">
-        {formData.comp_name} | {formData.comp_year}
-      </p>
+      <SessionInfoLine formData={formData} />
 
       <header className="slide-3-menu-header">
         <h2 className="slide-3-menu-header__title">Reports &amp; Modules</h2>
