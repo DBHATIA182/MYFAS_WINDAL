@@ -1,0 +1,2265 @@
+/* Purchase bill entry — layout, table, expenses, sticky footer */
+
+.slide-25-purchase-bill.sale-bill-page {
+  --pb-label: #6b7280;
+  --pb-text: #111827;
+  --pb-border: #d1d5db;
+  --pb-primary: #3b82f6;
+  --pb-surface: #ffffff;
+  --pb-row-alt: #f9fafb;
+  --pb-row-border: #e5e7eb;
+  --pb-section-accent: #3b82f6;
+  --pb-gap: 0.5rem;
+  --pb-input-h: 2.75rem;
+  --pb-input-pad: 0.5rem 0.75rem;
+  --pb-label-size: 11px;
+  --pb-value-size: 14px;
+}
+
+.slide-25-purchase-bill.sale-bill-page {
+  max-width: none;
+  width: 100%;
+}
+
+.slide-25-purchase-bill .sale-bill-section--card {
+  margin-top: 0.45rem !important;
+  padding: 0.45rem 0.55rem !important;
+}
+
+.slide-25-purchase-bill .sale-entry-desktop__body {
+  gap: var(--pb-gap);
+  padding-bottom: max(6rem, calc(5.5rem + env(safe-area-inset-bottom, 0px)));
+  scroll-padding-bottom: 12rem;
+}
+
+/* Mobile body wrapper — used instead of sale-entry-desktop__body on mobile
+   to avoid leaking desktop-specific padding/scroll rules onto the mobile layout */
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-body {
+  gap: var(--pb-gap);
+  padding-bottom: max(8rem, calc(7rem + env(safe-area-inset-bottom, 0px)));
+  scroll-padding-bottom: 12rem;
+}
+
+
+.app-main:has(.slide-25-purchase-bill) .app-header-actions .btn:not(.btn-primary) {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.app-main:has(.slide-25-purchase-bill) .sale-bill-page__user-power-rights {
+  display: none;
+}
+
+/* Progress stepper */
+.slide-25-purchase-bill .pb-stepper {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.25rem;
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.65rem 0.35rem;
+  background: #fff;
+  border: 1px solid var(--pb-row-border);
+  border-radius: 10px;
+}
+
+.slide-25-purchase-bill .pb-stepper__track {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 1.15rem;
+  height: 2px;
+  background: #e5e7eb;
+  z-index: 0;
+}
+
+.slide-25-purchase-bill .pb-stepper__step {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+}
+
+.slide-25-purchase-bill .pb-stepper__dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: #e5e7eb;
+  color: #9ca3af;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px #e5e7eb;
+}
+
+.slide-25-purchase-bill .pb-stepper__label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #9ca3af;
+  line-height: 1.2;
+}
+
+.slide-25-purchase-bill .pb-stepper__step--done .pb-stepper__dot {
+  background: #10b981;
+  color: #fff;
+  box-shadow: 0 0 0 1px #10b981;
+}
+
+.slide-25-purchase-bill .pb-stepper__step--done .pb-stepper__label {
+  color: #059669;
+}
+
+.slide-25-purchase-bill .pb-stepper__step--current .pb-stepper__dot {
+  background: var(--pb-primary);
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
+}
+
+.slide-25-purchase-bill .pb-stepper__step--current .pb-stepper__label {
+  color: var(--pb-primary);
+  font-weight: 700;
+}
+
+.sale-bill-save-toast-text--err {
+  color: #b91c1c;
+}
+
+.slide-25-purchase-bill .pb-col-sono .dc-line-so-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.slide-25-purchase-bill .pb-col-sono .dc-line-so {
+  flex: 1;
+  min-width: 3.5rem;
+}
+
+.slide-25-purchase-bill .pb-col-sono .dc-line-pick-mobile {
+  display: none;
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  padding: 0.15rem 0.35rem;
+}
+
+.slide-25-purchase-bill .pb-col-sono .dc-line-pick-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #475569;
+  cursor: pointer;
+}
+
+.slide-25-purchase-bill .pb-col-sono .dc-line-pick-icon:hover:not(:disabled) {
+  background: #e0e7ff;
+  border-color: #818cf8;
+  color: #3730a3;
+}
+
+.slide-25-purchase-bill .pb-col-sono .dc-line-pick-icon:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 800px) {
+  .slide-25-purchase-bill .pb-col-sono .dc-line-pick-mobile {
+    display: inline-block;
+  }
+
+  .slide-25-purchase-bill .pb-col-sono .dc-line-pick-icon {
+    display: none;
+  }
+}
+
+.slide-25-purchase-bill .pb-item-code-cell {
+  position: relative;
+  vertical-align: top;
+}
+
+.slide-25-purchase-bill .pb-item-search-list {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 50;
+  min-width: min(22rem, 70vw);
+  max-height: 14rem;
+  overflow: auto;
+  margin-top: 2px;
+}
+
+.slide-25-purchase-bill .pb-item-search-hint {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 49;
+  margin: 2px 0 0;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.72rem;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.slide-25-purchase-bill .pb-exp-code-hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.slide-25-purchase-bill .pb-acct-code-picker {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+
+.slide-25-purchase-bill .pb-acct-code-picker__input {
+  width: 100%;
+}
+
+.slide-25-purchase-bill .pb-acct-code-picker--mobile .pb-acct-code-picker__trigger {
+  width: 100%;
+  min-height: 2.75rem;
+  text-align: left;
+  color: #334155;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.slide-25-purchase-bill .pb-acct-code-picker--mobile .pb-acct-code-picker__trigger:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.slide-25-purchase-bill .pb-mobile-search-trigger {
+  width: 100%;
+  min-height: 2.75rem;
+  text-align: left;
+  color: #334155;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.slide-25-purchase-bill .pb-mobile-search-trigger:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.slide-25-purchase-bill .pb-item-code-cell .pb-mobile-search-trigger {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: inherit;
+  padding: inherit;
+  min-height: inherit;
+}
+
+.slide-25-purchase-bill .pb-acct-code-list {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 60;
+  min-width: min(36rem, 96vw);
+  max-width: min(48rem, 96vw);
+  width: max-content;
+  max-height: 16rem;
+  overflow: auto;
+  margin-top: 2px;
+}
+
+.slide-25-purchase-bill .pb-acct-code-list--wide .pb-acct-code-list__header,
+.slide-25-purchase-bill .pb-acct-code-list--wide .pb-acct-code-list__row {
+  grid-template-columns: 5.5rem minmax(18rem, 1fr);
+}
+
+.slide-25-purchase-bill .pb-acct-code-list--wide .account-search-name {
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+.slide-25-purchase-bill .pb-acct-code-hint {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 59;
+  margin: 2px 0 0;
+  padding: 0.3rem 0.45rem;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+
+.slide-25-purchase-bill .pb-acct-code-selected {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.slide-25-purchase-bill .pb-acct-code-selected__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  line-height: 1.3;
+}
+
+.slide-25-purchase-bill .pb-acct-code-selected__code {
+  font-family: 'SF Mono', 'Roboto Mono', monospace;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #4c51bf;
+  white-space: nowrap;
+}
+
+.slide-25-purchase-bill .pb-acct-code-selected__name {
+  font-size: 0.8rem;
+  color: #1e293b;
+  white-space: normal;
+  word-break: break-word;
+  overflow: visible;
+}
+
+.slide-25-purchase-bill .pb-frame-row .pb-acct-code-picker,
+.slide-25-purchase-bill .pb-frame-row .pb-acct-code-selected {
+  grid-column: auto;
+}
+
+.slide-25-purchase-bill .pb-stepper__step--future .pb-stepper__dot {
+  background: #f3f4f6;
+}
+
+.slide-25-purchase-bill .pb-field-check {
+  flex-shrink: 0;
+  color: #10b981;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+/* Tighter header card */
+.slide-25-purchase-bill .pb-header-compact {
+  padding: 0.45rem 0.55rem !important;
+  gap: 0.4rem !important;
+  position: relative;
+  z-index: 5;
+  overflow: visible;
+}
+
+.slide-25-purchase-bill .pb-party-section {
+  position: relative;
+  z-index: 18;
+  border-left: 4px solid #7c3aed;
+  overflow: visible;
+}
+
+.slide-25-purchase-bill .pb-party-section .account-search-group {
+  position: relative;
+}
+
+.slide-25-purchase-bill .pb-party-section .pb-party-search-list {
+  position: relative;
+  left: auto;
+  right: auto;
+  top: auto;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  max-height: min(50vh, 320px);
+  margin-top: 0.35rem;
+}
+
+.slide-25-purchase-bill .sale-bill-field .account-search-group {
+  margin-top: 0.2rem;
+}
+
+.slide-25-purchase-bill .sale-bill-field .account-search-results {
+  margin-top: 0.35rem;
+}
+
+.slide-25-purchase-bill .sale-bill-search-current {
+  margin: 0.35rem 0 0.2rem;
+  font-size: 0.8rem;
+}
+
+.slide-25-purchase-bill .pb-lines-section {
+  position: relative;
+  z-index: 1;
+  clear: both;
+  /* isolation:isolate creates a new stacking context so that dropdowns
+     (z-index:60) inside this section are always painted above the sticky
+     footer (z-index:30) on iOS Safari, which has known stacking bugs. */
+  isolation: isolate;
+}
+
+.slide-25-purchase-bill .pb-header-compact__row1 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem 0.65rem;
+  align-items: end;
+}
+
+.slide-25-purchase-bill .pb-header-compact__row2 {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem 0.65rem;
+  align-items: flex-start;
+  margin-top: 0;
+}
+
+.slide-25-purchase-bill .pb-header-party-broker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: calc(50% - 0.35rem);
+}
+
+.slide-25-purchase-bill .pb-party-broker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.slide-25-purchase-bill .pb-party-broker-row__main {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.slide-25-purchase-bill .pb-party-broker-row .btn-master-party-add {
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.slide-25-purchase-bill .pb-party-broker-row__main .sale-bill-search-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.slide-25-purchase-bill .pb-party-selected {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.slide-25-purchase-bill .pb-party-selected .dc-party-selected__text,
+.slide-25-purchase-bill .pb-broker-readonly__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slide-25-purchase-bill .pb-party-search-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 40;
+  max-height: min(14rem, 40vh);
+  overflow-y: auto;
+  margin-top: 0.15rem;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.15);
+  border: 1px solid var(--pb-row-border);
+  border-radius: 8px;
+  min-width: min(100%, 22rem);
+}
+
+.slide-25-purchase-bill .pb-party-search-list .party-search-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.slide-25-purchase-bill .pb-party-search-hint {
+  margin: 0.2rem 0 0;
+  font-size: 0.72rem;
+  color: #6b7280;
+}
+
+.slide-25-purchase-bill .dc-party-selected__city {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.slide-25-purchase-bill .pb-broker-readonly {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  background: #f1f3f5;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  min-width: 0;
+}
+
+.slide-25-purchase-bill .dc-header-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.slide-25-purchase-bill .dc-header-k,
+.slide-25-purchase-bill .pb-exp-field__k {
+  font-size: var(--pb-label-size);
+  font-weight: 600;
+  color: var(--pb-label);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+}
+
+.slide-25-purchase-bill .pb-exp-group__title {
+  margin: 0 0 0.4rem;
+  padding: 0.35rem 0.5rem 0.35rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--pb-text);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #f3f4f6;
+  border-left: 4px solid var(--pb-section-accent);
+  border-radius: 0 6px 6px 0;
+}
+
+.slide-25-purchase-bill .pb-header-compact .form-input,
+.slide-25-purchase-bill .pb-exp-field .pb-exp-input,
+.slide-25-purchase-bill .pb-lines-table input.form-input,
+.slide-25-purchase-bill .pb-lines-table select.form-input {
+  font-size: 0.875rem;
+  color: var(--pb-text);
+  background: var(--pb-surface);
+  border: 1px solid var(--pb-border);
+  border-radius: 8px;
+  padding: var(--pb-input-pad);
+  min-height: var(--pb-input-h);
+  box-sizing: border-box;
+}
+
+.slide-25-purchase-bill .pb-input-readonly {
+  background: #f3f4f6 !important;
+  border-style: dashed !important;
+  color: #6b7280 !important;
+  padding-right: 1.75rem !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Crect x='4' y='2' width='16' height='20' rx='2'/%3E%3Cpath d='M8 6h8M8 10h8M8 14h5'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 0.45rem center !important;
+}
+
+.slide-25-purchase-bill input[type='date'] {
+  color-scheme: light;
+}
+
+.slide-25-purchase-bill .pb-header-compact .form-input:focus,
+.slide-25-purchase-bill .pb-exp-field .pb-exp-input:focus,
+.slide-25-purchase-bill .pb-lines-table input.form-input:focus {
+  border-color: var(--pb-primary);
+  box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15);
+  outline: none;
+}
+
+.slide-25-purchase-bill .dc-header-field--plant {
+  grid-column: 1 / -1;
+}
+
+.slide-25-purchase-bill .pb-rno-nav {
+  display: flex;
+  align-items: stretch;
+  gap: 0.2rem;
+}
+
+.slide-25-purchase-bill .pb-rno-nav__btn {
+  flex: 0 0 2rem;
+  min-width: 2rem;
+  padding: 0;
+  font-size: 1.1rem;
+  line-height: 1;
+  border: 1px solid var(--pb-border);
+  border-radius: 8px;
+  background: #f8f9fa;
+  color: var(--pb-text);
+  cursor: pointer;
+}
+
+.slide-25-purchase-bill .pb-rno-nav__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.slide-25-purchase-bill .pb-rno-nav .form-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+}
+
+.slide-25-purchase-bill .pb-broker-readonly__text {
+  color: var(--pb-text);
+}
+
+/* Section titles */
+.slide-25-purchase-bill .pb-section-title {
+  margin: 0 0 0.35rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--pb-text);
+  background: linear-gradient(90deg, #eef2ff 0%, transparent 100%);
+  border-left: 3px solid var(--pb-section-accent);
+  border-radius: 0 6px 6px 0;
+}
+
+.slide-25-purchase-bill .pb-lines-section {
+  padding: 0.45rem 0.5rem 0.5rem !important;
+  margin-top: 0 !important;
+}
+
+.slide-25-purchase-bill .pb-lines-section__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.slide-25-purchase-bill .pb-lines-section__head .pb-section-title {
+  margin: 0;
+}
+
+.slide-25-purchase-bill .pb-lines-details-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #4b5563;
+  background: #f3f4f6;
+  border: 1px solid var(--pb-row-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.slide-25-purchase-bill .pb-lines-details-toggle:hover {
+  background: #e5e7eb;
+}
+
+.slide-25-purchase-bill .pb-lines-hint {
+  margin: 0 0 0.3rem;
+  font-size: 0.72rem;
+  color: #6b7280;
+}
+
+.slide-25-purchase-bill .pb-lines-wrap {
+  border-radius: 8px;
+  border: 1px solid var(--pb-row-border);
+  max-height: min(48vh, 520px);
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #f1f5f9;
+}
+
+.slide-25-purchase-bill .pb-lines-wrap::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+.slide-25-purchase-bill .dc-lines-scroll-top {
+  margin-bottom: 0.15rem;
+}
+
+.app--desktop .slide-25-purchase-bill.sale-entry-desktop .dc-lines-scroll-top {
+  display: block;
+}
+
+.slide-25-purchase-bill .pb-lines-table {
+  width: max-content;
+  min-width: 82rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: auto;
+}
+
+.slide-25-purchase-bill .pb-lines-table.pb-lines-table--details {
+  min-width: 88rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) {
+  width: 100%;
+  min-width: 32rem;
+  max-width: 100%;
+  table-layout: auto;
+}
+
+.slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details):not(.pb-lines-table--fox) .pb-col-extra {
+  display: none !important;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col-extra {
+  display: table-cell !important;
+}
+
+.slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col--sno {
+  width: 30px;
+  min-width: 30px;
+}
+
+.slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col--name {
+  width: 35%;
+  min-width: 8rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col-core.num,
+.slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) th.pb-col-core:not(.pb-col--name):not(.pb-col--sno) {
+  width: auto;
+  min-width: 50px;
+}
+
+.slide-25-purchase-bill .pb-lines-table thead th {
+  font-size: 0.7rem;
+  padding: 0.45rem 0.35rem;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  white-space: nowrap;
+}
+
+.slide-25-purchase-bill .pb-lines-table thead th:last-child {
+  border-right: none;
+}
+
+.slide-25-purchase-bill .pb-lines-table tbody td {
+  border-bottom: 1px solid #e5e7eb;
+  border-right: 1px solid var(--pb-row-border);
+  vertical-align: middle;
+}
+
+.slide-25-purchase-bill .pb-lines-table tbody tr.pb-line-row:hover td {
+  background: #eff6ff;
+}
+
+.slide-25-purchase-bill .pb-lines-table tbody td:last-child {
+  border-right: none;
+}
+
+.slide-25-purchase-bill .pb-lines-table tbody tr:nth-child(even) td {
+  background: var(--pb-row-alt);
+}
+
+.slide-25-purchase-bill .pb-lines-table tbody tr:hover td {
+  background: #eef2ff;
+}
+
+.slide-25-purchase-bill .pb-col--sno {
+  width: 30px;
+  min-width: 30px;
+}
+
+.slide-25-purchase-bill .pb-col--sono {
+  width: 30px;
+  min-width: 30px;
+}
+
+.slide-25-purchase-bill .pb-col--item,
+.slide-25-purchase-bill .pb-col--item-code {
+  width: 5.5rem;
+  min-width: 5.5rem;
+}
+
+.slide-25-purchase-bill .pb-item-code-input {
+  min-width: 5rem;
+  width: 100%;
+}
+
+.slide-25-purchase-bill .pb-lines-table--details .pb-col--sono {
+  width: 60px;
+  min-width: 60px;
+}
+
+.slide-25-purchase-bill .pb-lines-table--details .pb-col--item,
+.slide-25-purchase-bill .pb-lines-table--details .pb-col--item-code {
+  width: 6rem;
+  min-width: 6rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--details .pb-col--st {
+  width: 3.5rem;
+  min-width: 3.5rem;
+}
+
+.slide-25-purchase-bill .pb-col--name {
+  width: 35%;
+  min-width: 10rem;
+}
+
+.slide-25-purchase-bill .pb-col--pcode {
+  width: 60px;
+  min-width: 60px;
+}
+
+.slide-25-purchase-bill .pb-col--qty {
+  width: 4.5rem;
+  min-width: 4.5rem;
+}
+
+.slide-25-purchase-bill .pb-col--st {
+  width: 3.25rem;
+  min-width: 3.25rem;
+}
+
+.slide-25-purchase-bill .pb-status-input {
+  min-width: 2.75rem;
+  width: 100%;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.slide-25-purchase-bill .pb-col--wgt {
+  width: 7.75rem;
+  min-width: 7.75rem;
+}
+
+.slide-25-purchase-bill .pb-col--stkwt,
+.slide-25-purchase-bill .pb-col-stkwt {
+  width: 7.75rem;
+  min-width: 7.75rem;
+}
+
+.slide-25-purchase-bill .pb-col--stkdt,
+.slide-25-purchase-bill .pb-col-stkdt {
+  width: 7.5rem;
+  min-width: 7.5rem;
+}
+
+.slide-25-purchase-bill .pb-col--rate {
+  width: 6rem;
+  min-width: 6rem;
+}
+
+.slide-25-purchase-bill .pb-col--cal {
+  width: 2.75rem;
+  min-width: 2.75rem;
+}
+
+.slide-25-purchase-bill .pb-col--amt {
+  width: 10rem;
+  min-width: 10rem;
+}
+
+.slide-25-purchase-bill .pb-col--pct {
+  width: 3.75rem;
+  min-width: 3.75rem;
+}
+
+.slide-25-purchase-bill .pb-col--taxamt {
+  width: 5.5rem;
+  min-width: 5.5rem;
+}
+
+.slide-25-purchase-bill .dc-line-so {
+  min-width: 4.5rem;
+}
+
+.slide-25-purchase-bill .pb-td-name {
+  min-width: 11rem;
+  max-width: 14rem;
+  font-size: 0.8125rem;
+  color: #334155;
+  line-height: 1.35;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.slide-25-purchase-bill .pb-lines-table .num,
+.slide-25-purchase-bill .pb-lines-table th.num {
+  text-align: right;
+}
+
+.slide-25-purchase-bill .pb-col-stkwt,
+.slide-25-purchase-bill .pb-col-stkdt,
+.slide-25-purchase-bill .pb-col-taxamt,
+.slide-25-purchase-bill .pb-col-amt {
+  white-space: nowrap;
+}
+
+.slide-25-purchase-bill .pb-stk-date-input {
+  min-width: 7rem;
+  font-size: 0.8125rem;
+}
+
+.slide-25-purchase-bill .sale-entry-screen-header__nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+/* Line totals — label / value pairs on one baseline */
+.slide-25-purchase-bill .pb-kv-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0 0 0.5rem;
+  padding: 0.55rem 0.65rem;
+  background: #f9fafb;
+  border: 1px solid var(--pb-row-border);
+  border-radius: 10px;
+}
+
+.slide-25-purchase-bill .pb-kv-pair {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding-right: 1rem;
+  border-right: 1px solid #e5e7eb;
+}
+
+.slide-25-purchase-bill .pb-kv-pair:last-child {
+  border-right: none;
+  padding-right: 0;
+}
+
+.slide-25-purchase-bill .pb-kv-pair__k {
+  font-size: var(--pb-label-size);
+  font-weight: 600;
+  color: var(--pb-label);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+}
+
+.slide-25-purchase-bill .pb-kv-pair__v {
+  font-size: var(--pb-value-size);
+  font-weight: 600;
+  color: var(--pb-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+/* Expenses & totals — framed summary (FoxPro-style) */
+.slide-25-purchase-bill .pb-expenses-footer {
+  padding: 0.45rem 0.55rem 0.5rem !important;
+}
+
+.slide-25-purchase-bill .pb-summary-frame {
+  border: 2px solid #94a3b8;
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+  background: #fff;
+  max-width: min(56rem, 100%);
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.slide-25-purchase-bill .pb-frame-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 10rem) 1fr;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.slide-25-purchase-bill .pb-frame-row:last-child {
+  border-bottom: none;
+}
+
+.slide-25-purchase-bill .pb-frame-row--2 {
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1rem;
+}
+
+.slide-25-purchase-bill .pb-frame-row--2 .pb-frame-cell {
+  display: grid;
+  grid-template-columns: minmax(5rem, 7rem) 1fr;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.slide-25-purchase-bill .pb-frame-row--3 {
+  grid-template-columns: minmax(7rem, 9rem) minmax(5rem, 1fr) minmax(14rem, 2fr);
+  align-items: start;
+}
+
+.slide-25-purchase-bill .pb-frame-row--4 {
+  grid-template-columns: minmax(7rem, 9rem) 4.5rem minmax(5rem, 1fr) minmax(14rem, 2fr);
+  align-items: start;
+}
+
+.slide-25-purchase-bill .pb-frame-row--5 {
+  grid-template-columns: minmax(5rem, 7rem) 1fr 4rem 1fr minmax(14rem, 2fr);
+  align-items: start;
+}
+
+.slide-25-purchase-bill .pb-frame-row--transport {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding-top: 0.35rem;
+  margin-top: 0.15rem;
+  border-top: 1px dashed #d1d5db;
+  border-bottom: none;
+}
+
+.slide-25-purchase-bill .pb-frame-row--transport .pb-frame-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.slide-25-purchase-bill .pb-frame-row--emph {
+  background: #f9fafb;
+  border-radius: 6px;
+  padding: 0.35rem 0.45rem;
+  border-bottom: none;
+}
+
+.slide-25-purchase-bill .pb-frame-row--pay {
+  background: #eff6ff;
+  border-radius: 6px;
+  padding: 0.4rem 0.45rem;
+  border-bottom: none;
+}
+
+.slide-25-purchase-bill .pb-frame-cell__k {
+  font-size: var(--pb-label-size);
+  font-weight: 600;
+  color: var(--pb-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.slide-25-purchase-bill .pb-frame-cell__ro {
+  font-size: var(--pb-value-size);
+  font-weight: 600;
+  color: var(--pb-text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.slide-25-purchase-bill .pb-frame-cell__ro--bold {
+  font-weight: 700;
+}
+
+.slide-25-purchase-bill .pb-frame-cell__ro--pay {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--pb-primary);
+}
+
+.slide-25-purchase-bill .pb-frame-input {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--pb-input-h);
+  font-variant-numeric: tabular-nums;
+}
+
+.slide-25-purchase-bill .pb-frame-input--pct {
+  max-width: 5rem;
+}
+
+.slide-25-purchase-bill .pb-frame-input--code {
+  min-width: 8rem;
+  max-width: 9.5rem;
+  width: 100%;
+  justify-self: stretch;
+}
+
+.slide-25-purchase-bill .pb-tax-pct-input {
+  min-width: 4.5rem;
+}
+
+.slide-25-purchase-bill .pb-expenses-footer__head {
+  margin: 0 0 0.35rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 2px solid var(--pb-row-border);
+}
+
+.slide-25-purchase-bill .pb-expenses-footer__head .pb-section-title {
+  margin: 0;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.slide-25-purchase-bill .pb-account-codes-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.25rem 0 0.4rem;
+  padding: 0.2rem 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.slide-25-purchase-bill .pb-account-codes-toggle:hover {
+  color: var(--pb-text);
+}
+
+.slide-25-purchase-bill .pb-exp-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.slide-25-purchase-bill .pb-exp-group {
+  padding: 0.4rem 0.45rem;
+  background: var(--pb-surface);
+  border: 1px solid var(--pb-row-border);
+  border-radius: 8px;
+}
+
+.slide-25-purchase-bill .pb-exp-group__fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.35rem 0.5rem;
+}
+
+.slide-25-purchase-bill .pb-exp-field {
+  flex: 0 0 auto;
+}
+
+.slide-25-purchase-bill .pb-exp-field .pb-exp-input {
+  width: 5.5rem;
+  min-width: 5.5rem;
+  max-width: 5.5rem;
+}
+
+.slide-25-purchase-bill .pb-exp-field--pct .pb-exp-input {
+  width: 4.25rem;
+  min-width: 4.25rem;
+  max-width: 4.25rem;
+}
+
+.slide-25-purchase-bill .pb-exp-field--code .pb-exp-input {
+  width: 5.75rem;
+  min-width: 5.75rem;
+  max-width: 5.75rem;
+}
+
+.slide-25-purchase-bill .pb-exp-field--txt .pb-exp-input {
+  width: 6.5rem;
+  min-width: 6.5rem;
+  max-width: 6.5rem;
+}
+
+.slide-25-purchase-bill .pb-exp-field--readonly .pb-exp-input {
+  background: #f8f9fa;
+}
+
+/* Sticky footer */
+.slide-25-purchase-bill .pb-sticky-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+  margin: 0.5rem -0.55rem -0.55rem;
+  padding: 0.65rem max(1rem, env(safe-area-inset-left, 0px)) calc(0.65rem + env(safe-area-inset-bottom, 0px))
+    max(1rem, env(safe-area-inset-right, 0px));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, #fff 15%);
+  border-top: 2px solid var(--pb-primary);
+  box-shadow: 0 -6px 24px rgba(15, 23, 42, 0.14);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+}
+
+.slide-25-purchase-bill .pb-sticky-footer__hero {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.slide-25-purchase-bill .pb-sticky-footer__breakdown-btn {
+  align-self: flex-start;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #6b7280;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.slide-25-purchase-bill .pb-sticky-footer__hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.slide-25-purchase-bill .pb-sticky-footer__hero-k {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--pb-label);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.slide-25-purchase-bill .pb-sticky-footer__hero-v {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--pb-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.slide-25-purchase-bill .pb-sticky-footer__hero-sub {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+.slide-25-purchase-bill .pb-sticky-footer__breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  font-size: 0.72rem;
+  color: #4b5563;
+  padding: 0.35rem 0.5rem;
+  background: #f3f4f6;
+  border-radius: 6px;
+}
+
+.slide-25-purchase-bill .pb-sticky-footer__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+.slide-25-purchase-bill .pb-sticky-footer__actions .btn-primary {
+  min-width: 8rem;
+  min-height: var(--pb-input-h);
+  font-weight: 700;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.slide-25-purchase-bill .pb-save-fab {
+  display: none;
+}
+
+.slide-25-purchase-bill .sale-entry-screen-header__btns .btn-primary,
+.slide-25-purchase-bill .sale-entry-screen-header__btns .btn-danger {
+  display: none;
+}
+
+@media (max-width: 800px) {
+  /* NOTE: widened from 768px → 800px. Some Android devices report viewport
+     widths slightly above 768 due to DPR scaling, so pb-header-compact__row2
+     (flex-wrap:nowrap) would never collapse into a column on those phones. */
+  .slide-25-purchase-bill .sale-entry-desktop__body {
+    padding-bottom: max(8rem, calc(7rem + env(safe-area-inset-bottom, 0px)));
+  }
+
+  .slide-25-purchase-bill .pb-kv-pair {
+    flex: 1 1 calc(50% - 0.5rem);
+    border-right: none;
+    padding-right: 0;
+    justify-content: space-between;
+  }
+
+  .slide-25-purchase-bill .pb-header-compact {
+    z-index: 20;
+  }
+
+  .slide-25-purchase-bill .pb-header-compact__row1 {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.35rem 0.5rem;
+  }
+
+  .slide-25-purchase-bill .pb-header-compact__row2 {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 0.65rem;
+    align-items: stretch;
+  }
+
+  .slide-25-purchase-bill .pb-header-party-broker {
+    flex: 1 1 auto;
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .slide-25-purchase-bill .pb-party-broker-row {
+    align-items: flex-start;
+  }
+
+  .slide-25-purchase-bill .pb-party-broker-row__main {
+    width: 100%;
+  }
+
+  /* Party / broker pick — same stack layout as sale bill (App.css @640px) */
+  .slide-25-purchase-bill .pb-party-search-list.account-search-results {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    z-index: 60;
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+    max-height: min(50vh, 320px);
+    margin-top: 0.25rem;
+    border: 2px solid #c7d2fe;
+    border-radius: 10px;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+  }
+
+  .slide-25-purchase-bill .pb-party-search-list .account-search-header {
+    display: none;
+  }
+
+  .slide-25-purchase-bill .pb-party-search-list .account-search-row {
+    display: flex !important;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+    padding: 0.55rem 0.65rem;
+    min-height: 2.75rem;
+    font-size: 0.88rem;
+  }
+
+  .slide-25-purchase-bill .pb-party-search-list .account-search-code {
+    order: 1;
+    font-size: 0.8rem;
+  }
+
+  .slide-25-purchase-bill .pb-party-search-list .account-search-name {
+    order: 2;
+    width: 100%;
+    max-width: 100%;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    word-break: break-word;
+    line-height: 1.35;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  .slide-25-purchase-bill .pb-party-search-list .account-search-city {
+    order: 3;
+    width: 100%;
+    white-space: normal;
+    font-size: 0.82rem;
+  }
+
+  .slide-25-purchase-bill .pb-party-broker-row:has(.pb-party-search-list) .btn-master-party-add {
+    pointer-events: none;
+    opacity: 0.35;
+  }
+
+  .slide-25-purchase-bill .pb-lines-section {
+    z-index: 1;
+  }
+
+  .slide-25-purchase-bill .pb-lines-wrap {
+    max-height: min(40vh, 360px);
+  }
+
+  /* Essential columns — readable widths on phone (no 78rem squeeze) */
+  .slide-25-purchase-bill .pb-lines-table.pb-lines-table--details {
+    min-width: 72rem;
+  }
+
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
+  }
+
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col--sno {
+    width: 1.75rem;
+    min-width: 1.75rem;
+  }
+
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col--item,
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col--item-code {
+    width: 4.25rem;
+    min-width: 4.25rem;
+  }
+
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col--name {
+    width: auto;
+    min-width: 5.5rem;
+  }
+
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col--qty {
+    width: 3.25rem;
+    min-width: 3.25rem;
+  }
+
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col--st {
+    width: 2.35rem;
+    min-width: 2.35rem;
+  }
+
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col--wgt,
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col--net {
+    width: 4rem;
+    min-width: 4rem;
+  }
+
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col--rate {
+    width: 4.25rem;
+    min-width: 4.25rem;
+  }
+
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col--amt {
+    width: 4.75rem;
+    min-width: 4.75rem;
+  }
+
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col--item input.form-input,
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) td.pb-col--item {
+    min-width: 4rem;
+  }
+
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) input.form-input {
+    font-size: 0.8rem;
+    padding: 0.35rem 0.3rem;
+    min-height: 2.35rem;
+  }
+
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-status-input {
+    min-width: 2rem;
+    text-align: center;
+  }
+
+  /* Expenses — stack like Fox summary on narrow screens */
+  .slide-25-purchase-bill .pb-expenses-footer {
+    padding-bottom: 0.75rem !important;
+    margin-bottom: 0.5rem;
+  }
+
+  .slide-25-purchase-bill .pb-summary-frame {
+    max-width: 100%;
+    padding: 0.5rem 0.55rem;
+  }
+
+  .slide-25-purchase-bill .pb-frame-row,
+  .slide-25-purchase-bill .pb-frame-row--2,
+  .slide-25-purchase-bill .pb-frame-row--3,
+  .slide-25-purchase-bill .pb-frame-row--4,
+  .slide-25-purchase-bill .pb-frame-row--5 {
+    grid-template-columns: minmax(5.5rem, 7rem) 1fr;
+    gap: 0.35rem 0.5rem;
+    align-items: center;
+  }
+
+  .slide-25-purchase-bill .pb-frame-row--2 {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
+  .slide-25-purchase-bill .pb-frame-row--2 .pb-frame-cell {
+    grid-template-columns: minmax(5rem, 6.5rem) 1fr;
+  }
+
+  .slide-25-purchase-bill .pb-frame-row--3,
+  .slide-25-purchase-bill .pb-frame-row--4,
+  .slide-25-purchase-bill .pb-frame-row--5 {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+    padding: 0.35rem 0;
+  }
+
+  .slide-25-purchase-bill .pb-frame-row--3 > .pb-frame-cell__k,
+  .slide-25-purchase-bill .pb-frame-row--4 > .pb-frame-cell__k,
+  .slide-25-purchase-bill .pb-frame-row--5 > .pb-frame-cell__k,
+  .slide-25-purchase-bill .pb-frame-row--3 > span.pb-frame-cell__k,
+  .slide-25-purchase-bill .pb-frame-row--4 > span.pb-frame-cell__k {
+    font-size: var(--pb-label-size);
+  }
+
+  .slide-25-purchase-bill .pb-frame-row--4 .pb-frame-input--pct {
+    max-width: none;
+    width: 100%;
+  }
+
+  .slide-25-purchase-bill .pb-frame-row--transport {
+    grid-template-columns: 1fr;
+  }
+
+  .slide-25-purchase-bill .pb-acct-code-list {
+    left: 0;
+    right: 0;
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+  }
+
+  .slide-25-purchase-bill .pb-sticky-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .slide-25-purchase-bill .pb-sticky-footer__actions {
+    width: 100%;
+  }
+
+  .slide-25-purchase-bill .pb-sticky-footer__actions .btn-primary {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: none;
+  }
+
+  .slide-25-purchase-bill .pb-stepper__label {
+    font-size: 0.7rem; /* was 0.6rem (~9.6px) — increased for mobile readability */
+  }
+
+  .slide-25-purchase-bill .pb-save-fab {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .slide-25-purchase-bill .pb-header-compact__row1 {
+    grid-template-columns: 1fr;
+  }
+
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col--item,
+  .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) .pb-col--item-code {
+    width: 3.75rem;
+    min-width: 3.75rem;
+  }
+}
+
+/* —— Mobile professional layout (card lines, tiled totals) —— */
+.slide-25-purchase-bill.pb-layout--mobile {
+  padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-stepper--desktop-only {
+  display: none;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-header-compact__row1 {
+  grid-template-columns: 1fr;
+  gap: 0.4rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-header-compact__row1 .dc-header-field {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .dc-header-field--plant {
+  grid-column: 1 / -1;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .dc-header-field--mode {
+  grid-column: 1 / -1;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-header-dates-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-header-dates-row .dc-header-field {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-date-input-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-rno-field {
+  grid-column: 1 / -1;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-header-compact__row1,
+.slide-25-purchase-bill.pb-layout--mobile .pb-header-compact.dc-header-card {
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-r-date-input,
+.slide-25-purchase-bill.pb-layout--mobile .pb-bill-date-input,
+.slide-25-purchase-bill.pb-layout--mobile .pb-header-dates-row .dc-header-control {
+  display: block;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .dc-header-k {
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .dc-header-control,
+.slide-25-purchase-bill.pb-layout--mobile .form-input {
+  min-height: 2.75rem;
+  font-size: 1rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-party-section .sale-bill-party-grid {
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-party-section .sale-bill-party-card {
+  margin-top: 0.35rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-lines-desktop--hidden {
+  display: none !important;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-lines-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin: 0.35rem 0 0.5rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__title {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #1e40af;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__po {
+  font-size: 0.72rem;
+  padding: 0.3rem 0.55rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.45rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__field--item {
+  position: relative;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__item-name {
+  margin: -0.2rem 0 0.45rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__item-list {
+  position: relative;
+  max-height: 12rem;
+  margin-top: 0.25rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__metric .form-input {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__metric--amt .form-input {
+  font-weight: 700;
+  color: #1d4ed8;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__more {
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__more summary {
+  font-weight: 700;
+  color: #475569;
+  cursor: pointer;
+  padding: 0.35rem 0;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__more-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  padding-top: 0.35rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__ro {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-line-card__ro strong {
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-add-line-btn {
+  width: 100%;
+  min-height: 2.75rem;
+  font-weight: 700;
+  margin-top: 0.25rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-expenses-desktop--hidden {
+  display: none !important;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-totals-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+  margin-bottom: 0.55rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.5rem 0.55rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  min-width: 0;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-tile--emph {
+  grid-column: 1 / -1;
+  background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+  border-color: #93c5fd;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-tile__k {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-tile__v {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-tile--emph .pb-mobile-tile__v {
+  font-size: 1.05rem;
+  color: #1d4ed8;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-panel {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  margin-bottom: 0.45rem;
+  background: #fff;
+  overflow: visible;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-panel summary {
+  padding: 0.55rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #334155;
+  cursor: pointer;
+  background: #f8fafc;
+  list-style: none;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.55rem 0.65rem 0.65rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-field > span:first-child {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-payable {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  margin-top: 0.25rem;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);
+  color: #fff;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-payable__k {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.9;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-mobile-payable__v {
+  font-size: 1.15rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-sticky-footer {
+  box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.12);
+}
+
+.slide-25-purchase-bill .pb-party-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.slide-25-purchase-bill .pb-party-help-btn {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.25rem 0.5rem;
+  white-space: nowrap;
+}
+
+.slide-25-purchase-bill .pb-party-section.sale-bill-section--card {
+  overflow: visible;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .dc-header-field--bno {
+  grid-column: 1 / -1;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .dc-header-field--bno .pb-bill-no-input,
+.slide-25-purchase-bill.pb-layout--mobile .dc-header-field--bno .dc-header-control {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox {
+  width: max-content !important;
+  min-width: 110rem !important;
+  max-width: none !important;
+  table-layout: auto !important;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox thead th,
+.slide-25-purchase-bill .pb-lines-table--fox tbody td {
+  white-space: nowrap;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--sono {
+  min-width: 4.5rem;
+  max-width: 5.25rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--sono .dc-line-so {
+  min-width: 2.75rem;
+  max-width: 3.25rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--item {
+  min-width: 3.75rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--name {
+  min-width: 8.5rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--qty {
+  min-width: 3.5rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--st {
+  min-width: 2.5rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--gwgt {
+  min-width: 4.25rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--dane {
+  min-width: 3.25rem;
+  max-width: 3.75rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--dane input {
+  max-width: 3.75rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--wgt,
+.slide-25-purchase-bill .pb-lines-table--fox col.pb-col--wgt {
+  width: 7.75rem;
+  min-width: 7.75rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--wgt input,
+.slide-25-purchase-bill .pb-lines-table--fox .pb-wgt-input {
+  min-width: 7.25rem;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--rate {
+  min-width: 4.25rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--cal {
+  min-width: 2.75rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--amt,
+.slide-25-purchase-bill .pb-lines-table--fox col.pb-col--amt {
+  width: 10rem;
+  min-width: 10rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--amt input,
+.slide-25-purchase-bill .pb-lines-table--fox .pb-amt-input {
+  min-width: 9.5rem;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--pct {
+  min-width: 3.5rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--taxamt {
+  min-width: 4.25rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--stkwt,
+.slide-25-purchase-bill .pb-lines-table--fox col.pb-col--stkwt {
+  width: 7.75rem;
+  min-width: 7.75rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--stkwt input,
+.slide-25-purchase-bill .pb-lines-table--fox .pb-stk-wgt-input {
+  min-width: 7.25rem;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox input.pb-wgt-input.form-input,
+.slide-25-purchase-bill .pb-lines-table--fox input.pb-amt-input.form-input,
+.slide-25-purchase-bill .pb-lines-table--fox input.pb-stk-wgt-input.form-input {
+  max-width: none;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--stkdt {
+  min-width: 8.75rem;
+}
+
+.slide-25-purchase-bill .pb-lines-table--fox .pb-col--stkdt input,
+.slide-25-purchase-bill .pb-lines-table--fox .pb-stk-date-input {
+  min-width: 8rem;
+  width: 8rem;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-lines-wrap {
+  max-height: min(42vh, 380px);
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.slide-25-purchase-bill.pb-layout--mobile .pb-lines-table--fox {
+  min-width: 110rem;
+}
+
+.pb-pick-portal {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.pb-pick-portal--viewport {
+  display: block;
+  pointer-events: none;
+}
+
+.pb-pick-portal--viewport .pb-pick-portal__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  pointer-events: auto;
+}
+
+.pb-pick-portal__panel--anchored {
+  margin: 0;
+  border-radius: 12px;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.22);
+  pointer-events: auto;
+}
+
+.pb-pick-portal__panel--anchored .pb-pick-portal__list {
+  flex: 1;
+  min-height: 0;
+}
+
+.pb-pick-portal__filter {
+  padding: 0.4rem 0.65rem;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.pb-pick-portal__filter .form-input {
+  width: 100%;
+  min-height: 2.75rem;
+  font-size: 1rem;
+}
+
+.pb-pick-portal__backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  background: rgba(15, 23, 42, 0.45);
+  pointer-events: auto;
+}
+
+.pb-pick-portal__panel {
+  position: relative;
+  z-index: 1;
+  max-height: min(58vh, 420px);
+  margin: 0.5rem;
+  border-radius: 12px 12px 0 0;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.pb-pick-portal__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  flex-shrink: 0;
+}
+
+.pb-pick-portal__head-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.pb-pick-portal__head-text strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.pb-pick-portal--sheet .pb-pick-portal__backdrop {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.pb-pick-portal__panel--sheet {
+  border-left: none;
+  border-right: none;
+  box-shadow: 0 -12px 40px rgba(15, 23, 42, 0.28);
+}
+
+.pb-pick-portal__panel--sheet .pb-pick-portal__list .account-search-row {
+  min-height: 3rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.pb-pick-portal__panel--sheet .account-search-code {
+  font-size: 0.82rem;
+}
+
+.pb-pick-portal__panel--sheet .account-search-name {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.pb-pick-portal__hint {
+  margin: 0.2rem 0 0;
+  padding: 0;
+  font-size: 0.76rem;
+  color: #64748b;
+  line-height: 1.3;
+}
+
+.pb-pick-portal__list {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.25rem 0;
+}
+
+.pb-pick-portal__list .account-search-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  border: none;
+  border-bottom: 1px solid #f1f5f9;
+  background: #fff;
+}
+
+.pb-pick-portal__list .account-search-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+@media (min-width: 900px) {
+  .slide-25-purchase-bill .pb-header-compact__row1 {
+    grid-template-columns: 4.5rem 1fr 1fr 1fr 19ch minmax(10rem, 1.2fr);
+  }
+
+  .slide-25-purchase-bill .dc-header-field--plant {
+    grid-column: auto;
+  }
+
+  .slide-25-purchase-bill .pb-header-party-broker {
+    max-width: calc(50% - 0.35rem);
+  }
+
+  .slide-25-purchase-bill .pb-lines-table {
+    min-width: 82rem;
+  }
+}

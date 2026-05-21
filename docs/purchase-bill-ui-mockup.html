@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Purchase Bill UI — Reference Mockup</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #f3f4f6;
+      color: #111827;
+    }
+    .mock {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 1rem;
+    }
+    .mock h1 { font-size: 1.1rem; margin: 0 0 1rem; }
+    .card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .stepper {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.5rem;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      margin-bottom: 0.75rem;
+    }
+    .step { text-align: center; font-size: 0.7rem; }
+    .step.done { color: #059669; }
+    .step.cur { color: #3b82f6; font-weight: 700; }
+    .step.fut { color: #9ca3af; }
+    .party-row {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .party-row .field {
+      flex: 1;
+      max-width: 48%;
+    }
+    .party-row label {
+      font-size: 11px;
+      color: #6b7280;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .party-row .row {
+      display: flex;
+      gap: 0.35rem;
+      align-items: center;
+    }
+    .party-row input {
+      flex: 1;
+      height: 44px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 0 12px;
+    }
+    .party-row .plus {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #fff;
+      font-weight: 700;
+    }
+    .kv {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      padding: 0.55rem;
+      background: #f9fafb;
+      border-radius: 10px;
+    }
+    .kv span.k {
+      font-size: 11px;
+      color: #6b7280;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-right: 0.5rem;
+    }
+    .kv span.v {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    th {
+      background: #1e293b;
+      color: #fff;
+      padding: 0.4rem;
+      text-align: left;
+    }
+    td {
+      padding: 0.35rem;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    tr:nth-child(even) td { background: #f9fafb; }
+    .footer {
+      position: sticky;
+      bottom: 0;
+      background: #fff;
+      border-top: 2px solid #3b82f6;
+      padding: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      box-shadow: 0 -6px 24px rgba(0,0,0,0.1);
+    }
+    .hero-v { font-size: 20px; font-weight: 700; }
+    .hero-sub { font-size: 14px; color: #6b7280; }
+    .save {
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0 1.5rem;
+      height: 44px;
+      font-weight: 700;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .sec-h {
+      border-left: 4px solid #3b82f6;
+      background: #f3f4f6;
+      padding: 0.35rem 0.5rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin: 0.5rem 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="mock">
+    <h1>Purchase Bill — UI reference (open in browser)</h1>
+
+    <div class="stepper">
+      <div class="step done">✓ Bill details</div>
+      <div class="step cur">● Items</div>
+      <div class="step cur">● Expenses</div>
+      <div class="step fut">Review</div>
+    </div>
+
+    <div class="card">
+      <div class="party-row">
+        <div class="field">
+          <label>Party</label>
+          <div class="row"><input value="[15461] AMAN KUMAR…" /><button class="plus">+</button><span style="color:#10b981">✓</span></div>
+        </div>
+        <div class="field">
+          <label>Broker</label>
+          <div class="row"><input placeholder="Search broker" /><button class="plus">+</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <strong>Line items</strong> — default columns
+      <table>
+        <thead><tr><th>Sno</th><th>Name</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>[001] MOONG WHOLE</td><td>100</td><td>3000.00</td><td>300000.00</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:0.75rem;color:#6b7280">▶ Show weight, tax & discount — reveals extra columns</p>
+    </div>
+
+    <div class="card">
+      <strong>Expenses & totals</strong>
+      <div class="kv">
+        <div><span class="k">Qty</span><span class="v">100.00</span></div>
+        <div><span class="k">Wgt</span><span class="v">9990.000</span></div>
+        <div><span class="k">Amt</span><span class="v">300000.00</span></div>
+      </div>
+      <div class="sec-h">Additional charges</div>
+      <p style="font-size:0.75rem;color:#6b7280">▶ Show account code fields</p>
+    </div>
+
+    <div class="footer">
+      <div>
+        <div style="font-size:0.7rem;color:#6b7280">NET PAYABLE</div>
+        <div class="hero-v">₹ 11,585.00</div>
+        <div class="hero-sub">Net amount ₹ 11,585.00</div>
+      </div>
+      <button class="save">Save bill</button>
+    </div>
+  </div>
+</body>
+</html>

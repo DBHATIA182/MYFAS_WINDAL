@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { formatLedgerDateDisplay } from '../utils/dateFormat';
 import { rupeesToWords } from '../utils/rupeesInWords';
@@ -75,6 +76,19 @@ export default function PurchaseBillPrintModal({
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 768px)').matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mq = window.matchMedia('(max-width: 768px)');
+    const onChange = () => setIsMobile(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   useEffect(() => {
     if (!open || !billParams) return;
@@ -105,8 +119,8 @@ export default function PurchaseBillPrintModal({
               comp_code: compCode,
               comp_uid: compUid,
               type: billParams.type,
-              r_date: billParams.oracleDt,
-              r_no: billParams.rNo,
+              r_date: billParams.oracleDt ?? billParams.r_date,
+              r_no: billParams.rNo ?? billParams.r_no,
             },
             withCredentials: true,
             timeout: 120000,
@@ -244,7 +258,30 @@ export default function PurchaseBillPrintModal({
     );
   }, [pdfData, pdfMeta, first, compDisplayName, docTitle]);
 
+  const handleBrowserPrint = useCallback(() => {
+    if (!lines.length) return;
+    window.print();
+  }, [lines.length]);
+
   if (!open || !billParams) return null;
+
+  const hasBill = lines.length > 0;
+  const printToolbarButtons = (
+    <>
+      <button type="button" className="btn btn-secondary" disabled={!hasBill} onClick={handleBrowserPrint}>
+        Print
+      </button>
+      <button type="button" className="btn btn-export" disabled={!pdfData} onClick={handleDownloadPdf}>
+        Pdf
+      </button>
+      <button type="button" className="btn btn-excel" disabled={!hasBill} onClick={handleDownloadExcel}>
+        Excel
+      </button>
+      <button type="button" className="btn btn-whatsapp" disabled={!pdfData} onClick={handleShareWhatsApp}>
+        WhatsApp
+      </button>
+    </>
+  );
 
   const h = header || {};
   const compAdd1 = rowFieldAny(h, ['comp_add1', 'compadd1', 'address1']);
@@ -278,35 +315,36 @@ export default function PurchaseBillPrintModal({
     ['Bill amt', totals.billAmt],
   ];
 
-  return (
+  const backdropStyle =
+    backdropZIndex != null ? { zIndex: backdropZIndex } : { zIndex: 13000 };
+
+  return createPortal(
     <div
-      className="sale-bill-modal-backdrop sale-bill-print-backdrop"
+      className="sale-bill-modal-backdrop sale-bill-print-backdrop purchase-bill-print-backdrop"
       role="presentation"
       onClick={onClose}
-      style={backdropZIndex != null ? { zIndex: backdropZIndex } : undefined}
+      style={backdropStyle}
     >
       <div
-        className="sale-bill-modal sale-bill-print-modal"
+        className={`sale-bill-modal sale-bill-print-modal${isMobile ? ' sale-bill-print-modal--mobile' : ''}`}
         role="dialog"
         aria-labelledby="purchase-bill-print-title"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sale-bill-modal-head no-print">
           <h3 id="purchase-bill-print-title">{billParams.label || docTitle}</h3>
-          <div className="sale-bill-print-actions">
-            <button type="button" className="btn btn-export" disabled={!pdfData} onClick={handleDownloadPdf}>
-              Pdf
-            </button>
-            <button type="button" className="btn btn-excel" disabled={!lines.length} onClick={handleDownloadExcel}>
-              📊 Excel
-            </button>
-            <button type="button" className="btn btn-whatsapp" disabled={!pdfData} onClick={handleShareWhatsApp}>
-              💬 WhatsApp
-            </button>
+          {isMobile ? (
             <button type="button" className="sale-bill-modal-close" onClick={onClose} aria-label="Close">
               ×
             </button>
-          </div>
+          ) : (
+            <div className="sale-bill-print-actions">
+              {printToolbarButtons}
+              <button type="button" className="sale-bill-modal-close" onClick={onClose} aria-label="Close">
+                ×
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="sale-bill-modal-body sale-bill-print-body">
@@ -458,7 +496,14 @@ export default function PurchaseBillPrintModal({
             </div>
           ) : null}
         </div>
+
+        {isMobile ? (
+          <footer className="sale-bill-print-mobile-bar no-print" role="toolbar" aria-label="Bill actions">
+            <div className="sale-bill-print-actions sale-bill-print-actions--mobile-bar">{printToolbarButtons}</div>
+          </footer>
+        ) : null}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

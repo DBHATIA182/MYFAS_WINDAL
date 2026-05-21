@@ -895,12 +895,12 @@ export default function Slide24PurchaseOrder({ apiBase, formData, userName, onPr
         </div>
 
         <div className="dc-header-row dc-header-row--party">
-          <span className="dc-header-k">Supplier</span>
+          <span className="dc-header-k">Party</span>
           <div className="dc-header-row__body dc-party-entry">
             <PartyAddButton
               onClick={tryOpenNewParty}
               disabled={fieldsDisabled}
-              title="Add new supplier (Master)"
+              title="Add new party (Master)"
             />
             <div className="dc-party-entry__main">
             {partyInfo && !partyFinderOpen ? (
@@ -924,7 +924,7 @@ export default function Slide24PurchaseOrder({ apiBase, formData, userName, onPr
                 <input
                   type="search"
                   className="form-input sale-bill-search-input"
-                  placeholder="Search supplier — code, name, or city"
+                  placeholder="Search party — code, name, or city (supplier or broker)"
                   autoComplete="off"
                   value={partySearch}
                   disabled={fieldsDisabled}
@@ -949,7 +949,7 @@ export default function Slide24PurchaseOrder({ apiBase, formData, userName, onPr
                   }}
                 />
                 {partySearch.trim() ? (
-                  <div className="account-search-results party-search-results dc-party-list" role="listbox" aria-label="Supplier matches">
+                  <div className="account-search-results party-search-results dc-party-list" role="listbox" aria-label="Party matches">
                     <div className="account-search-header party-search-header" aria-hidden="true">
                       <span>Code</span>
                       <span>Name</span>
@@ -981,7 +981,9 @@ export default function Slide24PurchaseOrder({ apiBase, formData, userName, onPr
                     )}
                   </div>
                 ) : (
-                  <p className="sale-bill-section__hint dc-party-search-hint">Type code, name, or city to search.</p>
+                  <p className="sale-bill-section__hint dc-party-search-hint">
+                    Supplier or broker — type code, name, or city to search.
+                  </p>
                 )}
               </div>
             )}

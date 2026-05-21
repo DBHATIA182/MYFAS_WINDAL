@@ -23,7 +23,8 @@
 
 .app--desktop .slide-22-dispatch-challan.sale-entry-desktop,
 .app--desktop .slide-23-sales-order.sale-entry-desktop,
-.app--desktop .slide-24-purchase-order.sale-entry-desktop {
+.app--desktop .slide-24-purchase-order.sale-entry-desktop,
+.app--desktop .slide-25-purchase-bill.sale-entry-desktop {
   padding-bottom: 0.45rem;
 }
 
@@ -265,6 +266,10 @@
   display: none;
 }
 
+.app--desktop .slide-25-purchase-bill.sale-entry-desktop .dc-lines-scroll-top {
+  display: block;
+}
+
 .app--desktop .sale-entry-desktop .dc-lines-wrap,
 .app--desktop .sale-entry-desktop .sale-bill-lines-wrap {
   flex: 1 1 auto;
@@ -458,4 +463,273 @@
   min-height: 0;
   overflow: visible;
   display: block;
+}
+
+/* Purchase bill — compact header + lines + expenses panel */
+/* Purchase bill desktop header grid — see purchaseBillEntry.css */
+
+.app--desktop .slide-25-purchase-bill .dc-header-field--mode {
+  grid-column: span 1;
+}
+
+.app--desktop .slide-25-purchase-bill .dc-header-field--bno {
+  min-width: 19ch;
+}
+
+.app--desktop .slide-25-purchase-bill .pb-bill-no-input {
+  width: 19ch;
+  min-width: 19ch;
+  max-width: 19ch;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.app--desktop .slide-25-purchase-bill .dc-header-field--plant {
+  min-width: 0;
+}
+
+.app--desktop .slide-25-purchase-bill .pb-plant-select {
+  width: 100%;
+  min-width: 8rem;
+}
+
+.app--desktop .slide-25-purchase-bill .pb-required {
+  color: #dc2626;
+  font-weight: 800;
+}
+
+.app--desktop .slide-25-purchase-bill .dc-lines-table .pb-col-qty,
+.app--desktop .slide-25-purchase-bill .dc-lines-table .pb-qty-input {
+  min-width: 4.25rem;
+  width: 4.25rem;
+}
+
+.app--desktop .slide-25-purchase-bill .dc-lines-table .dc-line-so {
+  min-width: 4.75rem;
+}
+
+.app--desktop .slide-25-purchase-bill .dc-lines-table .pb-col-wgt,
+.app--desktop .slide-25-purchase-bill .dc-lines-table .pb-wgt-input,
+.app--desktop .slide-25-purchase-bill .dc-lines-table .pb-col-stkwt,
+.app--desktop .slide-25-purchase-bill .dc-lines-table .pb-col-stkdt,
+.app--desktop .slide-25-purchase-bill .dc-lines-table .pb-stk-date-input,
+.app--desktop .slide-25-purchase-bill .dc-lines-table .pb-col-amt,
+.app--desktop .slide-25-purchase-bill .dc-lines-table .pb-amt-input,
+.app--desktop .slide-25-purchase-bill .dc-lines-table .pb-rate-input,
+.app--desktop .slide-25-purchase-bill .dc-lines-table .pb-col-taxamt {
+  min-width: 5.5rem;
+}
+
+.slide-25-purchase-bill .dc-lines-table input.form-input {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+  background: #fff;
+}
+
+
+.app--desktop .slide-25-purchase-bill .pb-header-compact__row2 {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem 0.65rem;
+  align-items: flex-start;
+}
+
+.app--desktop .slide-25-purchase-bill .pb-header-party-broker {
+  flex: 1 1 0;
+  max-width: calc(50% - 0.35rem);
+  min-width: 0;
+}
+
+.app--desktop .slide-25-purchase-bill.sale-entry-desktop {
+  overflow: hidden;
+}
+
+.app--desktop .slide-25-purchase-bill .sale-entry-desktop__body {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.app--desktop .slide-25-purchase-bill .pb-lines-section {
+  flex: 1 1 auto;
+  min-height: 6rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0.3rem 0.4rem;
+}
+
+.app--desktop .slide-25-purchase-bill .pb-lines-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.app--desktop .slide-25-purchase-bill .pb-lines-table {
+  width: max-content;
+  min-width: 88rem;
+  table-layout: auto;
+}
+
+.app--desktop .slide-25-purchase-bill .pb-lines-table:not(.pb-lines-table--details) {
+  min-width: 32rem;
+}
+
+.app--desktop .slide-25-purchase-bill .pb-expenses-footer {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  padding: 0.35rem 0.45rem 0.4rem;
+  border-top: 4px solid #0ea5e9;
+  border-left: 3px solid #2563eb;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 55%, #f1f5f9 100%);
+  box-shadow: 0 -2px 12px rgba(15, 23, 42, 0.06);
+}
+
+.app--desktop .slide-25-purchase-bill .pb-expenses-footer__divider {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.4rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 2px solid #cbd5e1;
+}
+
+.app--desktop .slide-25-purchase-bill .pb-expenses-footer__divider-label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #1e40af;
+}
+
+.app--desktop .slide-25-purchase-bill .pb-expenses-footer__summary {
+  margin: 0 0 0.35rem;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  font-weight: 600;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Compact expenses row — narrow inputs, max fields per line */
+.slide-25-purchase-bill .pb-expenses-compact {
+  --pb-exp-w: 5.25rem;
+  --pb-exp-w-pct: 4.25rem;
+  --pb-exp-w-code: 5.75rem;
+  --pb-exp-w-txt: 6.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.28rem 0.4rem;
+}
+
+.slide-25-purchase-bill .pb-expenses-compact--transport {
+  margin-top: 0.3rem;
+  padding-top: 0.3rem;
+  border-top: 1px dashed #cbd5e1;
+}
+
+.slide-25-purchase-bill .pb-exp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.slide-25-purchase-bill .pb-exp-field__k {
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #64748b;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.slide-25-purchase-bill .pb-exp-field .pb-exp-input,
+.slide-25-purchase-bill .pb-exp-field .form-input.pb-exp-input {
+  width: var(--pb-exp-w);
+  max-width: var(--pb-exp-w);
+  min-width: var(--pb-exp-w);
+  min-height: 1.45rem;
+  height: 1.45rem;
+  padding: 0.1rem 0.28rem;
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
+}
+
+.slide-25-purchase-bill .pb-exp-field--pct .pb-exp-input {
+  --pb-exp-w: var(--pb-exp-w-pct);
+  width: var(--pb-exp-w-pct);
+  max-width: var(--pb-exp-w-pct);
+  min-width: var(--pb-exp-w-pct);
+}
+
+.slide-25-purchase-bill .pb-exp-field--code .pb-exp-input {
+  width: var(--pb-exp-w-code);
+  max-width: var(--pb-exp-w-code);
+  min-width: var(--pb-exp-w-code);
+}
+
+.slide-25-purchase-bill .pb-exp-field--txt .pb-exp-input {
+  width: var(--pb-exp-w-txt);
+  max-width: var(--pb-exp-w-txt);
+  min-width: var(--pb-exp-w-txt);
+}
+
+.slide-25-purchase-bill .pb-expenses-compact__net {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.35rem 0.65rem;
+  margin-left: auto;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.slide-25-purchase-bill .pb-expenses-net-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  align-items: flex-end;
+}
+
+.slide-25-purchase-bill .pb-expenses-net-chip__k {
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #64748b;
+}
+
+.slide-25-purchase-bill .pb-expenses-net-chip__v {
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+}
+
+.slide-25-purchase-bill .pb-expenses-net-chip--pay .pb-expenses-net-chip__v {
+  font-size: 0.9rem;
+  color: #1e40af;
+}
+
+@media (max-width: 1100px) {
+  .app--desktop .slide-25-purchase-bill .pb-header-compact__row1 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .app--desktop .slide-25-purchase-bill .pb-header-compact__row2 {
+    flex-wrap: nowrap;
+  }
+
+  .app--desktop .slide-25-purchase-bill .pb-header-party-broker {
+    max-width: calc(50% - 0.25rem);
+  }
 }

@@ -979,6 +979,60 @@ function saleBillPermissionsFromF1(f1) {
   };
 }
 
+/** Purchase bill: DAL.USERS / USERS F2 — pos 1–4 = open, add, edit, delete. */
+async function fetchPurchaseBillUserF2String(user_name, comp_uid) {
+  const u = String(user_name || '').trim().toUpperCase();
+  if (!u) return { f2: '', source: 'empty_user' };
+  const schemas = isEffectiveCompUid(comp_uid) ? [String(comp_uid).trim(), null] : [null];
+  const tables = ['DAL.USERS', 'USERS'];
+  for (const sch of schemas) {
+    for (const t of tables) {
+      const sql = `SELECT F2 FROM ${t} WHERE UPPER(TRIM(USER_NAME)) = :u AND ROWNUM = 1`;
+      try {
+        const rows = await runQuery(sql, { u }, sch, { suppressDbErrorLog: true });
+        const raw = rows?.[0]?.F2 ?? rows?.[0]?.f2;
+        if (raw != null && String(raw).trim() !== '') {
+          return { f2: String(raw).trim(), source: t };
+        }
+      } catch (err) {
+        if (!isLoginOptionalTableError(err) && !isUnknownUsersColumnError(err)) {
+          /* ignore */
+        }
+      }
+    }
+  }
+  return { f2: '', source: 'none' };
+}
+
+function purchaseBillPermissionsFromF2(f2) {
+  const s = String(f2 || '');
+  const ch = (i) => (s.length > i ? s.charAt(i) : '');
+  const bit = (i) => ch(i) === '1';
+  if (!s) {
+    return {
+      canOpen: true,
+      canAdd: true,
+      canEdit: true,
+      canDelete: true,
+      flags: 'legacy_no_f2',
+    };
+  }
+  return {
+    canOpen: bit(0),
+    canAdd: bit(1),
+    canEdit: bit(2),
+    canDelete: bit(3),
+    flags: 'f2',
+  };
+}
+
+function ceilPurchaseNtdsAmt(raw) {
+  const n = Number(raw) || 0;
+  const a = Math.floor(n);
+  const b = n - a;
+  return b !== 0 ? a + 1 : a;
+}
+
 /** Master maintenance (new party): DAL.USERS / USERS F4 — pos 1–4 = open, add, edit, delete. */
 async function fetchMasterPartyUserF4String(user_name, comp_uid) {
   const u = String(user_name || '').trim().toUpperCase();
@@ -6293,7 +6347,6 @@ app.get('/api/purchase-order-lookups', async (req, res) => {
       SELECT M.CODE, M.NAME, M.CITY
       FROM MASTER M
       WHERE M.COMP_CODE = :comp_code
-        AND (ROUND(NVL(M.SCHEDULE, 0), 2) = 11.1 OR ROUND(NVL(M.SCHEDULE, 0), 2) = 11.10)
       ORDER BY M.NAME, M.CITY, M.CODE`;
     const markaSql = `SELECT DISTINCT TRIM(MARKA) AS MARKA FROM marka WHERE COMP_CODE = :comp_code ORDER BY 1`;
     const itemSql = `
@@ -8448,6 +8501,12 @@ app.get('/api/purchase-list', async (req, res) => {
         A.SGST_AMT,
         A.IGST_AMT,
         A.BILL_AMT,
+        A.LABOUR,
+        A.FREIGHT,
+        A.MFEE_AMT,
+        A.ADDEXP,
+        A.LESSEXP,
+        A.NTDS_AMT,
         A.NTDS_AMT AS TDS_AMT
       FROM PURCHASE A
       JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
@@ -8542,6 +8601,1219 @@ app.get('/api/voucher-list', async (req, res) => {
   } catch (err) {
     console.error('❌ Voucher list error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+async function purchaseBillDeleteSatelliteRows(conn, { comp_code, comp_year, pu_type, r_date, r_no }) {
+  const cy = Number(comp_year) || 0;
+  const typ = String(pu_type || 'PU').trim();
+  const rn = String(r_no).trim();
+  const bindsKey = { comp_code, comp_year: cy, pu_type: typ, r_no: rn };
+  const bindsKeyDate = { ...bindsKey, r_date: String(r_date).trim() };
+
+  const runDel = async (sql, binds) => {
+    await conn.execute(sql, binds, { autoCommit: false });
+  };
+
+  const ledSql = `
+    DELETE FROM LEDGER L
+    WHERE L.COMP_CODE = :comp_code
+      AND NVL(L.COMP_YEAR, 0) = NVL(:comp_year, 0)
+      AND TRIM(L.VR_TYPE) = TRIM(:pu_type)
+      AND TRIM(TO_CHAR(L.VR_NO)) = TRIM(TO_CHAR(:r_no))
+      AND TRUNC(L.VR_DATE) = TRUNC(TO_DATE(:r_date, 'DD-MM-YYYY'))`;
+  try {
+    await runDel(ledSql, bindsKeyDate);
+  } catch (e) {
+    const m = String(e?.message || '');
+    if (!m.includes('ORA-00942')) throw e;
+  }
+
+  const billsSql = `
+    DELETE FROM BILLS B
+    WHERE B.COMP_CODE = :comp_code
+      AND NVL(B.COMP_YEAR, 0) = NVL(:comp_year, 0)
+      AND TRIM(B.VR_TYPE) = TRIM(:pu_type)
+      AND TRIM(TO_CHAR(B.VR_NO)) = TRIM(TO_CHAR(:r_no))
+      AND TRUNC(B.VR_DATE) = TRUNC(TO_DATE(:r_date, 'DD-MM-YYYY'))`;
+  try {
+    await runDel(billsSql, bindsKeyDate);
+  } catch (e) {
+    const m = String(e?.message || '');
+    if (!m.includes('ORA-00942')) throw e;
+  }
+
+  const stockSql = `
+    DELETE FROM STOCK S
+    WHERE S.COMP_CODE = :comp_code
+      AND NVL(S.COMP_YEAR, 0) = NVL(:comp_year, 0)
+      AND TRIM(S.TYPE) = TRIM(:pu_type)
+      AND TRUNC(S.VR_DATE) = TRUNC(TO_DATE(:r_date, 'DD-MM-YYYY'))
+      AND TRIM(TO_CHAR(S.VR_NO)) = TRIM(TO_CHAR(:r_no))`;
+  try {
+    await runDel(stockSql, bindsKeyDate);
+  } catch (e) {
+    const m = String(e?.message || '');
+    if (m.includes('ORA-00904') || m.includes('invalid identifier')) {
+      try {
+        await runDel(
+          `DELETE FROM STOCK S
+            WHERE S.COMP_CODE = :comp_code
+              AND NVL(S.COMP_YEAR, 0) = NVL(:comp_year, 0)
+              AND TRIM(S.VR_TYPE) = TRIM(:pu_type)
+              AND TRUNC(S.VR_DATE) = TRUNC(TO_DATE(:r_date, 'DD-MM-YYYY'))
+              AND TRIM(TO_CHAR(S.VR_NO)) = TRIM(TO_CHAR(:r_no))`,
+          bindsKeyDate
+        );
+      } catch (e2) {
+        if (!String(e2?.message || '').includes('ORA-00942')) throw e2;
+      }
+    } else if (!m.includes('ORA-00942')) throw e;
+  }
+}
+
+async function purchaseBillPostSatelliteRows(conn, ctx) {
+  const {
+    comp_code,
+    comp_year,
+    pu_type,
+    r_date,
+    r_no,
+    code,
+    bill_no,
+    bill_date,
+    bill_amt,
+    user_name,
+    bindRows,
+    header,
+    compdet,
+  } = ctx;
+  const cy = Number(comp_year) || 0;
+  const typ = String(pu_type || 'PU').trim();
+  const rn = String(r_no).trim();
+  const bn = String(bill_no || '').trim();
+  const un = String(user_name || '').trim();
+  const partyCode = Number(code) || 0;
+  const firstPcode = bindRows.length ? Number(bindRows[0].p_code) || partyCode : partyCode;
+
+  let partyName = '';
+  try {
+    const pr = await conn.execute(
+      `SELECT NAME FROM MASTER WHERE COMP_CODE = :cc AND CODE = :cd AND ROWNUM = 1`,
+      { cc: comp_code, cd: partyCode },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    partyName = String(pr.rows?.[0]?.NAME ?? pr.rows?.[0]?.name ?? '').trim();
+  } catch (_) {}
+
+  const mdetail = `Bill No.${bn} Dated ${bill_date}`;
+  const cgstGl = parseMasterCodeForSql(rowValueCI(compdet, 'cgst_code'));
+  const sgstGl = parseMasterCodeForSql(rowValueCI(compdet, 'sgst_code'));
+  const igstGl = parseMasterCodeForSql(rowValueCI(compdet, 'igst_code'));
+  const ntdsGl = parseMasterCodeForSql(
+    rowValueCI(compdet, 'ntds_code') ?? rowValueCI(compdet, 'tds_code')
+  );
+
+  let trn = 1;
+  const ledSql = `
+    INSERT INTO LEDGER (
+      COMP_CODE, COMP_YEAR, VR_TYPE, VR_DATE, VR_NO, TRN_NO, CODE,
+      DR_AMT, CR_AMT, DC_CODE, DETAIL, BILL_DATE, BILL_NO, V_DATE, USER_NAME
+    ) VALUES (
+      :comp_code, :comp_year, :pu_type, TO_DATE(:r_date, 'DD-MM-YYYY'), :r_no, :trn_no, :lcode,
+      :dr_amt, :cr_amt, :dc_code, :detail, TO_DATE(:bill_date, 'DD-MM-YYYY'), :bill_no,
+      TO_DATE(:r_date, 'DD-MM-YYYY'), :user_name
+    )`;
+
+  for (const r of bindRows) {
+    const drAmt = Math.max(0, (Number(r.amount) || 0) - (Number(r.dis_amt) || 0));
+    const pc = Number(r.p_code) || 0;
+    if (drAmt <= 0 || pc <= 0) continue;
+    const det = `Bill No.${bn} Dated ${bill_date} ${partyName}`.slice(0, 250);
+    await conn.execute(
+      ledSql,
+      {
+        comp_code,
+        comp_year: cy,
+        pu_type: typ,
+        r_date,
+        r_no: rn,
+        trn_no: trn,
+        lcode: pc,
+        dr_amt: drAmt,
+        cr_amt: 0,
+        dc_code: partyCode,
+        detail: det,
+        bill_date,
+        bill_no: bn,
+        user_name: un,
+      },
+      { autoCommit: false }
+    );
+    trn += 1;
+  }
+
+  trn = 101;
+  await conn.execute(
+    ledSql,
+    {
+      comp_code,
+      comp_year: cy,
+      pu_type: typ,
+      r_date,
+      r_no: rn,
+      trn_no: trn,
+      lcode: partyCode,
+      dr_amt: 0,
+      cr_amt: Number(bill_amt) || 0,
+      dc_code: firstPcode,
+      detail: mdetail,
+      bill_date,
+      bill_no: bn,
+      user_name: un,
+    },
+    { autoCommit: false }
+  );
+  trn += 1;
+
+  const pushDrGl = async (lcodeRaw, amtRaw) => {
+    const lc = Number(lcodeRaw) || 0;
+    const a = Number(amtRaw) || 0;
+    if (lc <= 0 || a <= 0) return;
+    await conn.execute(
+      ledSql,
+      {
+        comp_code,
+        comp_year: cy,
+        pu_type: typ,
+        r_date,
+        r_no: rn,
+        trn_no: trn,
+        lcode: lc,
+        dr_amt: a,
+        cr_amt: 0,
+        dc_code: partyCode,
+        detail: mdetail,
+        bill_date,
+        bill_no: bn,
+        user_name: un,
+      },
+      { autoCommit: false }
+    );
+    trn += 1;
+  };
+
+  let sumCgst = 0;
+  let sumSgst = 0;
+  let sumIgst = 0;
+  for (const r of bindRows) {
+    sumCgst += Number(r.cgst_amt) || 0;
+    sumSgst += Number(r.sgst_amt) || 0;
+    sumIgst += Number(r.igst_amt) || 0;
+  }
+  await pushDrGl(cgstGl, Math.round(sumCgst * 100) / 100);
+  await pushDrGl(sgstGl, Math.round(sumSgst * 100) / 100);
+  await pushDrGl(igstGl, Math.round(sumIgst * 100) / 100);
+
+  const h = header || {};
+  await pushDrGl(h.lab_code, h.labour);
+  await pushDrGl(h.fgt_code, h.freight);
+  await pushDrGl(h.mfee_code, h.mfee_amt);
+  await pushDrGl(h.add_code, h.addexp);
+
+  const lessAmt = Number(h.lessexp) || 0;
+  const lessLc = Number(h.less_code) || 0;
+  if (lessLc > 0 && lessAmt > 0) {
+    await conn.execute(
+      ledSql,
+      {
+        comp_code,
+        comp_year: cy,
+        pu_type: typ,
+        r_date,
+        r_no: rn,
+        trn_no: trn,
+        lcode: lessLc,
+        dr_amt: 0,
+        cr_amt: lessAmt,
+        dc_code: partyCode,
+        detail: mdetail,
+        bill_date,
+        bill_no: bn,
+        user_name: un,
+      },
+      { autoCommit: false }
+    );
+    trn += 1;
+  }
+
+  const ntdsAmt = Number(h.ntds_amt) || 0;
+  const ntdsOn = Number(h.ntds_on_amt) || 0;
+  const ntdsPer = Number(h.ntds_per) || 0;
+  if (ntdsAmt > 0 && ntdsGl > 0) {
+    const tdsDet = `${mdetail} TDS ON ${ntdsOn.toFixed(2)} @ ${ntdsPer.toFixed(2)}%`.slice(0, 250);
+    await conn.execute(
+      ledSql,
+      {
+        comp_code,
+        comp_year: cy,
+        pu_type: typ,
+        r_date,
+        r_no: rn,
+        trn_no: trn,
+        lcode: partyCode,
+        dr_amt: ntdsAmt,
+        cr_amt: 0,
+        dc_code: ntdsGl,
+        detail: tdsDet,
+        bill_date,
+        bill_no: bn,
+        user_name: un,
+      },
+      { autoCommit: false }
+    );
+    trn += 1;
+    await conn.execute(
+      ledSql,
+      {
+        comp_code,
+        comp_year: cy,
+        pu_type: typ,
+        r_date,
+        r_no: rn,
+        trn_no: trn,
+        lcode: ntdsGl,
+        dr_amt: 0,
+        cr_amt: ntdsAmt,
+        dc_code: partyCode,
+        detail: tdsDet,
+        bill_date,
+        bill_no: bn,
+        user_name: un,
+      },
+      { autoCommit: false }
+    );
+    trn += 1;
+  }
+
+  const stkSql = `
+    INSERT INTO STOCK (
+      COMP_CODE, COMP_YEAR, TYPE, VR_DATE, VR_NO, CODE, ITEM_CODE,
+      R_QNTY, I_QNTY, RATE, AMOUNT, R_WEIGHT, I_WEIGHT, STATUS, STK_DATE, PLANT_CODE,
+      R_BAGS, I_BAGS, R_KATTA, I_KATTA, R_HKATTA, I_HKATTA, USER_NAME
+    ) VALUES (
+      :comp_code, :comp_year, :pu_type, TO_DATE(:r_date, 'DD-MM-YYYY'), :r_no, :code, :item_code,
+      :r_qnty, 0, :rate, :amount, :r_weight, 0, :status, TO_DATE(:stk_date, 'DD-MM-YYYY'), :plant_code,
+      :r_bags, 0, :r_katta, 0, :r_hkatta, 0, :user_name
+    )`;
+  for (const r of bindRows) {
+    const ic = String(r.item_code || '').trim();
+    if (!ic) continue;
+    const st = String(r.status || 'B').trim().slice(0, 1) || 'B';
+    const q = Number(r.qnty) || 0;
+    let rBags = 0;
+    let rKatta = 0;
+    let rHkatta = 0;
+    if (st === 'B') rBags = q;
+    else if (st === 'K') rKatta = q;
+    else if (st === 'H') rHkatta = q;
+    const taxable = Math.max(0, (Number(r.amount) || 0) - (Number(r.dis_amt) || 0));
+    try {
+      await conn.execute(
+        stkSql,
+        {
+          comp_code,
+          comp_year: cy,
+          pu_type: typ,
+          r_date,
+          r_no: rn,
+          code: partyCode,
+          item_code: ic,
+          r_qnty: q,
+          rate: Number(r.rate) || 0,
+          amount: taxable,
+          r_weight: Number(r.weight) || 0,
+          status: st,
+          stk_date: r_date,
+          plant_code: String(r.plant_code || header?.plant_code || '').trim() || ' ',
+          r_bags: rBags,
+          r_katta: rKatta,
+          r_hkatta: rHkatta,
+          user_name: un,
+        },
+        { autoCommit: false }
+      );
+    } catch (e) {
+      const m = String(e?.message || '');
+      if (!m.includes('ORA-00904') && !m.includes('ORA-00942')) throw e;
+    }
+  }
+
+  const xdetail = `Bill No${bn} ${bill_date}`;
+  const billSql = `
+    INSERT INTO BILLS (
+      COMP_CODE, COMP_YEAR, VR_TYPE, VR_DATE, VR_NO, CODE, BILL_DATE, BILL_NO,
+      DR_AMT, CR_AMT, V_DATE, B_NO, DETAIL, DAYS, TDS_YN
+    ) VALUES (
+      :comp_code, :comp_year, :pu_type, TO_DATE(:r_date, 'DD-MM-YYYY'), :r_no, :code,
+      TO_DATE(:r_date, 'DD-MM-YYYY'), :bill_no, 0, :cr_amt, TO_DATE(:bill_date, 'DD-MM-YYYY'),
+      :bill_no, :detail, 0, ' '
+    )`;
+  try {
+    await conn.execute(
+      billSql,
+      {
+        comp_code,
+        comp_year: cy,
+        pu_type: typ,
+        r_date,
+        r_no: rn,
+        code: partyCode,
+        bill_no: bn,
+        cr_amt: Number(bill_amt) || 0,
+        bill_date,
+        detail: xdetail,
+      },
+      { autoCommit: false }
+    );
+  } catch (e) {
+    const m = String(e?.message || '');
+    if (m.includes('ORA-00904') || m.includes('TDS_YN')) {
+      await conn.execute(
+        `INSERT INTO BILLS (
+          COMP_CODE, COMP_YEAR, VR_TYPE, VR_DATE, VR_NO, CODE, BILL_DATE, BILL_NO,
+          DR_AMT, CR_AMT, V_DATE, B_NO, DETAIL, DAYS
+        ) VALUES (
+          :comp_code, :comp_year, :pu_type, TO_DATE(:r_date, 'DD-MM-YYYY'), :r_no, :code,
+          TO_DATE(:r_date, 'DD-MM-YYYY'), :bill_no, 0, :cr_amt, TO_DATE(:bill_date, 'DD-MM-YYYY'),
+          :bill_no, :detail, 0
+        )`,
+        {
+          comp_code,
+          comp_year: cy,
+          pu_type: typ,
+          r_date,
+          r_no: rn,
+          code: partyCode,
+          bill_no: bn,
+          cr_amt: Number(bill_amt) || 0,
+          bill_date,
+          detail: xdetail,
+        },
+        { autoCommit: false }
+      );
+    } else if (!m.includes('ORA-00942')) throw e;
+  }
+
+  if (ntdsAmt > 0) {
+    const tdsDetail = `TDS ${xdetail}`;
+    try {
+      await conn.execute(
+        billSql,
+        {
+          comp_code,
+          comp_year: cy,
+          pu_type: typ,
+          r_date,
+          r_no: rn,
+          code: partyCode,
+          bill_no: bn,
+          cr_amt: 0,
+          bill_date,
+          detail: tdsDetail,
+        },
+        { autoCommit: false }
+      );
+    } catch (_) {
+      /* optional TDS bill row */
+    }
+  }
+}
+
+app.get('/api/purchase-bill-user-permissions', async (req, res) => {
+  try {
+    const { comp_uid, user_name } = req.query;
+    if (comp_uid == null || String(comp_uid).trim() === '' || !user_name) {
+      return res.status(400).json({ error: 'comp_uid and user_name are required' });
+    }
+    const { f2, source } = await fetchPurchaseBillUserF2String(String(user_name), comp_uid);
+    const perms = purchaseBillPermissionsFromF2(f2);
+    res.json({ f2, source, ...perms });
+  } catch (err) {
+    console.error('❌ purchase-bill-user-permissions error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** PO_CODE_BROKER from USERS / COMPDET (Fox G_PO_CODE_BROKER). Default C = party CODE. */
+async function fetchPoCodeBroker(comp_code, comp_uid, compdet) {
+  const fromCompdet = String(
+    rowValueCI(compdet, 'po_code_broker') ?? rowValueCI(compdet, 'PO_CODE_BROKER') ?? ''
+  )
+    .trim()
+    .toUpperCase();
+  if (fromCompdet === 'C' || fromCompdet === 'B') return fromCompdet;
+
+  const uid = String(comp_uid ?? '').trim();
+  const schemas = isEffectiveCompUid(comp_uid) ? [uid, null] : [null];
+  const tables = ['DAL.USERS', 'USERS'];
+  const sqlVariants = uid
+    ? [
+        `SELECT PO_CODE_BROKER FROM %T% WHERE COMP_CODE = :comp_code AND TRIM(TO_CHAR(COMP_UID)) = TRIM(TO_CHAR(:comp_uid)) AND ROWNUM = 1`,
+        `SELECT PO_CODE_BROKER FROM %T% WHERE COMP_CODE = :comp_code AND ROWNUM = 1`,
+      ]
+    : [`SELECT PO_CODE_BROKER FROM %T% WHERE COMP_CODE = :comp_code AND ROWNUM = 1`];
+
+  for (const sch of schemas) {
+    for (const t of tables) {
+      for (const tpl of sqlVariants) {
+        try {
+          const sql = tpl.replace('%T%', t);
+          const binds = { comp_code };
+          if (sql.includes(':comp_uid')) binds.comp_uid = uid;
+          const rows = await runQuery(sql, binds, sch, { suppressDbErrorLog: true });
+          const raw = rows?.[0]?.PO_CODE_BROKER ?? rows?.[0]?.po_code_broker;
+          if (raw != null && String(raw).trim() !== '') {
+            const v = String(raw).trim().toUpperCase();
+            if (v === 'C' || v === 'B') return v;
+          }
+        } catch (err) {
+          if (!isLoginOptionalTableError(err) && !isUnknownUsersColumnError(err)) {
+            /* optional column */
+          }
+        }
+      }
+    }
+  }
+  return 'C';
+}
+
+/** Numeric COMP_CODE / MASTER CODE bind (COMP_CODE is often NUMBER in Oracle). */
+function compCodeSqlBind(comp_code) {
+  const n = parseMasterCodeForSql(comp_code);
+  return n !== undefined ? n : String(comp_code ?? '').trim();
+}
+
+/** Match code on SORDER / PURCHASE (Fox MDETAIL — numeric party/broker codes). */
+function purchaseBillPendingCodeMatches(rowCode, matchCode) {
+  if (matchCode === undefined) return false;
+  const a = numVal(rowCode);
+  const b = numVal(matchCode);
+  if (a > 0 && a === b) return true;
+  const rs = String(rowCode ?? '').trim();
+  const ms = String(matchCode ?? '').trim();
+  return rs !== '' && ms !== '' && rs === ms;
+}
+
+/**
+ * VFP9 purchase bill F1 (G_PO_CODE_BROKER):
+ *   C → MCODE=party, SORDER A.CODE=MCODE, PURCHASE A.CODE=MCODE
+ *   B → MCODE=broker, SORDER A.CODE=MCODE, PURCHASE A.BK_CODE=MCODE
+ * (SORDER.CODE is aliased BK_CODE in Fox X1; PURCHASE uses MFLD for billed qty.)
+ */
+function resolvePurchaseBillPendingVfp(code, bk_code, poBroker) {
+  const mode = String(poBroker || 'C').trim().toUpperCase() === 'B' ? 'B' : 'C';
+  const partyN = parseMasterCodeForSql(code);
+  const brokerN = parseMasterCodeForSql(bk_code);
+  const mcode = mode === 'B' ? brokerN : partyN;
+  if (mcode === undefined) return null;
+  return {
+    mode,
+    mcode,
+    partyN,
+    brokerN,
+    sorder_mfld: 'CODE',
+    purchase_mfld: mode === 'B' ? 'BK_CODE' : 'CODE',
+  };
+}
+
+/** @deprecated alias */
+function resolvePurchaseBillPendingMatchCode(code, bk_code, poBroker) {
+  const v = resolvePurchaseBillPendingVfp(code, bk_code, poBroker);
+  if (!v) return null;
+  return { mode: v.mode, matchCode: v.mcode, partyN: v.partyN, brokerN: v.brokerN };
+}
+
+/** Fox purchase bill F1 pending PO — VFP X0→X1, X0 PURCHASE→X2, X3–X5. */
+async function fetchPurchaseBillPendingOrders(comp_code, comp_uid, code, bk_code, poBroker) {
+  const vfp = resolvePurchaseBillPendingVfp(code, bk_code, poBroker);
+  const compBind = compCodeSqlBind(comp_code);
+  if (!vfp) {
+    return {
+      rows: [],
+      diag: {
+        reason: 'missing_mcode',
+        po_code_broker: String(poBroker || 'C').trim().toUpperCase(),
+        comp_code: compBind,
+        party_code: parseMasterCodeForSql(code) ?? null,
+        broker_code: parseMasterCodeForSql(bk_code) ?? null,
+      },
+    };
+  }
+  const { mode, mcode, purchase_mfld } = vfp;
+  const binds = { comp_code: compBind, mcode };
+
+  const x1Sql = `
+    SELECT A.SO_NO, A.SO_DATE, A.STATUS, A.ITEM_CODE, A.RATE,
+           SUM(NVL(A.QNTY, 0)) AS SOQTY,
+           SUM(NVL(A.WEIGHT, 0)) AS SOWGT,
+           MAX(NVL(A.REMARKS, ' ')) AS REMARKS,
+           MAX(NVL(A.CODE, 0)) AS BK_CODE
+    FROM SORDER A
+    WHERE A.COMP_CODE = :comp_code
+      AND TRIM(A.TYPE) = 'PO'
+      AND A.CODE = :mcode
+    GROUP BY A.TYPE, A.SO_NO, A.SO_DATE, A.STATUS, A.ITEM_CODE, A.RATE`;
+
+  const purchasePartyClause =
+    purchase_mfld === 'BK_CODE' ? 'A.BK_CODE = :mcode' : 'A.CODE = :mcode';
+
+  const x2Sql = `
+    SELECT A.SO_NO, A.ITEM_CODE, A.STATUS, A.RATE,
+           SUM(NVL(A.WEIGHT, 0)) AS SLWGT,
+           SUM(NVL(A.QNTY, 0)) AS SLQTY
+    FROM PURCHASE A
+    WHERE A.COMP_CODE = :comp_code
+      AND ${purchasePartyClause}
+      AND NVL(A.SO_NO, 0) <> 0
+    GROUP BY A.SO_NO, A.ITEM_CODE, A.STATUS, A.RATE`;
+
+  const [x1Rows, x2Rows] = await Promise.all([
+    runQuery(x1Sql, binds, comp_uid),
+    runQuery(x2Sql, binds, comp_uid),
+  ]);
+
+  const normPbStatus = (st) => String(st ?? '').trim().slice(0, 1).toUpperCase() || 'B';
+  const rowKey = (so, ic, st, rt) =>
+    `${numVal(so)}|${String(ic ?? '').trim()}|${normPbStatus(st)}|${Math.round(numVal(rt) * 100) / 100}`;
+
+  const x1Map = new Map();
+  for (const r of x1Rows || []) {
+    const k = rowKey(r.SO_NO, r.ITEM_CODE, r.STATUS, r.RATE);
+    let g = x1Map.get(k);
+    if (!g) {
+      g = {
+        SO_NO: numVal(r.SO_NO),
+        SO_DATE: r.SO_DATE ?? r.so_date,
+        ITEM_CODE: String(r.ITEM_CODE ?? r.item_code ?? '').trim(),
+        STATUS: normPbStatus(r.STATUS ?? r.status),
+        RATE: Math.round(numVal(r.RATE ?? r.rate) * 100) / 100,
+        SOQTY: 0,
+        SOWGT: 0,
+        REMARKS: String(r.REMARKS ?? r.remarks ?? '').trim(),
+        _dateParts: [],
+      };
+      x1Map.set(k, g);
+    }
+    g.SOQTY += numVal(r.SOQTY ?? r.soqty);
+    g.SOWGT += numVal(r.SOWGT ?? r.sowgt);
+    if (r.SO_DATE ?? r.so_date) g._dateParts.push(r.SO_DATE ?? r.so_date);
+  }
+
+  const x2Map = new Map();
+  for (const r of x2Rows || []) {
+    const k = rowKey(r.SO_NO, r.ITEM_CODE, r.STATUS, r.RATE);
+    let g = x2Map.get(k);
+    if (!g) {
+      g = { SLQTY: 0, SLWGT: 0 };
+      x2Map.set(k, g);
+    }
+    g.SLQTY += numVal(r.SLQTY ?? r.slqty);
+    g.SLWGT += numVal(r.SLWGT ?? r.slwgt);
+  }
+
+  const merged = new Map();
+  for (const [k, a] of x1Map) {
+    const b = x2Map.get(k);
+    merged.set(k, { ...a, SLQTY: b?.SLQTY || 0, SLWGT: b?.SLWGT || 0 });
+  }
+  for (const [k, b] of x2Map) {
+    if (merged.has(k)) continue;
+    const parts = k.split('|');
+    merged.set(k, {
+      SO_NO: numVal(parts[0]),
+      SO_DATE: null,
+      ITEM_CODE: parts[1] || '',
+      STATUS: parts[2] || 'B',
+      RATE: numVal(parts[3]),
+      SOQTY: 0,
+      SOWGT: 0,
+      SLQTY: b.SLQTY,
+      SLWGT: b.SLWGT,
+      REMARKS: '',
+      _dateParts: [],
+    });
+  }
+
+  const x4Map = new Map();
+  for (const r of merged.values()) {
+    const k = rowKey(r.SO_NO, r.ITEM_CODE, r.STATUS, r.RATE);
+    let g = x4Map.get(k);
+    if (!g) {
+      g = {
+        SO_NO: r.SO_NO,
+        SO_DATE: r.SO_DATE,
+        ITEM_CODE: r.ITEM_CODE,
+        STATUS: r.STATUS,
+        RATE: r.RATE,
+        SOQTY: 0,
+        SOWGT: 0,
+        SLQTY: 0,
+        SLWGT: 0,
+        REMARKS: r.REMARKS,
+        _dateParts: r._dateParts ? [...r._dateParts] : [],
+      };
+      x4Map.set(k, g);
+    }
+    g.SOQTY += numVal(r.SOQTY);
+    g.SOWGT += numVal(r.SOWGT);
+    g.SLQTY += numVal(r.SLQTY);
+    g.SLWGT += numVal(r.SLWGT);
+    if (r._dateParts?.length) g._dateParts.push(...r._dateParts);
+    if (r.REMARKS) g.REMARKS = r.REMARKS;
+  }
+
+  const out = [];
+  for (const g of x4Map.values()) {
+    const bqty = Math.round((numVal(g.SOQTY) - numVal(g.SLQTY)) * 1000) / 1000;
+    const bwgt = Math.round((numVal(g.SOWGT) - numVal(g.SLWGT)) * 1000) / 1000;
+    if (Math.abs(bqty) < 0.0005) continue;
+    if (numVal(g.SO_NO) < 1) continue;
+    if (bqty <= 0 && bwgt <= 0) continue;
+    let soDate = g.SO_DATE;
+    if (g._dateParts?.length) {
+      soDate = g._dateParts.reduce((a, b) => {
+        const da = parseDateOnly(a);
+        const db = parseDateOnly(b);
+        if (!da) return b;
+        if (!db) return a;
+        return da > db ? a : b;
+      });
+    }
+    out.push({
+      SO_NO: g.SO_NO,
+      SO_DATE: soDate,
+      ITEM_CODE: g.ITEM_CODE,
+      STATUS: g.STATUS,
+      RATE: g.RATE,
+      BQTY: bqty,
+      BWGT: bwgt,
+      SOQTY: numVal(g.SOQTY),
+      SLQTY: numVal(g.SLQTY),
+      SOWGT: numVal(g.SOWGT),
+      SLWGT: numVal(g.SLWGT),
+      REMARKS: g.REMARKS,
+    });
+  }
+  out.sort((a, b) => numVal(a.SO_NO) - numVal(b.SO_NO));
+
+  return {
+    rows: out,
+    diag: {
+      comp_code: compBind,
+      po_code_broker: mode === 'B' ? 'B' : 'C',
+      mode,
+      mcode,
+      sorder_filter: 'SORDER.CODE = mcode',
+      purchase_filter: `PURCHASE.${purchase_mfld} = mcode`,
+      x1_rows: (x1Rows || []).length,
+      x2_rows: (x2Rows || []).length,
+      result_count: out.length,
+      party_code: vfp.partyN ?? null,
+      broker_code: vfp.brokerN ?? null,
+    },
+  };
+}
+
+app.get('/api/purchase-bill-pending-orders', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, code } = req.query;
+    const b_code = req.query.b_code ?? req.query.bk_code;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid);
+    const poBroker = await fetchPoCodeBroker(comp_code, comp_uid, compdet);
+    const result = await fetchPurchaseBillPendingOrders(comp_code, comp_uid, code, b_code, poBroker);
+    const rows = Array.isArray(result) ? result : result?.rows || [];
+    const diag = Array.isArray(result) ? null : result?.diag || null;
+    const vfp = resolvePurchaseBillPendingVfp(code, b_code, poBroker);
+    res.json({
+      rows,
+      po_code_broker: poBroker,
+      match_code: vfp?.mcode ?? null,
+      diag,
+      party_filter: vfp
+        ? `SORDER.CODE=${vfp.mcode}; PURCHASE.${vfp.purchase_mfld}=${vfp.mcode}`
+        : null,
+    });
+  } catch (err) {
+    console.error('❌ purchase-bill-pending-orders error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/purchase-bill-form-context', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, comp_year } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const row = await runCompdetHeaderRow(comp_code, comp_uid, parseCompYearOpt(comp_year));
+    if (!row) return res.status(404).json({ error: 'compdet row not found' });
+    const tv = (k) => {
+      const v = rowValueCI(row, k);
+      if (v == null) return null;
+      if (typeof v === 'object') return null;
+      return v;
+    };
+    const plantFromCompdet = tv('plant_code') ?? tv('god_code');
+    res.json({
+      G_COMP_YEAR: tv('comp_year'),
+      G_PLANT_CODE:
+        plantFromCompdet != null && String(plantFromCompdet).trim() !== ''
+          ? String(plantFromCompdet).trim()
+          : null,
+      G_AMT_CAL: tv('amt_cal'),
+      G_LABCD: tv('labcd'),
+      G_FGTCD: tv('fgtcd'),
+      G_CGST_CODE: tv('cgst_code'),
+      G_SGST_CODE: tv('sgst_code'),
+      G_IGST_CODE: tv('igst_code'),
+      G_NTDS_CODE: tv('ntds_code') ?? tv('tds_code'),
+      G_OTH_CODE: tv('oth_code'),
+      G_PUR_DANE: String(tv('pur_dane') ?? 'N').trim().toUpperCase() || 'N',
+      G_PUR_STK_G_N: String(tv('pur_stk_g_n') ?? 'N').trim().toUpperCase() || 'N',
+      G_PO_CODE_BROKER: await fetchPoCodeBroker(comp_code, comp_uid, row),
+      COMP_S_DT: tv('comp_s_dt'),
+      COMP_E_DT: tv('comp_e_dt'),
+    });
+  } catch (err) {
+    console.error('❌ purchase-bill-form-context error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/purchase-bill-lookups', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const partySql = `
+      SELECT CODE, NAME, CITY, GST_NO, PAN
+      FROM MASTER
+      WHERE COMP_CODE = :comp_code
+      ORDER BY NAME, CITY, CODE`;
+    const brokerSql = `
+      SELECT CODE, NAME, CITY
+      FROM MASTER
+      WHERE COMP_CODE = :comp_code AND ROUND(NVL(SCHEDULE, 0), 2) = 11.2
+      /* Fox broker schedule 11.20 — stored as 11.2 in Oracle NUMBER */
+      ORDER BY NAME, CITY, CODE`;
+    const itemSql = `
+      SELECT ITEM_CODE, ITEM_NAME, NVL(P_CODE, 0) AS P_CODE, NVL(TAX_PER, 0) AS TAX_PER, NVL(UNIT_WGT, 0) AS UNIT_WGT
+      FROM ITEMMAST
+      WHERE COMP_CODE = :comp_code
+      ORDER BY ITEM_NAME`;
+    const plantSql = `SELECT PLANT_CODE, PLANT_NAME FROM PLANT WHERE COMP_CODE = :comp_code ORDER BY PLANT_CODE`;
+    const expSql = `
+      SELECT CODE, NAME FROM MASTER WHERE COMP_CODE = :comp_code ORDER BY NAME, CODE`;
+    const [parties, brokers, items, plants, expenseCodes] = await Promise.all([
+      runQuery(partySql, { comp_code }, comp_uid),
+      runQuery(brokerSql, { comp_code }, comp_uid).catch(() => []),
+      runQuery(itemSql, { comp_code }, comp_uid),
+      runQuery(plantSql, { comp_code }, comp_uid).catch(() => []),
+      runQuery(expSql, { comp_code }, comp_uid),
+    ]);
+    res.json({
+      parties: parties || [],
+      brokers: brokers || [],
+      items: items || [],
+      plants: plants || [],
+      expenseCodes: expenseCodes || [],
+    });
+  } catch (err) {
+    console.error('❌ purchase-bill-lookups error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/purchase-bill-next-r-no', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, r_date, type, scope } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const typ = String(type ?? 'PU').trim();
+    const byDate = String(scope ?? '').trim().toLowerCase() === 'date';
+    if (byDate && !r_date) {
+      return res.status(400).json({ error: 'r_date is required when scope=date' });
+    }
+    let sql;
+    const binds = { comp_code, type: typ };
+    if (byDate) {
+      sql = `
+      SELECT NVL(MAX(TO_NUMBER(TRIM(TO_CHAR(R_NO)))), 0) + 1 AS NEXT_R_NO
+      FROM PURCHASE
+      WHERE COMP_CODE = :comp_code
+        AND TRIM(TYPE) = TRIM(:type)
+        AND TRUNC(R_DATE) = TRUNC(TO_DATE(:r_date, 'DD-MM-YYYY'))`;
+      binds.r_date = String(r_date).trim();
+    } else {
+      sql = `
+      SELECT NVL(MAX(TO_NUMBER(TRIM(TO_CHAR(R_NO)))), 0) + 1 AS NEXT_R_NO
+      FROM PURCHASE
+      WHERE COMP_CODE = :comp_code
+        AND TRIM(TYPE) = TRIM(:type)`;
+    }
+    const rows = await runQuery(sql, binds, comp_uid);
+    const n = rows?.[0]?.NEXT_R_NO ?? rows?.[0]?.next_r_no ?? 1;
+    res.json({ next_r_no: Number(n) || 1, scope: byDate && r_date ? 'date' : 'company' });
+  } catch (err) {
+    console.error('❌ purchase-bill-next-r-no error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/purchase-bill-raw', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, type, r_date, r_no } = req.query;
+    const typ = String(type ?? 'PU').trim();
+    const rn = String(r_no ?? '').trim();
+    if (!comp_code || comp_uid == null || !r_date || !rn) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, r_date, and r_no are required' });
+    }
+    const sql = `
+      SELECT A.*, B.NAME, B.CITY, B.GST_NO, BK.NAME AS BK_NAME, C.ITEM_NAME
+      FROM PURCHASE A
+      LEFT JOIN MASTER B ON B.COMP_CODE = A.COMP_CODE AND B.CODE = A.CODE
+      LEFT JOIN MASTER BK ON BK.COMP_CODE = A.COMP_CODE AND BK.CODE = A.BK_CODE
+      LEFT JOIN ITEMMAST C ON C.COMP_CODE = A.COMP_CODE AND C.ITEM_CODE = A.ITEM_CODE
+      WHERE A.COMP_CODE = :comp_code
+        AND TRIM(A.TYPE) = TRIM(:type)
+        AND TRUNC(A.R_DATE) = TRUNC(TO_DATE(:r_date, 'DD-MM-YYYY'))
+        AND TRIM(TO_CHAR(A.R_NO)) = TRIM(TO_CHAR(:r_no))
+      ORDER BY A.TRN_NO`;
+    const rows = await runQuery(sql, { comp_code, type: typ, r_date: String(r_date).trim(), r_no: rn }, comp_uid);
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ purchase-bill-raw error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/purchase-bill-save', async (req, res) => {
+  let conn;
+  try {
+    const body = req.body || {};
+    const comp_code = String(body.comp_code || '').trim();
+    const comp_uid = String(body.comp_uid || '').trim();
+    const user_name = String(body.user_name || '').trim().toUpperCase();
+    const mode = String(body.mode || '').trim().toLowerCase();
+    const pu_type = String(body.type ?? 'PU').trim() || 'PU';
+    const r_date = String(body.r_date || '').trim();
+    const header = body.header && typeof body.header === 'object' ? body.header : {};
+    const linesIn = Array.isArray(body.lines) ? body.lines : [];
+
+    if (!comp_code || !comp_uid || !user_name || !['add', 'edit', 'delete'].includes(mode)) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, user_name, mode=add|edit|delete required' });
+    }
+    if (!r_date) {
+      return res.status(400).json({ error: 'r_date (DD-MM-YYYY) required' });
+    }
+
+    const { f2 } = await fetchPurchaseBillUserF2String(user_name, comp_uid);
+    const perms = purchaseBillPermissionsFromF2(f2);
+    if (!perms.canOpen) {
+      return res.status(403).json({ error: 'Access Denied' });
+    }
+    if (mode === 'add' && !perms.canAdd) {
+      return res.status(403).json({ error: 'You Can Not Add' });
+    }
+    if (mode === 'edit' && !perms.canEdit) {
+      return res.status(403).json({ error: 'You Can Not Edit' });
+    }
+    if (mode === 'delete' && !perms.canDelete) {
+      return res.status(403).json({ error: 'You Can Not Delete' });
+    }
+
+    const comp_year_sel = parseCompYearOpt(body.comp_year);
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid, comp_year_sel);
+    if (!compdet) return res.status(400).json({ error: 'compdet not found' });
+    const comp_year = Number(compdet?.COMP_YEAR ?? compdet?.comp_year ?? comp_year_sel ?? 0) || 0;
+    const fy = assertSaleBillDateInFinancialYear(r_date, compdet);
+    if (!fy.ok) {
+      return res.status(400).json({ error: fy.error });
+    }
+
+    const connCfg = {
+      user: comp_uid,
+      password: comp_uid,
+      connectString: activeDbConfig.connectString,
+    };
+    conn = await getDbConnection(connCfg);
+
+    const delPurSql = `
+      DELETE FROM PURCHASE A
+      WHERE A.COMP_CODE = :comp_code
+        AND TRIM(A.TYPE) = TRIM(:type)
+        AND TRUNC(A.R_DATE) = TRUNC(TO_DATE(:r_date, 'DD-MM-YYYY'))
+        AND TRIM(TO_CHAR(A.R_NO)) = TRIM(TO_CHAR(:r_no))`;
+
+    if (mode === 'delete') {
+      const rnoDel = body.r_no;
+      if (rnoDel == null) return res.status(400).json({ error: 'r_no required for delete' });
+      await purchaseBillDeleteSatelliteRows(conn, {
+        comp_code,
+        comp_year,
+        pu_type,
+        r_date,
+        r_no: rnoDel,
+      });
+      await conn.execute(
+        delPurSql,
+        { comp_code, type: pu_type, r_date, r_no: String(rnoDel).trim() },
+        { autoCommit: false }
+      );
+      await conn.commit();
+      return res.json({ ok: true, mode: 'delete' });
+    }
+
+    let r_no_use = body.r_no;
+    if (mode === 'add') {
+      const manualRn = r_no_use != null && String(r_no_use).trim() !== '';
+      if (!manualRn) {
+        const maxRows = await conn.execute(
+          `SELECT NVL(MAX(NVL(R_NO, 0)), 0) + 1 AS NR FROM PURCHASE
+           WHERE COMP_CODE = :cc AND TRIM(TYPE) = TRIM(:tp)
+             AND TRUNC(R_DATE) = TRUNC(TO_DATE(:rd, 'DD-MM-YYYY'))`,
+          { cc: comp_code, tp: pu_type, rd: r_date },
+          { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+        r_no_use = Number(maxRows.rows?.[0]?.NR ?? maxRows.rows?.[0]?.nr) || 1;
+      } else {
+        r_no_use = Math.max(1, Math.floor(Number(r_no_use)));
+      }
+    }
+    if (r_no_use == null || String(r_no_use).trim() === '') {
+      return res.status(400).json({ error: 'r_no required for edit' });
+    }
+
+    const bill_date = String(header.bill_date || r_date).trim() || r_date;
+    const bill_no = String(header.bill_no ?? '').trim();
+    const code = parseMasterCodeForSql(header.code);
+    if (code === undefined) {
+      try {
+        await conn.rollback();
+      } catch (_) {}
+      return res.status(400).json({ error: 'Party (code) required' });
+    }
+    const plantTrim = String(header.plant_code ?? '').trim();
+    if (!plantTrim) {
+      try {
+        await conn.rollback();
+      } catch (_) {}
+      return res.status(400).json({ error: 'Plant code is required' });
+    }
+
+    if (mode === 'edit') {
+      await purchaseBillDeleteSatelliteRows(conn, {
+        comp_code,
+        comp_year,
+        pu_type,
+        r_date,
+        r_no: r_no_use,
+      });
+      await conn.execute(
+        delPurSql,
+        { comp_code, type: pu_type, r_date, r_no: String(r_no_use).trim() },
+        { autoCommit: false }
+      );
+    }
+
+    const linesFiltered = linesIn.filter((raw) => String(raw?.item_code ?? raw?.ITEM_CODE ?? '').trim() !== '');
+    if (linesFiltered.length === 0) {
+      try {
+        await conn.rollback();
+      } catch (_) {}
+      return res.status(400).json({ error: 'At least one line with item_code is required' });
+    }
+
+    const mfeeAmt = Number(header.mfee_amt) || 0;
+    const labour = Number(header.labour) || 0;
+    const freight = Number(header.freight) || 0;
+    const addexp = Number(header.addexp) || 0;
+    const lessexp = Number(header.lessexp) || 0;
+    const bill_amt = Number(header.bill_amt) || 0;
+    const ntds_on_amt = Number(header.ntds_on_amt) || 0;
+    const ntds_per = Number(header.ntds_per) || 0;
+    const ntds_amt = ceilPurchaseNtdsAmt(Number(header.ntds_amt) || 0);
+
+    let trn = 1;
+    const bindRows = linesFiltered.map((raw, idx) => {
+      const L = raw && typeof raw === 'object' ? raw : {};
+      const isFirst = idx === 0;
+      const tno = Number(L.trn_no ?? trn) || trn;
+      trn = tno + 1;
+      return {
+        comp_code,
+        comp_year,
+        type: pu_type,
+        r_date,
+        r_no: r_no_use,
+        bill_date,
+        bill_no,
+        code,
+        bk_code: parseMasterCodeForSql(header.bk_code),
+        plant_code: String(L.plant_code ?? header.plant_code ?? '').trim(),
+        trn_no: tno,
+        so_no: L.so_no != null ? Math.floor(Number(L.so_no)) : null,
+        item_code: String(L.item_code ?? '').trim(),
+        p_code: parseMasterCodeForSql(L.p_code) ?? 0,
+        qnty: Number(L.qnty) || 0,
+        status: String(L.status ?? 'B').trim().slice(0, 1) || 'B',
+        g_weight: Number(L.g_weight) || 0,
+        dane_wgt: Number(L.dane_wgt) || 0,
+        weight: Number(L.weight) || 0,
+        rate: Number(L.rate) || 0,
+        cal: Number(L.cal) || 1,
+        amount: Number(L.amount) || 0,
+        dis_per: Number(L.dis_per) || 0,
+        dis_amt: Number(L.dis_amt) || 0,
+        taxable: Number(L.taxable) || 0,
+        cgst_per: Number(L.cgst_per) || 0,
+        sgst_per: Number(L.sgst_per) || 0,
+        igst_per: Number(L.igst_per) || 0,
+        cgst_amt: Number(L.cgst_amt) || 0,
+        sgst_amt: Number(L.sgst_amt) || 0,
+        igst_amt: Number(L.igst_amt) || 0,
+        stk_weight: Number(L.stk_weight) || 0,
+        stk_date: String(L.stk_date ?? L.STK_DATE ?? '').trim() || r_date,
+        mfee_per: isFirst ? Number(header.mfee_per) || 0 : 0,
+        mfee_amt: isFirst ? mfeeAmt : 0,
+        mfee_code: isFirst ? parseMasterCodeForSql(header.mfee_code) : null,
+        labour: isFirst ? labour : 0,
+        lab_code: isFirst ? parseMasterCodeForSql(header.lab_code) : null,
+        freight: isFirst ? freight : 0,
+        fgt_code: isFirst ? parseMasterCodeForSql(header.fgt_code) : null,
+        addexp: isFirst ? addexp : 0,
+        add_code: isFirst ? parseMasterCodeForSql(header.add_code) : null,
+        lessexp: isFirst ? lessexp : 0,
+        less_code: isFirst ? parseMasterCodeForSql(header.less_code) : null,
+        ntds_on_amt: isFirst ? ntds_on_amt : 0,
+        ntds_per: isFirst ? ntds_per : 0,
+        ntds_amt: isFirst ? ntds_amt : 0,
+        bill_amt: isFirst ? bill_amt : 0,
+        truck: isFirst ? String(header.truck ?? '').trim() : '',
+        gr_no: isFirst ? String(header.gr_no ?? '').trim() : '',
+        tpt: isFirst ? String(header.tpt ?? '').trim() : '',
+        user_name,
+      };
+    });
+
+    const insertSql = `
+      INSERT INTO PURCHASE (
+        COMP_CODE, COMP_YEAR, TYPE, R_DATE, R_NO, BILL_DATE, BILL_NO, CODE, BK_CODE, TRN_NO, SO_NO, ITEM_CODE, P_CODE,
+        STATUS, QNTY, G_WEIGHT, DANE_WGT, WEIGHT, RATE, CAL, AMOUNT, DIS_PER, DIS_AMT, TAXABLE,
+        CGST_PER, SGST_PER, IGST_PER, CGST_AMT, SGST_AMT, IGST_AMT, STK_WEIGHT, STK_DATE,
+        MFEE_PER, MFEE_AMT, MFEE_CODE, LABOUR, LAB_CODE, FREIGHT, FGT_CODE, ADDEXP, ADD_CODE,
+        LESSEXP, LESS_CODE, NTDS_ON_AMT, NTDS_PER, NTDS_AMT, BILL_AMT, PLANT_CODE, TRUCK, GR_NO, TPT,
+        USER_NAME, ENT_DATE, ENT_TIME
+      ) VALUES (
+        :comp_code, :comp_year, :type, TO_DATE(:r_date, 'DD-MM-YYYY'), :r_no, TO_DATE(:bill_date, 'DD-MM-YYYY'), :bill_no,
+        :code, :bk_code, :trn_no, :so_no, :item_code, :p_code, :status, :qnty, :g_weight, :dane_wgt, :weight, :rate, :cal,
+        :amount, :dis_per, :dis_amt, :taxable, :cgst_per, :sgst_per, :igst_per, :cgst_amt, :sgst_amt, :igst_amt,
+        :stk_weight, TO_DATE(:stk_date, 'DD-MM-YYYY'), :mfee_per, :mfee_amt, :mfee_code, :labour, :lab_code, :freight,
+        :fgt_code, :addexp, :add_code, :lessexp, :less_code, :ntds_on_amt, :ntds_per, :ntds_amt, :bill_amt, :plant_code,
+        :truck, :gr_no, :tpt, :user_name, TRUNC(SYSDATE), TO_CHAR(SYSDATE, 'HH24:MI:SS')
+      )`;
+
+    try {
+      await conn.executeMany(insertSql, bindRows, { autoCommit: false });
+    } catch (e1) {
+      const msg = String(e1?.message || '');
+      if (msg.includes('ORA-00904') || msg.includes('invalid identifier')) {
+        const slimSql = `
+          INSERT INTO PURCHASE (
+            COMP_CODE, COMP_YEAR, TYPE, R_DATE, R_NO, BILL_DATE, BILL_NO, CODE, BK_CODE, TRN_NO, ITEM_CODE, P_CODE,
+            STATUS, QNTY, WEIGHT, RATE, CAL, AMOUNT, DIS_PER, DIS_AMT, TAXABLE,
+            CGST_PER, SGST_PER, IGST_PER, CGST_AMT, SGST_AMT, IGST_AMT, STK_WEIGHT, STK_DATE,
+            MFEE_AMT, LABOUR, FREIGHT, ADDEXP, LESSEXP, NTDS_ON_AMT, NTDS_PER, NTDS_AMT, BILL_AMT, PLANT_CODE,
+            USER_NAME, ENT_DATE, ENT_TIME
+          ) VALUES (
+            :comp_code, :comp_year, :type, TO_DATE(:r_date, 'DD-MM-YYYY'), :r_no, TO_DATE(:bill_date, 'DD-MM-YYYY'), :bill_no,
+            :code, :bk_code, :trn_no, :item_code, :p_code, :status, :qnty, :weight, :rate, :cal, :amount, :dis_per, :dis_amt,
+            :taxable, :cgst_per, :sgst_per, :igst_per, :cgst_amt, :sgst_amt, :igst_amt, :stk_weight, TO_DATE(:stk_date, 'DD-MM-YYYY'),
+            :mfee_amt, :labour, :freight, :addexp, :lessexp, :ntds_on_amt, :ntds_per, :ntds_amt, :bill_amt, :plant_code,
+            :user_name, TRUNC(SYSDATE), TO_CHAR(SYSDATE, 'HH24:MI:SS')
+          )`;
+        const slimRows = bindRows.map((r) => {
+          const {
+            g_weight: _g,
+            dane_wgt: _d,
+            so_no: _s,
+            mfee_per: _mp,
+            mfee_code: _mc,
+            lab_code: _lc,
+            fgt_code: _fc,
+            add_code: _ac,
+            less_code: _lsc,
+            truck: _t,
+            gr_no: _gno,
+            tpt: _tp,
+            ...rest
+          } = r;
+          return rest;
+        });
+        await conn.executeMany(slimSql, slimRows, { autoCommit: false });
+      } else {
+        throw e1;
+      }
+    }
+
+    await purchaseBillPostSatelliteRows(conn, {
+      comp_code,
+      comp_year,
+      pu_type,
+      r_date,
+      r_no: r_no_use,
+      code,
+      bill_no,
+      bill_date,
+      bill_amt,
+      user_name,
+      bindRows,
+      header: {
+        ...header,
+        labour,
+        freight,
+        addexp,
+        lessexp,
+        mfee_amt: mfeeAmt,
+        ntds_amt,
+        ntds_on_amt,
+        ntds_per,
+      },
+      compdet,
+    });
+
+    await conn.commit();
+    res.json({ ok: true, mode, r_no: r_no_use, bill_no, lines: bindRows.length });
+  } catch (err) {
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (_) {}
+    }
+    console.error('❌ purchase-bill-save error:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) {
+      try {
+        await conn.close();
+      } catch (_) {}
+    }
   }
 });
 

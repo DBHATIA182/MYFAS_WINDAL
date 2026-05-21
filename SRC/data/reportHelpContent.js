@@ -244,8 +244,21 @@ export const REPORT_HELP = {
     sections: [
       section('Use', [
         'F13 permissions: open/add/edit/delete from DAL.USERS (SUBSTR F13,1–4).',
-        'Supplier schedule 11.1; PO no/date, lines, Ref no in footer; Prev/Next/List/Print.',
+        'Party: supplier or broker (search by code, name, or city); PO no/date, lines, Ref no in footer; Prev/Next/List/Print.',
         'G_AMT_CAL and G_COMP_YEAR from COMPDET.',
+      ]),
+    ],
+  },
+
+  'purchase-bill-entry': {
+    title: 'Purchase Bill Entry',
+    summary: 'Add, edit, delete purchase bills (PURCHASE type PU).',
+    sections: [
+      section('Use', [
+        'F2 permissions: Access Denied / You Can Not Add / Edit / Delete from DAL.USERS F2 positions 1–4.',
+        'R date & R no (voucher), bill no (supplier invoice), party (search by code, name, or city), broker 11.20, plant.',
+        'Lines: qty, B/K/H status, gross/dane/net weight, GST, market fee, labour, freight, TDS.',
+        'Save posts PURCHASE, STOCK (receipt), LEDGER, and BILLS. Print from toolbar.',
       ]),
     ],
   },
@@ -357,6 +370,7 @@ const PDF_ORDER = [
   'gstr1',
   'sales-order-entry',
   'purchase-order-entry',
+  'purchase-bill-entry',
   'dispatch-challan-entry',
   'sale-bill-entry',
   'purchase-list',
