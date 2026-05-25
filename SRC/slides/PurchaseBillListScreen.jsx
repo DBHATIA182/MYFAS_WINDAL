@@ -447,7 +447,9 @@ export default function PurchaseBillListScreen({ apiBase, formData, lookups, onC
               {totals.amount.toFixed(2)} · Taxable {totals.taxable.toFixed(2)} · Bill amt {totals.billAmt.toFixed(2)}
             </p>
           </div>
-          <p className="sale-bill-section__hint dc-list-scroll-hint">Scroll inside the table area — horizontal bar stays at the bottom of this panel.</p>
+          <p className="sale-bill-section__hint dc-list-scroll-hint">
+            Swipe left/right inside the table box to see all columns (Bill amt, Ntds amt, etc.).
+          </p>
           <div className="pb-purchase-list-scroll-panel dc-list-table-wrap dc-list-table-wrap--wide">
             <div className="pb-purchase-list-table-inner">
             <table className="report-table dc-list-table dc-list-table--purchase-bill">

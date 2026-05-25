@@ -42,7 +42,9 @@ export default function MasterPartyCreateModal({
   userName,
   defaultSchedule,
   lockSchedule = false,
+  editRow = null,
   onCreated,
+  onUpdated,
 }) {
   const formRef = useRef(null);
   const [perms, setPerms] = useState(null);
@@ -107,21 +109,41 @@ export default function MasterPartyCreateModal({
     [apiBase, compCode, compUid]
   );
 
+  const isEdit = editRow != null;
+
   useEffect(() => {
     if (!open) return;
-    const defSch = scheduleNum(defaultSchedule);
-    setSchedule(defSch ? String(defSch) : '');
-    setName('');
-    setAdd1('');
-    setAdd2('');
-    setAdd3('');
-    setCity('');
-    setGstNo('');
-    setStateCode('');
-    setStateName('');
-    setPan('');
-    setTelNo('');
-    setLC('L');
+    const defSch = scheduleNum(
+      isEdit ? (editRow.SCHEDULE ?? editRow.schedule ?? defaultSchedule) : defaultSchedule
+    );
+    if (isEdit) {
+      setSchedule(defSch ? String(defSch) : '');
+      setCode(String(editRow.CODE ?? editRow.code ?? ''));
+      setName(String(editRow.NAME ?? editRow.name ?? ''));
+      setAdd1(String(editRow.ADD1 ?? editRow.add1 ?? ''));
+      setAdd2(String(editRow.ADD2 ?? editRow.add2 ?? ''));
+      setAdd3(String(editRow.ADD3 ?? editRow.add3 ?? ''));
+      setCity(String(editRow.CITY ?? editRow.city ?? ''));
+      setGstNo(String(editRow.GST_NO ?? editRow.gst_no ?? ''));
+      setStateCode(String(editRow.STATE_CODE ?? editRow.state_code ?? ''));
+      setStateName(String(editRow.STATE ?? editRow.state ?? ''));
+      setPan(String(editRow.PAN ?? editRow.pan ?? ''));
+      setTelNo(String(editRow.TEL_NO_O ?? editRow.tel_no_o ?? editRow.tel_no ?? ''));
+      setLC(String(editRow.L_C ?? editRow.l_c ?? 'L').trim().toUpperCase() || 'L');
+    } else {
+      setSchedule(defSch ? String(defSch) : '');
+      setName('');
+      setAdd1('');
+      setAdd2('');
+      setAdd3('');
+      setCity('');
+      setGstNo('');
+      setStateCode('');
+      setStateName('');
+      setPan('');
+      setTelNo('');
+      setLC('L');
+    }
     setErr('');
     setSaving(false);
 
@@ -160,14 +182,21 @@ export default function MasterPartyCreateModal({
           setErr('Access Denied');
           return;
         }
-        if (!pRes.data?.canAdd) {
+        if (isEdit) {
+          if (!pRes.data?.canEdit) {
+            setErr('You Can Not Edit');
+            return;
+          }
+        } else if (!pRes.data?.canAdd) {
           setErr('You Can Not Add');
           return;
         }
-        const schUse = defSch || scheduleNum(sRes.data?.[0]?.NO ?? sRes.data?.[0]?.no);
-        if (schUse) {
-          setSchedule(String(schUse));
-          await loadNextCode(schUse);
+        if (!isEdit) {
+          const schUse = defSch || scheduleNum(sRes.data?.[0]?.NO ?? sRes.data?.[0]?.no);
+          if (schUse) {
+            setSchedule(String(schUse));
+            await loadNextCode(schUse);
+          }
         }
       } catch (e) {
         if (!cancelled) setErr(e?.response?.data?.error || e.message || 'Load failed');
@@ -178,13 +207,14 @@ export default function MasterPartyCreateModal({
     return () => {
       cancelled = true;
     };
-  }, [open, apiBase, compCode, compUid, userName, defaultSchedule, loadNextCode]);
+  }, [open, apiBase, compCode, compUid, userName, defaultSchedule, loadNextCode, isEdit, editRow]);
 
   useEffect(() => {
-    if (!open || loading || !perms?.canOpen || !perms?.canAdd) return;
-    const t = requestAnimationFrame(() => focusField(lockSchedule ? 'name' : 'schedule'));
+    if (!open || loading || !perms?.canOpen) return;
+    if (isEdit ? !perms?.canEdit : !perms?.canAdd) return;
+    const t = requestAnimationFrame(() => focusField(lockSchedule || isEdit ? 'name' : 'schedule'));
     return () => cancelAnimationFrame(t);
-  }, [open, loading, perms, lockSchedule, focusField]);
+  }, [open, loading, perms, lockSchedule, isEdit, focusField]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -192,7 +222,12 @@ export default function MasterPartyCreateModal({
       alert('Access Denied');
       return;
     }
-    if (!perms?.canAdd) {
+    if (isEdit) {
+      if (!perms?.canEdit) {
+        alert('You Can Not Edit');
+        return;
+      }
+    } else if (!perms?.canAdd) {
       alert('You Can Not Add');
       return;
     }
@@ -213,31 +248,33 @@ export default function MasterPartyCreateModal({
     }
     setSaving(true);
     setErr('');
+    const payload = {
+      comp_code: compCode,
+      comp_uid: compUid,
+      comp_year: compYear,
+      user_name: userName,
+      schedule: sch,
+      code: Number(code) || undefined,
+      name: capsField(name).trim(),
+      add1: capsField(add1),
+      add2: capsField(add2),
+      add3: capsField(add3),
+      city: capsField(city),
+      gst_no: capsField(gstNo),
+      state_code: capsField(stateCode),
+      state: capsField(stateName),
+      pan: capsField(pan),
+      tel_no_o: telNo,
+      l_c: String(lC).trim().toUpperCase(),
+    };
     try {
-      const { data } = await axios.post(
-        `${apiBase}/api/master-party`,
-        {
-          comp_code: compCode,
-          comp_uid: compUid,
-          comp_year: compYear,
-          user_name: userName,
-          schedule: sch,
-          code: Number(code) || undefined,
-          name: capsField(name).trim(),
-          add1: capsField(add1),
-          add2: capsField(add2),
-          add3: capsField(add3),
-          city: capsField(city),
-          gst_no: capsField(gstNo),
-          state_code: capsField(stateCode),
-          state: capsField(stateName),
-          pan: capsField(pan),
-          tel_no_o: telNo,
-          l_c: String(lC).trim().toUpperCase(),
-        },
-        reqOpts
-      );
-      onCreated?.(data);
+      if (isEdit) {
+        const { data } = await axios.put(`${apiBase}/api/master-party`, payload, reqOpts);
+        onUpdated?.(data);
+      } else {
+        const { data } = await axios.post(`${apiBase}/api/master-party`, payload, reqOpts);
+        onCreated?.(data);
+      }
       onClose?.();
     } catch (ex) {
       const msg = ex?.response?.data?.error || ex.message || 'Save failed';
@@ -248,7 +285,7 @@ export default function MasterPartyCreateModal({
     }
   };
 
-  const blocked = !perms?.canOpen || !perms?.canAdd;
+  const blocked = !perms?.canOpen || (isEdit ? !perms?.canEdit : !perms?.canAdd);
   const showStateSelect = states.length > 0;
   const scheduleLabelText = useMemo(() => {
     const hit = schedules.find((s) => String(s.NO ?? s.no) === String(schedule));
@@ -267,7 +304,7 @@ export default function MasterPartyCreateModal({
     >
       <div className="sale-bill-modal master-party-modal" role="dialog" aria-labelledby="master-party-modal-title">
         <div className="sale-bill-modal-head">
-          <h3 id="master-party-modal-title">New party (Master)</h3>
+          <h3 id="master-party-modal-title">{isEdit ? 'Edit account (Master)' : 'New party (Master)'}</h3>
           <button type="button" className="sale-bill-modal-close" onClick={onClose} aria-label="Close">
             ×
           </button>
@@ -295,7 +332,7 @@ export default function MasterPartyCreateModal({
                     getLabel={(s) => schedLabel(s)}
                     onChange={(val) => {
                       setSchedule(val);
-                      void loadNextCode(val);
+                      if (!isEdit) void loadNextCode(val);
                     }}
                     onKeyDown={(e) => onEnterNext(e, 'name')}
                   />
@@ -490,7 +527,7 @@ export default function MasterPartyCreateModal({
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={saving || blocked || loading}>
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? 'Saving…' : isEdit ? 'Update' : 'Save'}
             </button>
           </div>
         </form>

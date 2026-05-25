@@ -26,6 +26,9 @@ import Slide22DispatchChallan from './slides/Slide22DispatchChallan';
 import Slide23SalesOrder from './slides/Slide23SalesOrder';
 import Slide24PurchaseOrder from './slides/Slide24PurchaseOrder';
 import Slide25PurchaseBill from './slides/Slide25PurchaseBill';
+import Slide26AccountMaster from './slides/Slide26AccountMaster';
+import Slide27ItemMaster from './slides/Slide27ItemMaster';
+import Slide28VoucherEntry from './slides/Slide28VoucherEntry';
 import { exitApp, performExitWindow } from './utils/exitApp';
 import connectionConfig from '../connection.config.json';
 import './App.css';
@@ -557,6 +560,9 @@ function App() {
     else if (reportType === 'sales-order-entry') setCurrentSlide(23);
     else if (reportType === 'purchase-order-entry') setCurrentSlide(24);
     else if (reportType === 'purchase-bill-entry') setCurrentSlide(25);
+    else if (reportType === 'account-master') setCurrentSlide(26);
+    else if (reportType === 'item-master') setCurrentSlide(27);
+    else if (reportType === 'voucher-entry') setCurrentSlide(28);
     else setCurrentSlide(4);
   };
 
@@ -653,6 +659,24 @@ function App() {
           reportType: 'purchase-bill-entry',
           slideNo: 25,
           title: 'Purchase Bill',
+        },
+        {
+          phrases: ['open account master', 'account master', 'a c master', 'ac master', 'open a c master'],
+          reportType: 'account-master',
+          slideNo: 26,
+          title: 'A/c Master',
+        },
+        {
+          phrases: ['open item master', 'item master', 'open item mast'],
+          reportType: 'item-master',
+          slideNo: 27,
+          title: 'Item Master',
+        },
+        {
+          phrases: ['open voucher entry', 'voucher entry', 'cash voucher entry', 'bank voucher entry', 'journal voucher'],
+          reportType: 'voucher-entry',
+          slideNo: 28,
+          title: 'Voucher entry',
         },
         { phrases: ['open voucher list', 'voucher list'], reportType: 'voucher-list', slideNo: 14, title: 'Voucher List' },
         { phrases: ['open gstr1', 'gstr1', 'open gstr 1', 'gstr 1'], reportType: 'gstr1', slideNo: 15, title: 'GSTR1' },
@@ -820,7 +844,7 @@ function App() {
     );
   }
 
-  const hideGlobalSessionInHeader = [21, 22, 23, 24, 25].includes(currentSlide);
+  const hideGlobalSessionInHeader = [21, 22, 23, 24, 25, 26, 27, 28].includes(currentSlide);
   const headerSessionLineEl =
     authenticated &&
     !hideGlobalSessionInHeader &&
@@ -1021,6 +1045,33 @@ function App() {
         )}
         {currentSlide === 25 && (
           <Slide25PurchaseBill
+            apiBase={API_BASE}
+            formData={formData}
+            userName={loginUserName}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+          />
+        )}
+        {currentSlide === 26 && (
+          <Slide26AccountMaster
+            apiBase={API_BASE}
+            formData={formData}
+            userName={loginUserName}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+          />
+        )}
+        {currentSlide === 27 && (
+          <Slide27ItemMaster
+            apiBase={API_BASE}
+            formData={formData}
+            userName={loginUserName}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+          />
+        )}
+        {currentSlide === 28 && (
+          <Slide28VoucherEntry
             apiBase={API_BASE}
             formData={formData}
             userName={loginUserName}

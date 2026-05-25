@@ -858,6 +858,268 @@ async function insertMasterPartyRow(binds, comp_uid) {
   throw lastErr || new Error('MASTER insert failed');
 }
 
+async function deleteMasterPartyByCode(comp_code, code, comp_uid) {
+  await runQuery(
+    `DELETE FROM MASTER WHERE COMP_CODE = :comp_code AND CODE = :code`,
+    { comp_code, code: Math.floor(Number(code)) },
+    comp_uid,
+    { autoCommit: true }
+  );
+}
+
+function buildMasterPartyInsertBinds(body, { comp_code, comp_year, user_name, schedule, codeN }) {
+  const name = trimMasterPartyField(body.name, 50).toUpperCase();
+  if (!name) {
+    const err = new Error('Name is required');
+    err.status = 400;
+    throw err;
+  }
+  const lcRaw = String(body.l_c ?? body.L_C ?? '').trim();
+  if (!lcRaw) {
+    const err = new Error('L_C (Local/Central/Import) is required. Use L, C, or I.');
+    err.status = 400;
+    throw err;
+  }
+  const l_c = normalizeMasterPartyLc(lcRaw);
+  return {
+    comp_code,
+    comp_year,
+    schedule,
+    code: codeN,
+    name,
+    add1: trimMasterPartyField(body.add1, 40),
+    add2: trimMasterPartyField(body.add2, 40),
+    add3: trimMasterPartyField(body.add3, 40),
+    city: trimMasterPartyField(body.city, 20),
+    gst_no: trimMasterPartyField(body.gst_no, 15),
+    state_code: trimMasterPartyField(body.state_code, 2),
+    state: trimMasterPartyField(body.state, 30).toUpperCase(),
+    pan: trimMasterPartyField(body.pan, 10).toUpperCase(),
+    tel_no_o: trimMasterPartyField(body.tel_no_o ?? body.tel_no, 30),
+    l_c,
+    user_name,
+  };
+}
+
+function masterPartySavedJson(binds, schedule) {
+  return {
+    ok: true,
+    CODE: binds.code,
+    code: binds.code,
+    NAME: binds.name,
+    name: binds.name,
+    CITY: binds.city,
+    city: binds.city,
+    GST_NO: binds.gst_no,
+    gst_no: binds.gst_no,
+    PAN: binds.pan,
+    pan: binds.pan,
+    L_C: binds.l_c,
+    l_c: binds.l_c,
+    SCHEDULE: schedule,
+    schedule,
+    ADD1: binds.add1,
+    add1: binds.add1,
+    ADD2: binds.add2,
+    add2: binds.add2,
+    ADD3: binds.add3,
+    add3: binds.add3,
+    STATE_CODE: binds.state_code,
+    state_code: binds.state_code,
+    STATE: binds.state,
+    state: binds.state,
+    TEL_NO_O: binds.tel_no_o,
+    tel_no_o: binds.tel_no_o,
+  };
+}
+
+function trimItemMasterField(v, maxLen) {
+  const s = String(v ?? '').trim();
+  return maxLen > 0 && s.length > maxLen ? s.slice(0, maxLen) : s;
+}
+
+function normalizeItemMasterRf(v) {
+  const x = String(v ?? '').trim().toUpperCase();
+  if (x !== 'R' && x !== 'F') {
+    const err = new Error('R/F must be R or F.');
+    err.status = 400;
+    throw err;
+  }
+  return x;
+}
+
+function normalizeItemMasterAmtCal(v) {
+  const x = String(v ?? 'W').trim().toUpperCase();
+  if (x !== 'Q' && x !== 'W') {
+    const err = new Error('AmtCal must be Q or W.');
+    err.status = 400;
+    throw err;
+  }
+  return x;
+}
+
+function buildItemMasterInsertBinds(body, { comp_code, comp_year, user_name, itemCode }) {
+  const item_code = trimItemMasterField(itemCode ?? body.item_code ?? body.ITEM_CODE, 13);
+  if (!item_code) {
+    const err = new Error('Item code is required.');
+    err.status = 400;
+    throw err;
+  }
+  const item_name = trimItemMasterField(body.item_name ?? body.ITEM_NAME, 50).toUpperCase();
+  if (!item_name) {
+    const err = new Error('Item name is required.');
+    err.status = 400;
+    throw err;
+  }
+  const r_f = normalizeItemMasterRf(body.r_f ?? body.R_F ?? 'F');
+  const amt_cal = normalizeItemMasterAmtCal(body.amt_cal ?? body.AMT_CAL ?? 'W');
+  const tax_per = Number(body.tax_per ?? body.TAX_PER ?? 0);
+  const s_code = Math.floor(Number(body.s_code ?? body.S_CODE ?? 0));
+  const p_code = Math.floor(Number(body.p_code ?? body.P_CODE ?? 0));
+  if (!Number.isFinite(s_code) || s_code <= 0) {
+    const err = new Error('Sale code is required.');
+    err.status = 400;
+    throw err;
+  }
+  if (!Number.isFinite(p_code) || p_code <= 0) {
+    const err = new Error('Purchase code is required.');
+    err.status = 400;
+    throw err;
+  }
+  return {
+    comp_code,
+    comp_year,
+    item_code,
+    item_name,
+    cat: trimItemMasterField(body.cat ?? body.CAT, 1).toUpperCase(),
+    cat_code: trimItemMasterField(body.cat_code ?? body.CAT_CODE, 6).toUpperCase(),
+    r_f,
+    hsn_code: trimItemMasterField(body.hsn_code ?? body.HSN_CODE, 8).toUpperCase(),
+    tax_per: Number.isFinite(tax_per) ? tax_per : 0,
+    s_code,
+    p_code,
+    amt_cal,
+    user_name,
+  };
+}
+
+function itemMasterSavedJson(binds) {
+  return {
+    ok: true,
+    ITEM_CODE: binds.item_code,
+    item_code: binds.item_code,
+    ITEM_NAME: binds.item_name,
+    item_name: binds.item_name,
+    CAT: binds.cat,
+    cat: binds.cat,
+    CAT_CODE: binds.cat_code,
+    cat_code: binds.cat_code,
+    R_F: binds.r_f,
+    r_f: binds.r_f,
+    HSN_CODE: binds.hsn_code,
+    hsn_code: binds.hsn_code,
+    TAX_PER: binds.tax_per,
+    tax_per: binds.tax_per,
+    S_CODE: binds.s_code,
+    s_code: binds.s_code,
+    P_CODE: binds.p_code,
+    p_code: binds.p_code,
+    AMT_CAL: binds.amt_cal,
+    amt_cal: binds.amt_cal,
+  };
+}
+
+async function deleteItemMasterByCode(comp_code, item_code, comp_uid) {
+  await runQuery(
+    `DELETE FROM ITEMMAST WHERE COMP_CODE = :comp_code AND ITEM_CODE = :item_code`,
+    { comp_code, item_code: trimItemMasterField(item_code, 13) },
+    comp_uid,
+    { autoCommit: true }
+  );
+}
+
+async function countItemStockEntries(comp_code, item_code, comp_uid) {
+  const rows = await runQuery(
+    `SELECT COUNT(*) AS CNT FROM STOCK
+     WHERE COMP_CODE = :comp_code AND ITEM_CODE = :item_code AND NVL(TYPE, ' ') <> 'OP'`,
+    { comp_code, item_code: trimItemMasterField(item_code, 13) },
+    comp_uid
+  );
+  return Number(rows?.[0]?.CNT ?? rows?.[0]?.cnt ?? 0);
+}
+
+async function fetchItemMasterCatRows(comp_code, comp_uid) {
+  const attempts = [
+    `SELECT CAT_NAME, CAT_CODE, NVL(MAIN_CAT, CAT) AS CAT
+     FROM CAT WHERE COMP_CODE = :comp_code ORDER BY CAT_NAME`,
+    `SELECT CAT_NAME, CAT_CODE FROM CAT WHERE COMP_CODE = :comp_code ORDER BY CAT_NAME`,
+    `SELECT CAT_NAME, CAT_CODE FROM CATMAST WHERE COMP_CODE = :comp_code ORDER BY CAT_NAME`,
+  ];
+  for (const sql of attempts) {
+    try {
+      const rows = await runQuery(sql, { comp_code }, comp_uid);
+      if (Array.isArray(rows)) return rows;
+    } catch (err) {
+      if (!isOracleMissingObjectError(err) && !/invalid identifier/i.test(String(err?.message || ''))) {
+        throw err;
+      }
+    }
+  }
+  return [];
+}
+
+/** INSERT ITEMMAST; probes optional USER_NAME / ENT_DATE columns. */
+async function insertItemMasterRow(binds, comp_uid) {
+  const attempts = [
+    {
+      sql: `
+      INSERT INTO ITEMMAST (
+        COMP_CODE, COMP_YEAR, ITEM_CODE, ITEM_NAME, CAT, CAT_CODE, R_F, HSN_CODE,
+        TAX_PER, S_CODE, P_CODE, AMT_CAL, USER_NAME, ENT_DATE
+      ) VALUES (
+        :comp_code, :comp_year, TRIM(:item_code), TRIM(:item_name), TRIM(:cat), TRIM(:cat_code),
+        TRIM(:r_f), RTRIM(:hsn_code), :tax_per, :s_code, :p_code, RTRIM(:amt_cal),
+        :user_name, SYSDATE
+      )`,
+      binds,
+    },
+    {
+      sql: `
+      INSERT INTO ITEMMAST (
+        COMP_CODE, COMP_YEAR, ITEM_CODE, ITEM_NAME, CAT, CAT_CODE, R_F, HSN_CODE,
+        TAX_PER, S_CODE, P_CODE, AMT_CAL, USER_NAME
+      ) VALUES (
+        :comp_code, :comp_year, TRIM(:item_code), TRIM(:item_name), TRIM(:cat), TRIM(:cat_code),
+        TRIM(:r_f), RTRIM(:hsn_code), :tax_per, :s_code, :p_code, RTRIM(:amt_cal), :user_name
+      )`,
+      binds,
+    },
+    {
+      sql: `
+      INSERT INTO ITEMMAST (
+        COMP_CODE, COMP_YEAR, ITEM_CODE, ITEM_NAME, CAT, CAT_CODE, R_F, HSN_CODE,
+        TAX_PER, S_CODE, P_CODE, AMT_CAL
+      ) VALUES (
+        :comp_code, :comp_year, TRIM(:item_code), TRIM(:item_name), TRIM(:cat), TRIM(:cat_code),
+        TRIM(:r_f), RTRIM(:hsn_code), :tax_per, :s_code, :p_code, RTRIM(:amt_cal)
+      )`,
+      binds: (({ user_name, ...rest }) => rest)(binds),
+    },
+  ];
+  let lastErr;
+  for (const { sql, binds: b } of attempts) {
+    try {
+      await runQuery(sql, b, comp_uid, { autoCommit: true });
+      return;
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err?.message || '');
+      if (!msg.includes('00904') && !/invalid identifier/i.test(msg)) throw err;
+    }
+  }
+  throw lastErr || new Error('ITEMMAST insert failed');
+}
+
 /**
  * App login: USERS (and optional schema-qualified USERS for legacy installs).
  */
@@ -1059,16 +1321,301 @@ async function fetchMasterPartyUserF4String(user_name, comp_uid) {
 }
 
 function masterPartyPermissionsFromF4(f4) {
-  const s = String(f4 || '');
-  const ch = (i) => (s.length > i ? s.charAt(i) : '');
+  return rightsPermissionsFromString(f4, 'legacy_no_f4', 'f4');
+}
+
+/** Item master: DAL.USERS / USERS F5 — pos 1–4 = open, add, edit, delete. */
+async function fetchItemMasterUserF5String(user_name, comp_uid) {
+  const u = String(user_name || '').trim().toUpperCase();
+  if (!u) return { f5: '', source: 'empty_user' };
+  const schemas = isEffectiveCompUid(comp_uid) ? [String(comp_uid).trim(), null] : [null];
+  const tables = ['DAL.USERS', 'USERS'];
+  for (const sch of schemas) {
+    for (const t of tables) {
+      const sql = `SELECT F5 FROM ${t} WHERE UPPER(TRIM(USER_NAME)) = :u AND ROWNUM = 1`;
+      try {
+        const rows = await runQuery(sql, { u }, sch, { suppressDbErrorLog: true });
+        const raw = rows?.[0]?.F5 ?? rows?.[0]?.f5;
+        if (raw != null && String(raw).trim() !== '') {
+          return { f5: String(raw).trim(), source: t };
+        }
+      } catch (err) {
+        if (!isLoginOptionalTableError(err) && !isUnknownUsersColumnError(err)) {
+          /* ignore */
+        }
+      }
+    }
+  }
+  return { f5: '', source: 'none' };
+}
+
+function itemMasterPermissionsFromF5(f5) {
+  return rightsPermissionsFromString(f5, 'legacy_no_f5', 'f5');
+}
+
+/** Cash/Bank/Journal voucher entry: DAL.USERS / USERS F3 — pos 1–4 = open, add, edit, delete. */
+async function fetchVoucherUserF3String(user_name, comp_uid) {
+  const u = String(user_name || '').trim().toUpperCase();
+  if (!u) return { f3: '', source: 'empty_user' };
+  const schemas = isEffectiveCompUid(comp_uid) ? [String(comp_uid).trim(), null] : [null];
+  const tables = ['DAL.USERS', 'USERS'];
+  for (const sch of schemas) {
+    for (const t of tables) {
+      const sql = `SELECT F3 FROM ${t} WHERE UPPER(TRIM(USER_NAME)) = :u AND ROWNUM = 1`;
+      try {
+        const rows = await runQuery(sql, { u }, sch, { suppressDbErrorLog: true });
+        const raw = rows?.[0]?.F3 ?? rows?.[0]?.f3;
+        if (raw != null && String(raw).trim() !== '') {
+          return { f3: String(raw).trim(), source: t };
+        }
+      } catch (err) {
+        if (!isLoginOptionalTableError(err) && !isUnknownUsersColumnError(err)) {
+          /* ignore */
+        }
+      }
+    }
+  }
+  return { f3: '', source: 'none' };
+}
+
+function voucherPermissionsFromF3(f3) {
+  return rightsPermissionsFromString(f3, 'legacy_no_f3', 'f3');
+}
+
+function mapVoucherCompdetContext(row) {
+  const tv = (k) => {
+    const v = rowValueCI(row, k);
+    if (v == null) return null;
+    if (typeof v === 'object') return null;
+    return v;
+  };
+  return {
+    G_CD_CAL: String(tv('cd_cal') ?? 'N').trim().toUpperCase() || 'N',
+    G_VOU_INT_SHOW: String(tv('vou_int_show') ?? 'Y').trim().toUpperCase() || 'Y',
+    G_PND_BILLS: Number(tv('pnd_bills') ?? 0) || 0,
+    G_CD_TRF: String(tv('cd_trf') ?? 'N').trim().toUpperCase() || 'N',
+    G_INT_TRF: String(tv('int_trf') ?? 'N').trim().toUpperCase() || 'N',
+    G_COMP_YEAR: Number(tv('comp_year') ?? 0) || 0,
+    G_CD_CODE: Number(tv('cd_code') ?? 0) || 0,
+    G_INT_CODE: Number(tv('int_code') ?? 0) || 0,
+    COMP_S_DT: tv('comp_s_dt'),
+    COMP_E_DT: tv('comp_e_dt'),
+  };
+}
+
+function normalizeVoucherType(v) {
+  const x = String(v ?? 'N').trim().toUpperCase();
+  return x === 'R' ? 'R' : 'N';
+}
+
+function normalizeVrType(v) {
+  const x = String(v ?? '').trim().toUpperCase();
+  if (x === 'CV' || x === 'BV' || x === 'JV') return x;
+  return '';
+}
+
+async function fetchVoucherNextNo(comp_code, comp_uid, { vr_type, vr_date, type }) {
+  const vt = normalizeVrType(vr_type);
+  const tp = normalizeVoucherType(type);
+  if (!vt) throw new Error('vr_type is required');
+  let sql;
+  const binds = { comp_code, vr_type: vt, type: tp };
+  if (tp === 'N' && vr_date) {
+    sql = `
+      SELECT NVL(MAX(NVL(VR_NO, 0)), 0) + 1 AS NEXT_NO
+      FROM VOUCHER
+      WHERE COMP_CODE = :comp_code
+        AND TRIM(VR_TYPE) = :vr_type
+        AND TRUNC(VR_DATE) = TRUNC(TO_DATE(:vr_date, 'DD-MM-YYYY'))
+        AND TRIM(NVL(TYPE, 'N')) = :type`;
+    binds.vr_date = String(vr_date).trim();
+  } else {
+    sql = `
+      SELECT NVL(MAX(NVL(VR_NO, 0)), 0) + 1 AS NEXT_NO
+      FROM VOUCHER
+      WHERE COMP_CODE = :comp_code
+        AND TRIM(VR_TYPE) = :vr_type
+        AND TRIM(NVL(TYPE, 'N')) = :type`;
+  }
+  const rows = await runQuery(sql, binds, comp_uid);
+  return Number(rows?.[0]?.NEXT_NO ?? rows?.[0]?.next_no ?? 1) || 1;
+}
+
+async function deleteVoucherDocumentRows(conn, { comp_code, vr_type, vr_date, vr_no, type }) {
+  const docKeyBinds = {
+    comp_code,
+    vr_type: String(vr_type).trim(),
+    vr_date: String(vr_date).trim(),
+    vr_no: Math.floor(Number(vr_no)),
+    type: normalizeVoucherType(type),
+  };
+  const hiReceiptBinds = {
+    comp_code,
+    vr_date: docKeyBinds.vr_date,
+    vr_no: docKeyBinds.vr_no,
+  };
+  const del = async (sql, binds = docKeyBinds) => {
+    try {
+      await conn.execute(sql, binds, { autoCommit: false });
+    } catch (e) {
+      const m = String(e?.message || '');
+      if (!m.includes('ORA-00942') && !/table or view does not exist/i.test(m)) throw e;
+    }
+  };
+  await del(`
+    DELETE FROM VOUCHER
+    WHERE COMP_CODE = :comp_code AND TRIM(VR_TYPE) = :vr_type
+      AND TRUNC(VR_DATE) = TRUNC(TO_DATE(:vr_date, 'DD-MM-YYYY'))
+      AND VR_NO = :vr_no AND TRIM(NVL(TYPE, 'N')) = :type`);
+  await del(`
+    DELETE FROM LEDGER
+    WHERE COMP_CODE = :comp_code AND TRIM(VR_TYPE) = :vr_type
+      AND TRUNC(VR_DATE) = TRUNC(TO_DATE(:vr_date, 'DD-MM-YYYY'))
+      AND VR_NO = :vr_no AND TRIM(NVL(TYPE, 'N')) = :type`);
+  await del(`
+    DELETE FROM BILLS
+    WHERE COMP_CODE = :comp_code AND TRIM(VR_TYPE) = :vr_type
+      AND TRUNC(VR_DATE) = TRUNC(TO_DATE(:vr_date, 'DD-MM-YYYY'))
+      AND VR_NO = :vr_no AND TRIM(NVL(TYPE, 'N')) = :type`);
+  await del(`
+    DELETE FROM BANKSTMT
+    WHERE COMP_CODE = :comp_code AND TRIM(VR_TYPE) = :vr_type
+      AND TRUNC(VR_DATE) = TRUNC(TO_DATE(:vr_date, 'DD-MM-YYYY'))
+      AND VR_NO = :vr_no AND TRIM(NVL(TYPE, 'N')) = :type`);
+  await del(
+    `
+    DELETE FROM HI_RECEIPT
+    WHERE COMP_CODE = :comp_code AND VR_NO = :vr_no
+      AND TRUNC(VR_DATE) = TRUNC(TO_DATE(:vr_date, 'DD-MM-YYYY'))`,
+    hiReceiptBinds
+  );
+}
+
+function pickVoucherExecBinds(binds, keys) {
+  const out = {};
+  for (const k of keys) {
+    out[k] = binds[k] !== undefined ? binds[k] : null;
+  }
+  return out;
+}
+
+const VOUCHER_LINE_BIND_KEYS = [
+  'comp_code', 'comp_year', 'vr_type', 'vr_date', 'type', 'vr_no', 'dc_code', 'trn_no', 'code', 'v_date',
+  'chq_no', 'detail', 'bill_date', 'bill_no', 'b_type', 'dr_amt', 'cr_amt', 'int_amt', 'cd_amt', 'cd_per',
+  'cd_vr_type', 'cd_vr_date', 'cd_vr_no', 'int_vr_type', 'int_vr_date', 'int_vr_no', 'user_name',
+];
+
+const VOUCHER_LEDGER_BIND_KEYS = [
+  'comp_code', 'comp_year', 'vr_type', 'vr_date', 'type', 'vr_no', 'dc_code', 'trn_no', 'code', 'v_date',
+  'chq_no', 'detail', 'bill_date', 'bill_no', 'dr_amt', 'cr_amt', 'int_amt', 'user_name',
+];
+
+const VOUCHER_BILLS_BIND_KEYS = [
+  'comp_code', 'comp_year', 'code', 'vr_type', 'vr_date', 'vr_no', 'type', 'bill_date', 'bill_no', 'b_type',
+  'dr_amt', 'cr_amt', 'detail', 'v_date', 'int_amt', 'cd_per', 'cd_amt',
+];
+
+async function insertVoucherLineRow(conn, binds) {
+  const execBinds = pickVoucherExecBinds(binds, VOUCHER_LINE_BIND_KEYS);
+  const attempts = [
+    `
+    INSERT INTO VOUCHER (
+      COMP_CODE, COMP_YEAR, VR_TYPE, VR_DATE, TYPE, VR_NO, DC_CODE, TRN_NO, CODE, V_DATE,
+      CHQ_NO, DETAIL, BILL_DATE, BILL_NO, B_TYPE, DR_AMT, CR_AMT, INT_AMT, CD_AMT, CD_PER,
+      CD_VR_TYPE, CD_VR_DATE, CD_VR_NO, INT_VR_TYPE, INT_VR_DATE, INT_VR_NO, USER_NAME, ENT_DATE, ENT_TIME
+    ) VALUES (
+      :comp_code, :comp_year, :vr_type, TO_DATE(:vr_date, 'DD-MM-YYYY'), :type, :vr_no, :dc_code, :trn_no, :code,
+      TO_DATE(:v_date, 'DD-MM-YYYY'), RTRIM(:chq_no), RTRIM(:detail),
+      CASE WHEN :bill_date IS NULL OR TRIM(:bill_date) IS NULL THEN NULL ELSE TO_DATE(:bill_date, 'DD-MM-YYYY') END,
+      :bill_no, :b_type, :dr_amt, :cr_amt, :int_amt, :cd_amt, :cd_per,
+      :cd_vr_type,
+      CASE WHEN :cd_vr_date IS NULL OR TRIM(:cd_vr_date) IS NULL THEN NULL ELSE TO_DATE(:cd_vr_date, 'DD-MM-YYYY') END,
+      :cd_vr_no, :int_vr_type,
+      CASE WHEN :int_vr_date IS NULL OR TRIM(:int_vr_date) IS NULL THEN NULL ELSE TO_DATE(:int_vr_date, 'DD-MM-YYYY') END,
+      :int_vr_no, :user_name, SYSDATE, TO_CHAR(SYSDATE, 'HH24:MI:SS')
+    )`,
+    `
+    INSERT INTO VOUCHER (
+      COMP_CODE, COMP_YEAR, VR_TYPE, VR_DATE, TYPE, VR_NO, DC_CODE, TRN_NO, CODE, V_DATE,
+      CHQ_NO, DETAIL, BILL_DATE, BILL_NO, B_TYPE, DR_AMT, CR_AMT, INT_AMT, CD_AMT, CD_PER,
+      CD_VR_TYPE, CD_VR_DATE, CD_VR_NO, INT_VR_TYPE, INT_VR_DATE, INT_VR_NO, USER_NAME, ENT_DATE
+    ) VALUES (
+      :comp_code, :comp_year, :vr_type, TO_DATE(:vr_date, 'DD-MM-YYYY'), :type, :vr_no, :dc_code, :trn_no, :code,
+      TO_DATE(:v_date, 'DD-MM-YYYY'), RTRIM(:chq_no), RTRIM(:detail),
+      CASE WHEN :bill_date IS NULL OR TRIM(:bill_date) IS NULL THEN NULL ELSE TO_DATE(:bill_date, 'DD-MM-YYYY') END,
+      :bill_no, :b_type, :dr_amt, :cr_amt, :int_amt, :cd_amt, :cd_per,
+      :cd_vr_type,
+      CASE WHEN :cd_vr_date IS NULL OR TRIM(:cd_vr_date) IS NULL THEN NULL ELSE TO_DATE(:cd_vr_date, 'DD-MM-YYYY') END,
+      :cd_vr_no, :int_vr_type,
+      CASE WHEN :int_vr_date IS NULL OR TRIM(:int_vr_date) IS NULL THEN NULL ELSE TO_DATE(:int_vr_date, 'DD-MM-YYYY') END,
+      :int_vr_no, :user_name, SYSDATE
+    )`,
+  ];
+  let lastErr;
+  for (const sql of attempts) {
+    try {
+      await conn.execute(sql, execBinds, { autoCommit: false });
+      return;
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err?.message || '');
+      if (!msg.includes('00904') && !/invalid identifier/i.test(msg)) throw err;
+    }
+  }
+  throw lastErr || new Error('VOUCHER insert failed');
+}
+
+async function insertVoucherLedgerRow(conn, binds) {
+  const execBinds = pickVoucherExecBinds(binds, VOUCHER_LEDGER_BIND_KEYS);
+  const sql = `
+    INSERT INTO LEDGER (
+      COMP_CODE, COMP_YEAR, VR_TYPE, VR_DATE, TYPE, VR_NO, DC_CODE, TRN_NO, CODE, V_DATE,
+      CHQ_NO, DETAIL, BILL_DATE, BILL_NO, DR_AMT, CR_AMT, INT_AMT, USER_NAME, ENT_DATE, ENT_TIME
+    ) VALUES (
+      :comp_code, :comp_year, :vr_type, TO_DATE(:vr_date, 'DD-MM-YYYY'), :type, :vr_no, :dc_code, :trn_no, :code,
+      TO_DATE(:v_date, 'DD-MM-YYYY'), RTRIM(:chq_no), RTRIM(:detail),
+      CASE WHEN :bill_date IS NULL OR TRIM(:bill_date) IS NULL THEN NULL ELSE TO_DATE(:bill_date, 'DD-MM-YYYY') END,
+      :bill_no, :dr_amt, :cr_amt, :int_amt, :user_name, SYSDATE, TO_CHAR(SYSDATE, 'HH24:MI:SS')
+    )`;
+  try {
+    await conn.execute(sql, execBinds, { autoCommit: false });
+  } catch (err) {
+    const msg = String(err?.message || '');
+    if (msg.includes('00904') || /invalid identifier/i.test(msg)) {
+      const sql2 = sql.replace(', ENT_TIME', '').replace(", TO_CHAR(SYSDATE, 'HH24:MI:SS')", '');
+      await conn.execute(sql2, execBinds, { autoCommit: false });
+      return;
+    }
+    throw err;
+  }
+}
+
+async function insertVoucherBillsRow(conn, binds) {
+  const execBinds = pickVoucherExecBinds(binds, VOUCHER_BILLS_BIND_KEYS);
+  const sql = `
+    INSERT INTO BILLS (
+      COMP_CODE, COMP_YEAR, CODE, VR_TYPE, VR_DATE, VR_NO, TYPE, BILL_DATE, BILL_NO, B_TYPE,
+      DR_AMT, CR_AMT, DETAIL, V_DATE, INT_AMT, CD_PER, CD_AMT
+    ) VALUES (
+      :comp_code, :comp_year, :code, :vr_type, TO_DATE(:vr_date, 'DD-MM-YYYY'), :vr_no, :type,
+      CASE WHEN :bill_date IS NULL OR TRIM(:bill_date) IS NULL THEN NULL ELSE TO_DATE(:bill_date, 'DD-MM-YYYY') END,
+      :bill_no, :b_type, :dr_amt, :cr_amt, RTRIM(:detail), TO_DATE(:v_date, 'DD-MM-YYYY'),
+      :int_amt, :cd_per, :cd_amt
+    )`;
+  await conn.execute(sql, execBinds, { autoCommit: false });
+}
+
+function rightsPermissionsFromString(s, legacyFlag, flagName) {
+  const str = String(s || '');
+  const ch = (i) => (str.length > i ? str.charAt(i) : '');
   const bit = (i) => ch(i) === '1';
-  if (!s) {
+  if (!str) {
     return {
       canOpen: true,
       canAdd: true,
       canEdit: true,
       canDelete: true,
-      flags: 'legacy_no_f4',
+      flags: legacyFlag,
     };
   }
   return {
@@ -1076,7 +1623,7 @@ function masterPartyPermissionsFromF4(f4) {
     canAdd: bit(1),
     canEdit: bit(2),
     canDelete: bit(3),
-    flags: 'f4',
+    flags: flagName,
   };
 }
 
@@ -4528,15 +5075,6 @@ app.post('/api/master-party', async (req, res) => {
       codeN = Math.floor(codeN);
     }
 
-    const name = trimMasterPartyField(body.name, 50).toUpperCase();
-    if (!name) return res.status(400).json({ error: 'Name is required' });
-
-    const lcRaw = String(body.l_c ?? body.L_C ?? '').trim();
-    if (!lcRaw) {
-      return res.status(400).json({ error: 'L_C (Local/Central/Import) is required. Use L, C, or I.' });
-    }
-    const l_c = normalizeMasterPartyLc(lcRaw);
-
     const dup = await runQuery(
       `SELECT COUNT(*) AS CNT FROM MASTER M
        WHERE M.COMP_CODE = :comp_code AND M.CODE = :code AND ROWNUM = 1`,
@@ -4548,24 +5086,12 @@ app.post('/api/master-party', async (req, res) => {
       return res.status(409).json({ error: `Account code ${codeN} already exists for this company.` });
     }
 
-    const binds = {
-      comp_code,
-      comp_year,
-      schedule,
-      code: codeN,
-      name,
-      add1: trimMasterPartyField(body.add1, 40),
-      add2: trimMasterPartyField(body.add2, 40),
-      add3: trimMasterPartyField(body.add3, 40),
-      city: trimMasterPartyField(body.city, 20),
-      gst_no: trimMasterPartyField(body.gst_no, 15),
-      state_code: trimMasterPartyField(body.state_code, 2),
-      state: trimMasterPartyField(body.state, 30).toUpperCase(),
-      pan: trimMasterPartyField(body.pan, 10).toUpperCase(),
-      tel_no_o: trimMasterPartyField(body.tel_no_o ?? body.tel_no, 30),
-      l_c,
-      user_name,
-    };
+    let binds;
+    try {
+      binds = buildMasterPartyInsertBinds(body, { comp_code, comp_year, user_name, schedule, codeN });
+    } catch (buildErr) {
+      return res.status(buildErr.status || 400).json({ error: buildErr.message });
+    }
 
     await insertMasterPartyRow(binds, comp_uid);
 
@@ -4582,25 +5108,383 @@ app.post('/api/master-party', async (req, res) => {
       });
     }
 
-    res.json({
-      ok: true,
-      CODE: codeN,
-      code: codeN,
-      NAME: name,
-      name,
-      CITY: binds.city,
-      city: binds.city,
-      GST_NO: binds.gst_no,
-      gst_no: binds.gst_no,
-      PAN: binds.pan,
-      pan: binds.pan,
-      L_C: binds.l_c,
-      l_c: binds.l_c,
-      SCHEDULE: schedule,
-      schedule,
-    });
+    res.json(masterPartySavedJson(binds, schedule));
   } catch (err) {
     console.error('❌ master-party POST error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/master-accounts', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, schedule, q } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const schedRaw = schedule != null && String(schedule).trim() !== '' ? masterPartyScheduleBind(schedule) : null;
+    const qTrim = String(q ?? '').trim();
+    const binds = { comp_code };
+    let sql = `
+      SELECT M.CODE, M.NAME, M.SCHEDULE, M.ADD1, M.ADD2, M.ADD3, M.CITY,
+             M.GST_NO, M.STATE_CODE, M.STATE, M.PAN, M.TEL_NO_O, NVL(M.L_C, 'L') AS L_C
+      FROM MASTER M
+      WHERE M.COMP_CODE = :comp_code`;
+    if (schedRaw) {
+      binds.schedule = schedRaw;
+      sql += ` AND ROUND(NVL(M.SCHEDULE, 0), 2) = :schedule`;
+    }
+    if (qTrim) {
+      binds.q = `%${qTrim.toUpperCase()}%`;
+      binds.q_code = `%${qTrim}%`;
+      sql += ` AND (UPPER(M.NAME) LIKE :q OR TO_CHAR(M.CODE) LIKE :q_code OR UPPER(NVL(M.CITY, '')) LIKE :q)`;
+    }
+    sql += ` ORDER BY M.SCHEDULE, M.NAME, M.CODE`;
+    const rows = await runQuery(sql, binds, comp_uid);
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ master-accounts error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/master-party', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const comp_code = String(body.comp_code ?? '').trim();
+    const comp_uid = body.comp_uid;
+    const user_name = String(body.user_name ?? '').trim();
+    const comp_year = Number(body.comp_year ?? body.compYear ?? 0) || 0;
+    if (!comp_code || comp_uid == null || String(comp_uid).trim() === '' || !user_name) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, comp_year, and user_name are required' });
+    }
+    const { f4 } = await fetchMasterPartyUserF4String(user_name, comp_uid);
+    const perms = masterPartyPermissionsFromF4(f4);
+    if (!perms.canOpen) return res.status(403).json({ error: 'Access Denied' });
+    if (!perms.canEdit) return res.status(403).json({ error: 'You Can Not Edit' });
+
+    const codeN = Math.floor(Number(body.code));
+    if (!Number.isFinite(codeN) || codeN <= 0) {
+      return res.status(400).json({ error: 'code is required for edit' });
+    }
+
+    const schedule = masterPartyScheduleBind(body.schedule);
+    if (!schedule) return res.status(400).json({ error: 'schedule is required' });
+
+    const exists = await runQuery(
+      `SELECT COUNT(*) AS CNT FROM MASTER M
+       WHERE M.COMP_CODE = :comp_code AND M.CODE = :code AND ROWNUM = 1`,
+      { comp_code, code: codeN },
+      comp_uid
+    );
+    const existsCnt = Number(exists?.[0]?.CNT ?? exists?.[0]?.cnt ?? 0);
+    if (existsCnt < 1) {
+      return res.status(404).json({ error: `Account code ${codeN} not found.` });
+    }
+
+    let binds;
+    try {
+      binds = buildMasterPartyInsertBinds(body, { comp_code, comp_year, user_name, schedule, codeN });
+    } catch (buildErr) {
+      return res.status(buildErr.status || 400).json({ error: buildErr.message });
+    }
+
+    await deleteMasterPartyByCode(comp_code, codeN, comp_uid);
+    await insertMasterPartyRow(binds, comp_uid);
+
+    const verifyRows = await runQuery(
+      `SELECT COUNT(*) AS CNT FROM MASTER M
+       WHERE M.COMP_CODE = :comp_code AND M.CODE = :code AND ROWNUM = 1`,
+      { comp_code, code: codeN },
+      comp_uid
+    );
+    const savedCnt = Number(verifyRows?.[0]?.CNT ?? verifyRows?.[0]?.cnt ?? 0);
+    if (savedCnt < 1) {
+      return res.status(500).json({
+        error: 'Account was not saved to MASTER after edit. Restart the API server and try again.',
+      });
+    }
+
+    res.json(masterPartySavedJson(binds, schedule));
+  } catch (err) {
+    console.error('❌ master-party PUT error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/master-party', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const comp_code = String(body.comp_code ?? req.query.comp_code ?? '').trim();
+    const comp_uid = body.comp_uid ?? req.query.comp_uid;
+    const user_name = String(body.user_name ?? req.query.user_name ?? '').trim();
+    const codeN = Math.floor(Number(body.code ?? req.query.code));
+    if (!comp_code || comp_uid == null || String(comp_uid).trim() === '' || !user_name) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, and user_name are required' });
+    }
+    if (!Number.isFinite(codeN) || codeN <= 0) {
+      return res.status(400).json({ error: 'code is required' });
+    }
+    const { f4 } = await fetchMasterPartyUserF4String(user_name, comp_uid);
+    const perms = masterPartyPermissionsFromF4(f4);
+    if (!perms.canOpen) return res.status(403).json({ error: 'Access Denied' });
+    if (!perms.canDelete) return res.status(403).json({ error: 'You Can Not Delete' });
+
+    const exists = await runQuery(
+      `SELECT COUNT(*) AS CNT FROM MASTER M
+       WHERE M.COMP_CODE = :comp_code AND M.CODE = :code AND ROWNUM = 1`,
+      { comp_code, code: codeN },
+      comp_uid
+    );
+    const existsCnt = Number(exists?.[0]?.CNT ?? exists?.[0]?.cnt ?? 0);
+    if (existsCnt < 1) {
+      return res.status(404).json({ error: `Account code ${codeN} not found.` });
+    }
+
+    await deleteMasterPartyByCode(comp_code, codeN, comp_uid);
+    res.json({ ok: true, code: codeN, CODE: codeN });
+  } catch (err) {
+    console.error('❌ master-party DELETE error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/item-master-user-permissions', async (req, res) => {
+  try {
+    const { comp_uid, user_name } = req.query;
+    if (comp_uid == null || String(comp_uid).trim() === '' || !user_name) {
+      return res.status(400).json({ error: 'comp_uid and user_name are required' });
+    }
+    const { f5, source } = await fetchItemMasterUserF5String(String(user_name), comp_uid);
+    res.json({ f5, source, ...itemMasterPermissionsFromF5(f5) });
+  } catch (err) {
+    console.error('❌ item-master-user-permissions error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/item-master-lookups', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const saleSched = 12.1;
+    const purchaseSched = 14.1;
+    const accountSql = `
+      SELECT M.CODE, M.NAME
+      FROM MASTER M
+      WHERE M.COMP_CODE = :comp_code
+        AND ROUND(NVL(M.SCHEDULE, 0), 2) = :sched
+      ORDER BY M.NAME, M.CODE`;
+    const [cats, saleAccounts, purchaseAccounts] = await Promise.all([
+      fetchItemMasterCatRows(comp_code, comp_uid),
+      runQuery(accountSql, { comp_code, sched: saleSched }, comp_uid).catch(() => []),
+      runQuery(accountSql, { comp_code, sched: purchaseSched }, comp_uid).catch(() => []),
+    ]);
+    res.json({
+      cats: cats || [],
+      saleAccounts: saleAccounts || [],
+      purchaseAccounts: purchaseAccounts || [],
+    });
+  } catch (err) {
+    console.error('❌ item-master-lookups error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/item-master-list', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, q } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const qTrim = String(q ?? '').trim();
+    const binds = { comp_code };
+    let sql = `
+      SELECT I.ITEM_CODE, I.ITEM_NAME, NVL(I.CAT, '') AS CAT, NVL(I.CAT_CODE, '') AS CAT_CODE,
+             NVL(C.CAT_NAME, '') AS CAT_NAME, NVL(I.R_F, 'F') AS R_F,
+             NVL(I.HSN_CODE, '') AS HSN_CODE, NVL(I.TAX_PER, 0) AS TAX_PER,
+             NVL(I.S_CODE, 0) AS S_CODE, NVL(I.P_CODE, 0) AS P_CODE, NVL(I.AMT_CAL, 'W') AS AMT_CAL
+      FROM ITEMMAST I
+      LEFT JOIN CAT C ON C.COMP_CODE = I.COMP_CODE AND C.CAT_CODE = I.CAT_CODE`;
+    sql += ` WHERE I.COMP_CODE = :comp_code`;
+    if (qTrim) {
+      binds.q = `%${qTrim.toUpperCase()}%`;
+      binds.q_code = `%${qTrim}%`;
+      sql += ` AND (UPPER(I.ITEM_NAME) LIKE :q OR UPPER(I.ITEM_CODE) LIKE :q_code OR UPPER(NVL(I.HSN_CODE, '')) LIKE :q)`;
+    }
+    sql += ` ORDER BY I.ITEM_NAME, I.ITEM_CODE`;
+    let rows;
+    try {
+      rows = await runQuery(sql, binds, comp_uid);
+    } catch (joinErr) {
+      let sqlBasic = `
+        SELECT ITEM_CODE, ITEM_NAME, NVL(CAT, '') AS CAT, NVL(CAT_CODE, '') AS CAT_CODE,
+               CAST('' AS VARCHAR2(50)) AS CAT_NAME, NVL(R_F, 'F') AS R_F,
+               NVL(HSN_CODE, '') AS HSN_CODE, NVL(TAX_PER, 0) AS TAX_PER,
+               NVL(S_CODE, 0) AS S_CODE, NVL(P_CODE, 0) AS P_CODE, NVL(AMT_CAL, 'W') AS AMT_CAL
+        FROM ITEMMAST
+        WHERE COMP_CODE = :comp_code`;
+      if (qTrim) {
+        sqlBasic += ` AND (UPPER(ITEM_NAME) LIKE :q OR UPPER(ITEM_CODE) LIKE :q_code OR UPPER(NVL(HSN_CODE, '')) LIKE :q)`;
+      }
+      sqlBasic += ` ORDER BY ITEM_NAME, ITEM_CODE`;
+      rows = await runQuery(sqlBasic, binds, comp_uid);
+    }
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ item-master-list error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/item-master', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const comp_code = String(body.comp_code ?? '').trim();
+    const comp_uid = body.comp_uid;
+    const user_name = String(body.user_name ?? '').trim();
+    const comp_year = Number(body.comp_year ?? body.compYear ?? 0) || 0;
+    if (!comp_code || comp_uid == null || String(comp_uid).trim() === '' || !user_name) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, comp_year, and user_name are required' });
+    }
+    const { f5 } = await fetchItemMasterUserF5String(user_name, comp_uid);
+    const perms = itemMasterPermissionsFromF5(f5);
+    if (!perms.canOpen) return res.status(403).json({ error: 'Access Denied' });
+    if (!perms.canAdd) return res.status(403).json({ error: 'You Can Not Add' });
+
+    let binds;
+    try {
+      binds = buildItemMasterInsertBinds(body, { comp_code, comp_year, user_name });
+    } catch (buildErr) {
+      return res.status(buildErr.status || 400).json({ error: buildErr.message });
+    }
+
+    const dup = await runQuery(
+      `SELECT COUNT(*) AS CNT FROM ITEMMAST
+       WHERE COMP_CODE = :comp_code AND ITEM_CODE = :item_code AND ROWNUM = 1`,
+      { comp_code, item_code: binds.item_code },
+      comp_uid
+    );
+    const dupCnt = Number(dup?.[0]?.CNT ?? dup?.[0]?.cnt ?? 0);
+    if (dupCnt > 0) {
+      return res.status(409).json({ error: `Item code ${binds.item_code} already exists.` });
+    }
+
+    await insertItemMasterRow(binds, comp_uid);
+
+    const verifyRows = await runQuery(
+      `SELECT COUNT(*) AS CNT FROM ITEMMAST
+       WHERE COMP_CODE = :comp_code AND ITEM_CODE = :item_code AND ROWNUM = 1`,
+      { comp_code, item_code: binds.item_code },
+      comp_uid
+    );
+    const savedCnt = Number(verifyRows?.[0]?.CNT ?? verifyRows?.[0]?.cnt ?? 0);
+    if (savedCnt < 1) {
+      return res.status(500).json({ error: 'Item was not saved to ITEMMAST. Restart the API server and try again.' });
+    }
+
+    res.json(itemMasterSavedJson(binds));
+  } catch (err) {
+    console.error('❌ item-master POST error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/item-master', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const comp_code = String(body.comp_code ?? '').trim();
+    const comp_uid = body.comp_uid;
+    const user_name = String(body.user_name ?? '').trim();
+    const comp_year = Number(body.comp_year ?? body.compYear ?? 0) || 0;
+    if (!comp_code || comp_uid == null || String(comp_uid).trim() === '' || !user_name) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, comp_year, and user_name are required' });
+    }
+    const { f5 } = await fetchItemMasterUserF5String(user_name, comp_uid);
+    const perms = itemMasterPermissionsFromF5(f5);
+    if (!perms.canOpen) return res.status(403).json({ error: 'Access Denied' });
+    if (!perms.canEdit) return res.status(403).json({ error: 'You Can Not Edit' });
+
+    const itemCode = trimItemMasterField(body.item_code ?? body.ITEM_CODE, 13);
+    if (!itemCode) return res.status(400).json({ error: 'item_code is required for edit' });
+
+    const exists = await runQuery(
+      `SELECT COUNT(*) AS CNT FROM ITEMMAST
+       WHERE COMP_CODE = :comp_code AND ITEM_CODE = :item_code AND ROWNUM = 1`,
+      { comp_code, item_code: itemCode },
+      comp_uid
+    );
+    const existsCnt = Number(exists?.[0]?.CNT ?? exists?.[0]?.cnt ?? 0);
+    if (existsCnt < 1) {
+      return res.status(404).json({ error: `Item code ${itemCode} not found.` });
+    }
+
+    let binds;
+    try {
+      binds = buildItemMasterInsertBinds(body, { comp_code, comp_year, user_name, itemCode });
+    } catch (buildErr) {
+      return res.status(buildErr.status || 400).json({ error: buildErr.message });
+    }
+
+    await deleteItemMasterByCode(comp_code, itemCode, comp_uid);
+    await insertItemMasterRow(binds, comp_uid);
+
+    const verifyRows = await runQuery(
+      `SELECT COUNT(*) AS CNT FROM ITEMMAST
+       WHERE COMP_CODE = :comp_code AND ITEM_CODE = :item_code AND ROWNUM = 1`,
+      { comp_code, item_code: itemCode },
+      comp_uid
+    );
+    const savedCnt = Number(verifyRows?.[0]?.CNT ?? verifyRows?.[0]?.cnt ?? 0);
+    if (savedCnt < 1) {
+      return res.status(500).json({ error: 'Item was not saved to ITEMMAST after edit. Restart the API server and try again.' });
+    }
+
+    res.json(itemMasterSavedJson(binds));
+  } catch (err) {
+    console.error('❌ item-master PUT error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/item-master', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const comp_code = String(body.comp_code ?? req.query.comp_code ?? '').trim();
+    const comp_uid = body.comp_uid ?? req.query.comp_uid;
+    const user_name = String(body.user_name ?? req.query.user_name ?? '').trim();
+    const itemCode = trimItemMasterField(body.item_code ?? body.ITEM_CODE ?? req.query.item_code, 13);
+    if (!comp_code || comp_uid == null || String(comp_uid).trim() === '' || !user_name) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, and user_name are required' });
+    }
+    if (!itemCode) return res.status(400).json({ error: 'item_code is required' });
+
+    const { f5 } = await fetchItemMasterUserF5String(user_name, comp_uid);
+    const perms = itemMasterPermissionsFromF5(f5);
+    if (!perms.canOpen) return res.status(403).json({ error: 'Access Denied' });
+    if (!perms.canDelete) return res.status(403).json({ error: 'You Can Not Delete' });
+
+    const exists = await runQuery(
+      `SELECT COUNT(*) AS CNT FROM ITEMMAST
+       WHERE COMP_CODE = :comp_code AND ITEM_CODE = :item_code AND ROWNUM = 1`,
+      { comp_code, item_code: itemCode },
+      comp_uid
+    );
+    const existsCnt = Number(exists?.[0]?.CNT ?? exists?.[0]?.cnt ?? 0);
+    if (existsCnt < 1) {
+      return res.status(404).json({ error: `Item code ${itemCode} not found.` });
+    }
+
+    const stockCnt = await countItemStockEntries(comp_code, itemCode, comp_uid);
+    if (stockCnt > 0) {
+      return res.status(409).json({ error: 'Entries Already Exist' });
+    }
+
+    await deleteItemMasterByCode(comp_code, itemCode, comp_uid);
+    res.json({ ok: true, item_code: itemCode, ITEM_CODE: itemCode });
+  } catch (err) {
+    console.error('❌ item-master DELETE error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -8601,6 +9485,661 @@ app.get('/api/voucher-list', async (req, res) => {
   } catch (err) {
     console.error('❌ Voucher list error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/voucher-user-permissions', async (req, res) => {
+  try {
+    const { comp_uid, user_name } = req.query;
+    if (comp_uid == null || String(comp_uid).trim() === '' || !user_name) {
+      return res.status(400).json({ error: 'comp_uid and user_name are required' });
+    }
+    const { f3, source } = await fetchVoucherUserF3String(String(user_name), comp_uid);
+    res.json({ f3, source, ...voucherPermissionsFromF3(f3) });
+  } catch (err) {
+    console.error('❌ voucher-user-permissions error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/voucher-form-context', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, comp_year } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const row = await runCompdetHeaderRow(comp_code, comp_uid, parseCompYearOpt(comp_year));
+    if (!row) return res.status(404).json({ error: 'compdet row not found' });
+    res.json(mapVoucherCompdetContext(row));
+  } catch (err) {
+    console.error('❌ voucher-form-context error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/voucher-entry-lookups', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const partySql = `
+      SELECT CODE, NAME, CITY, NVL(SCHEDULE, 0) AS SCHEDULE
+      FROM MASTER
+      WHERE COMP_CODE = :comp_code
+      ORDER BY NAME, CITY, CODE`;
+    const cashSql = `
+      SELECT CODE, NAME, CITY
+      FROM MASTER
+      WHERE COMP_CODE = :comp_code AND ROUND(NVL(SCHEDULE, 0), 2) = 9.1
+      ORDER BY NAME, CODE`;
+    const bankSql = `
+      SELECT CODE, NAME, CITY, NVL(AC_TYPE, '') AS AC_TYPE
+      FROM MASTER
+      WHERE COMP_CODE = :comp_code AND UPPER(TRIM(NVL(AC_TYPE, ''))) = 'B'
+      ORDER BY NAME, CODE`;
+    const [parties, cashAccounts, bankAccounts] = await Promise.all([
+      runQuery(partySql, { comp_code }, comp_uid),
+      runQuery(cashSql, { comp_code }, comp_uid).catch(() => []),
+      runQuery(bankSql, { comp_code }, comp_uid).catch(() => []),
+    ]);
+    res.json({ parties: parties || [], cashAccounts: cashAccounts || [], bankAccounts: bankAccounts || [] });
+  } catch (err) {
+    console.error('❌ voucher-entry-lookups error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/voucher-next-no', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, vr_type, vr_date, type } = req.query;
+    if (!comp_code || comp_uid == null || !vr_type) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, and vr_type are required' });
+    }
+    const next_no = await fetchVoucherNextNo(comp_code, comp_uid, { vr_type, vr_date, type });
+    res.json({ next_no, vr_type: normalizeVrType(vr_type), type: normalizeVoucherType(type) });
+  } catch (err) {
+    console.error('❌ voucher-next-no error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/voucher-load', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, vr_type, vr_date, vr_no, type } = req.query;
+    if (!comp_code || comp_uid == null || !vr_type || !vr_date || vr_no == null) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, vr_type, vr_date, and vr_no are required' });
+    }
+    const tp = normalizeVoucherType(type);
+    const sql = `
+      SELECT V.TRN_NO, V.CODE, M.NAME, M.CITY, NVL(M.SCHEDULE, 0) AS SCHEDULE,
+             V.V_DATE, V.CHQ_NO, V.DETAIL, V.BILL_DATE, V.BILL_NO, V.B_TYPE,
+             NVL(V.DR_AMT, 0) AS DR_AMT, NVL(V.CR_AMT, 0) AS CR_AMT,
+             NVL(V.INT_AMT, 0) AS INT_AMT, NVL(V.CD_AMT, 0) AS CD_AMT, NVL(V.CD_PER, 0) AS CD_PER,
+             V.DC_CODE, V.VR_TYPE, V.VR_DATE, V.VR_NO, V.TYPE,
+             V.CD_VR_TYPE, V.CD_VR_DATE, V.CD_VR_NO, V.INT_VR_TYPE, V.INT_VR_DATE, V.INT_VR_NO
+      FROM VOUCHER V
+      LEFT JOIN MASTER M ON V.COMP_CODE = M.COMP_CODE AND V.CODE = M.CODE
+      WHERE V.COMP_CODE = :comp_code
+        AND TRIM(V.VR_TYPE) = :vr_type
+        AND TRUNC(V.VR_DATE) = TRUNC(TO_DATE(:vr_date, 'DD-MM-YYYY'))
+        AND V.VR_NO = :vr_no
+        AND TRIM(NVL(V.TYPE, 'N')) = :type
+      ORDER BY V.TRN_NO`;
+    const binds = {
+      comp_code,
+      vr_type: normalizeVrType(vr_type),
+      vr_date: String(vr_date).trim(),
+      vr_no: Math.floor(Number(vr_no)),
+      type: tp,
+    };
+    let rows = await runQuery(sql, binds, comp_uid);
+    if ((!rows || rows.length === 0) && comp_uid) {
+      rows = await runQuery(sql, binds, null, { suppressDbErrorLog: true });
+    }
+    if (!rows?.length) return res.status(404).json({ error: 'Voucher not found' });
+    const head = rows[0];
+    res.json({
+      header: {
+        vr_type: head.VR_TYPE ?? head.vr_type,
+        vr_date: head.VR_DATE ?? head.vr_date,
+        vr_no: head.VR_NO ?? head.vr_no,
+        type: head.TYPE ?? head.type ?? tp,
+        dc_code: head.DC_CODE ?? head.dc_code,
+        cd_vr_type: head.CD_VR_TYPE ?? head.cd_vr_type,
+        cd_vr_date: head.CD_VR_DATE ?? head.cd_vr_date,
+        cd_vr_no: head.CD_VR_NO ?? head.cd_vr_no,
+        int_vr_type: head.INT_VR_TYPE ?? head.int_vr_type,
+        int_vr_date: head.INT_VR_DATE ?? head.int_vr_date,
+        int_vr_no: head.INT_VR_NO ?? head.int_vr_no,
+      },
+      lines: rows,
+    });
+  } catch (err) {
+    console.error('❌ voucher-load error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+async function fetchBillLedgerIntDefaults(comp_code, comp_uid) {
+  const binds = { comp_code };
+  const sqlCandidates = [
+    `SELECT G_DAYS, G_EDAYS FROM DEFVALUE WHERE COMP_CODE = :comp_code`,
+    `SELECT G_DAYS, G_EDAYS FROM DEFAULT WHERE COMP_CODE = :comp_code`,
+    `SELECT G_DAYS, G_EDAYS FROM "DEFAULT" WHERE COMP_CODE = :comp_code`,
+  ];
+  for (const sql of sqlCandidates) {
+    try {
+      const rows = await runQuery(sql, binds, comp_uid, { suppressDbErrorLog: true });
+      const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+      if (row) {
+        const pick = (up, low) => row?.[up] ?? row?.[low] ?? null;
+        return {
+          gs_days: pick('G_DAYS', 'g_days') ?? 0,
+          ged_days: pick('G_EDAYS', 'g_edays') ?? 30,
+        };
+      }
+    } catch (_) {}
+  }
+  return { gs_days: 0, ged_days: 30 };
+}
+
+function pendingBillPassesFilter(r, { isSupplier, minBal, vouIntShow }) {
+  const curBal = Number(r.CUR_BAL ?? r.cur_bal ?? 0) || 0;
+  const drAmt = Number(r.DR_AMT ?? r.dr_amt ?? 0) || 0;
+  const crAmt = Number(r.CR_AMT ?? r.cr_amt ?? 0) || 0;
+  const intAmt = Number(r.INT_AMT ?? r.int_amt ?? 0) || 0;
+  const threshold = isSupplier ? 10 : minBal;
+  if (curBal > threshold) return true;
+  if (String(vouIntShow ?? 'Y').toUpperCase() === 'Y') {
+    if (curBal + intAmt > threshold) return true;
+    // Interest-only pending (paid bill with accrued interest) — legacy BillHlp behaviour.
+    if (curBal >= 0 && drAmt > 0 && crAmt > 0 && intAmt > 0) return true;
+    if (curBal >= 0 && drAmt > 0 && crAmt >= drAmt && intAmt === 0) return true;
+  }
+  return false;
+}
+
+async function queryVoucherPendingBillRows(comp_code, comp_uid, codeN, { isSupplier, vd, minBal, vouIntShow }) {
+  const bTypeExpr = isSupplier ? `NVL(A.B_TYPE, 'Z')` : `NVL(A.B_TYPE, ' ')`;
+  const curBalExpr = isSupplier
+    ? `SUM(NVL(A.CR_AMT, 0) - NVL(A.DR_AMT, 0))`
+    : `SUM(NVL(A.DR_AMT, 0) - NVL(A.CR_AMT, 0))`;
+  const payFilter = vd
+    ? `AND (TRIM(NVL(A.VR_TYPE, ' ')) NOT IN ('CV', 'BV', 'JV') OR A.VR_DATE <= TO_DATE(:v_date, 'DD-MM-YYYY'))`
+    : '';
+  const binds = { comp_code, code: codeN };
+  if (vd) binds.v_date = vd;
+
+  const billBalCte = `
+    WITH bill_bal AS (
+      SELECT
+        A.BILL_DATE,
+        A.BILL_NO,
+        ${bTypeExpr} AS B_TYPE,
+        SUM(NVL(A.DR_AMT, 0)) AS DR_AMT,
+        SUM(NVL(A.CR_AMT, 0)) AS CR_AMT,
+        ${curBalExpr} AS CUR_BAL,
+        MAX(A.V_DATE) AS V_DATE,
+        MAX(A.VR_DATE) AS LAST_VR_DATE,
+        MAX(NVL(A.DAYS, 0)) AS DAYS
+      FROM BILLS A
+      WHERE A.COMP_CODE = :comp_code
+        AND A.CODE = :code
+        ${payFilter}
+      GROUP BY A.BILL_DATE, A.BILL_NO, ${bTypeExpr}
+      HAVING MAX(CASE WHEN SUBSTR(NVL(A.DETAIL, ' '), 1, 1) = '*' THEN 1 ELSE 0 END) = 0
+    )`;
+
+  const wantInt = String(vouIntShow ?? 'Y').toUpperCase() === 'Y' && !!vd;
+  let sql;
+  if (wantInt) {
+    const intDefaults = await fetchBillLedgerIntDefaults(comp_code, comp_uid);
+    binds.int_indt = vd;
+    binds.e_date = vd;
+    binds.gs_days = String(intDefaults.gs_days ?? 0);
+    binds.ged_days = String(intDefaults.ged_days ?? 30);
+    binds.group_cd = '0';
+    binds.bombay_dhara = '0';
+    binds.comp_code_gi = String(comp_code).trim();
+    const getintSql = isSupplier
+      ? `GETINT_SUP(
+            TO_NUMBER(TRIM(:comp_code_gi)),
+            :code,
+            bb.BILL_DATE,
+            bb.BILL_NO,
+            NVL(TRIM(bb.B_TYPE), 'Z'),
+            TO_DATE(:int_indt, 'DD-MM-YYYY'),
+            TO_NUMBER(:gs_days),
+            TO_NUMBER(:ged_days),
+            TO_NUMBER(:group_cd),
+            TO_NUMBER(:bombay_dhara),
+            bb.LAST_VR_DATE
+          )`
+      : `GETINT(
+            TO_NUMBER(TRIM(:comp_code_gi)),
+            :code,
+            bb.BILL_DATE,
+            bb.BILL_NO,
+            TRIM(bb.B_TYPE),
+            TO_DATE(:int_indt, 'DD-MM-YYYY'),
+            TO_NUMBER(:gs_days),
+            TO_NUMBER(:ged_days),
+            TO_NUMBER(:group_cd),
+            TO_NUMBER(:bombay_dhara),
+            TO_DATE(:e_date, 'DD-MM-YYYY')
+          )`;
+    sql =
+      billBalCte +
+      `
+    SELECT
+      bb.BILL_DATE,
+      bb.BILL_NO,
+      bb.B_TYPE,
+      bb.DR_AMT,
+      bb.CR_AMT,
+      bb.CUR_BAL,
+      bb.V_DATE,
+      bb.DAYS,
+      ${getintSql} AS GETINT_RAW
+    FROM bill_bal bb
+    ORDER BY bb.BILL_DATE, bb.BILL_NO, bb.B_TYPE`;
+  } else {
+    sql =
+      billBalCte +
+      `
+    SELECT
+      bb.BILL_DATE,
+      bb.BILL_NO,
+      bb.B_TYPE,
+      bb.DR_AMT,
+      bb.CR_AMT,
+      bb.CUR_BAL,
+      bb.V_DATE,
+      bb.DAYS
+    FROM bill_bal bb
+    ORDER BY bb.BILL_DATE, bb.BILL_NO, bb.B_TYPE`;
+  }
+
+  const runPending = async (schema) => {
+    try {
+      return await runQuery(sql, binds, schema);
+    } catch (e) {
+      if (wantInt && /GETINT|ORA-00904|invalid identifier/i.test(String(e.message || ''))) {
+        const fallbackSql =
+          billBalCte +
+          `
+    SELECT
+      bb.BILL_DATE,
+      bb.BILL_NO,
+      bb.B_TYPE,
+      bb.DR_AMT,
+      bb.CR_AMT,
+      bb.CUR_BAL,
+      bb.V_DATE,
+      bb.DAYS
+    FROM bill_bal bb
+    ORDER BY bb.BILL_DATE, bb.BILL_NO, bb.B_TYPE`;
+        return await runQuery(fallbackSql, binds, schema);
+      }
+      throw e;
+    }
+  };
+
+  let rows = await runPending(comp_uid);
+  if ((!rows || rows.length === 0) && comp_uid) {
+    rows = await runPending(null);
+  }
+  return rows || [];
+}
+
+app.get('/api/voucher-pending-bills', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, code, schedule, v_date, pnd_bills, vou_int_show } = req.query;
+    const codeN = parseMasterCodeForSql(code);
+    if (!comp_code || comp_uid == null || codeN === undefined) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, and code are required' });
+    }
+    const sch = Number(schedule);
+    const schInt = Number.isFinite(sch) ? Math.floor(sch) : 8;
+    const isSupplier = schInt === 11;
+    const minBal = Number(pnd_bills ?? 0) || 0;
+    const vd = String(v_date ?? '').trim();
+    const vouIntShow = String(vou_int_show ?? 'Y').trim().toUpperCase() || 'Y';
+
+    const rawRows = await queryVoucherPendingBillRows(comp_code, comp_uid, codeN, {
+      isSupplier,
+      vd,
+      minBal,
+      vouIntShow,
+    });
+
+    const filterOpts = { isSupplier, minBal, vouIntShow };
+    const out = [];
+    for (const r of rawRows) {
+      const parsed = parseOraGetintReturn(r.GETINT_RAW ?? r.getint_raw);
+      const intAmt = parsed.interestAmt ?? 0;
+      const curBal = Number(r.CUR_BAL ?? r.cur_bal ?? 0) || 0;
+      const row = {
+        BILL_DATE: r.BILL_DATE ?? r.bill_date,
+        BILL_NO: r.BILL_NO ?? r.bill_no,
+        B_TYPE: r.B_TYPE ?? r.b_type,
+        DR_AMT: r.DR_AMT ?? r.dr_amt,
+        CR_AMT: r.CR_AMT ?? r.cr_amt,
+        CUR_BAL: curBal,
+        V_DATE: r.V_DATE ?? r.v_date,
+        DAYS: r.DAYS ?? r.days,
+        INT_AMT: intAmt,
+        ADJ_AMT: 0,
+        TOTAL: curBal + intAmt,
+      };
+      if (pendingBillPassesFilter(row, filterOpts)) out.push(row);
+    }
+    res.json(out);
+  } catch (err) {
+    console.error('❌ voucher-pending-bills error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/voucher-save', async (req, res) => {
+  let conn;
+  try {
+    const body = req.body || {};
+    const comp_code = String(body.comp_code ?? '').trim();
+    const comp_uid = body.comp_uid;
+    const user_name = String(body.user_name ?? '').trim();
+    const mode = String(body.mode ?? 'add').trim().toLowerCase();
+    const header = body.header || {};
+    const lines = Array.isArray(body.lines) ? body.lines : [];
+    if (!comp_code || comp_uid == null || !user_name) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, and user_name are required' });
+    }
+    if (!lines.length) return res.status(400).json({ error: 'At least one voucher line is required' });
+
+    const { f3 } = await fetchVoucherUserF3String(user_name, comp_uid);
+    const perms = voucherPermissionsFromF3(f3);
+    if (!perms.canOpen) return res.status(403).json({ error: 'Access Denied' });
+    if (mode === 'add' && !perms.canAdd) return res.status(403).json({ error: 'You Can Not Add' });
+    if (mode === 'edit' && !perms.canEdit) return res.status(403).json({ error: 'You Can Not Edit' });
+    if (mode === 'delete' && !perms.canDelete) return res.status(403).json({ error: 'You Can Not Delete' });
+
+    const vr_type = normalizeVrType(header.vr_type);
+    const vr_date = String(header.vr_date ?? '').trim();
+    const type = normalizeVoucherType(header.type);
+    if (!vr_type || !vr_date) return res.status(400).json({ error: 'vr_type and vr_date are required' });
+    if (vr_type === 'CV' && type !== 'R' && type !== 'N') {
+      return res.status(400).json({ error: 'TYPE must be R or N for cash voucher' });
+    }
+    const docType = vr_type === 'CV' ? type : 'N';
+
+    const comp_year_sel = parseCompYearOpt(body.comp_year);
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid, comp_year_sel);
+    if (!compdet) return res.status(400).json({ error: 'compdet not found' });
+    const comp_year = Number(compdet?.COMP_YEAR ?? compdet?.comp_year ?? comp_year_sel ?? 0) || 0;
+    const ctx = mapVoucherCompdetContext(compdet);
+    const fy = assertSaleBillDateInFinancialYear(vr_date, compdet);
+    if (!fy.ok) return res.status(400).json({ error: fy.error });
+
+    let vr_no = header.vr_no != null ? Math.floor(Number(header.vr_no)) : null;
+    const orig = body.original || {};
+    const origKey =
+      mode === 'edit' || mode === 'delete'
+        ? {
+            vr_type: normalizeVrType(orig.vr_type || vr_type),
+            vr_date: String(orig.vr_date || vr_date).trim(),
+            vr_no: Math.floor(Number(orig.vr_no ?? vr_no)),
+            type: normalizeVoucherType(orig.type ?? docType),
+          }
+        : null;
+
+    if (mode === 'add') {
+      if (!vr_no || vr_no <= 0) {
+        vr_no = await fetchVoucherNextNo(comp_code, comp_uid, { vr_type, vr_date, type: docType });
+      }
+      if (vr_type === 'CV' && docType === 'R') {
+        try {
+          const hi = await runQuery(
+            `SELECT VR_NO, VR_DATE FROM HI_RECEIPT WHERE COMP_CODE = :comp_code AND VR_NO = :vr_no AND ROWNUM = 1`,
+            { comp_code, vr_no },
+            comp_uid
+          );
+          if (hi?.length) {
+            return res.status(409).json({
+              error: `Receipt already made on ${String(hi[0].VR_DATE ?? hi[0].vr_date ?? '')}`,
+            });
+          }
+        } catch (_) {
+          /* HI_RECEIPT optional */
+        }
+      }
+    } else if (!origKey?.vr_no) {
+      return res.status(400).json({ error: 'original vr_no required for edit/delete' });
+    }
+
+    const connCfg = {
+      user: comp_uid,
+      password: comp_uid,
+      connectString: activeDbConfig.connectString,
+    };
+    conn = await getDbConnection(connCfg);
+
+    if (mode === 'delete') {
+      await deleteVoucherDocumentRows(conn, { comp_code, ...origKey });
+      await conn.commit();
+      return res.json({ ok: true, mode: 'delete' });
+    }
+
+    if (mode === 'edit') {
+      await deleteVoucherDocumentRows(conn, { comp_code, ...origKey });
+    }
+
+    const dc_code_hdr =
+      vr_type === 'JV'
+        ? null
+        : Math.floor(Number(header.dc_code ?? lines[0]?.dc_code ?? 0)) || null;
+    if (vr_type !== 'JV' && (!dc_code_hdr || dc_code_hdr <= 0)) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Cash/Bank code is required' });
+    }
+
+    let cd_vr_type = header.cd_vr_type || null;
+    let cd_vr_date = header.cd_vr_date || null;
+    let cd_vr_no = Number(header.cd_vr_no ?? 0) || 0;
+    let int_vr_type = header.int_vr_type || null;
+    let int_vr_date = header.int_vr_date || null;
+    let int_vr_no = Number(header.int_vr_no ?? 0) || 0;
+
+    const sumCd = lines.reduce((s, l) => s + (Number(l.cd_amt) || 0), 0);
+    const sumInt = lines.reduce((s, l) => s + (Number(l.int_amt) || 0), 0);
+    if (ctx.G_CD_TRF === 'Y' && sumCd !== 0 && (mode === 'add' || cd_vr_no === 0)) {
+      cd_vr_type = 'JV';
+      cd_vr_date = vr_date;
+      cd_vr_no = await fetchVoucherNextNo(comp_code, comp_uid, { vr_type: 'JV', vr_date, type: 'N' });
+    }
+    if (ctx.G_INT_TRF === 'Y' && sumInt !== 0 && (mode === 'add' || int_vr_no === 0)) {
+      int_vr_type = 'JV';
+      int_vr_date = vr_date;
+      int_vr_no = await fetchVoucherNextNo(comp_code, comp_uid, { vr_type: 'JV', vr_date, type: 'N' });
+    }
+
+    let trn = 1;
+    let prevCode = null;
+    for (const line of lines) {
+      const code = Math.floor(Number(line.code));
+      if (!Number.isFinite(code) || code <= 0) continue;
+      const dc_code =
+        vr_type === 'JV'
+          ? Math.floor(Number(line.dc_code ?? prevCode ?? code)) || code
+          : dc_code_hdr;
+      prevCode = code;
+      const dr = Number(line.dr_amt) || 0;
+      const cr = Number(line.cr_amt) || 0;
+      const int_amt = Number(line.int_amt) || 0;
+      const cd_amt = Number(line.cd_amt) || 0;
+      const cd_per = Number(line.cd_per) || 0;
+      const v_date = String(line.v_date || vr_date).trim();
+      const bill_date = line.bill_date ? String(line.bill_date).trim() : null;
+      const bill_no = line.bill_no != null && String(line.bill_no).trim() !== '' ? Math.floor(Number(line.bill_no)) : null;
+      const b_type = String(line.b_type ?? ' ').trim() || ' ';
+      const chq_no = String(line.chq_no ?? '').trim().slice(0, 8);
+      const detail = String(line.detail ?? '').trim().slice(0, 254);
+
+      const base = {
+        comp_code,
+        comp_year,
+        vr_type,
+        vr_date,
+        type: docType,
+        vr_no,
+        dc_code,
+        trn_no: trn,
+        code,
+        v_date,
+        chq_no,
+        detail,
+        bill_date: bill_date || null,
+        bill_no,
+        b_type,
+        dr_amt: dr,
+        cr_amt: cr,
+        int_amt,
+        cd_amt,
+        cd_per,
+        cd_vr_type: cd_vr_type || null,
+        cd_vr_date: cd_vr_date || null,
+        cd_vr_no: cd_vr_no || null,
+        int_vr_type: int_vr_type || null,
+        int_vr_date: int_vr_date || null,
+        int_vr_no: int_vr_no || null,
+        user_name,
+      };
+
+      await insertVoucherLineRow(conn, base);
+
+      await insertVoucherLedgerRow(conn, {
+        ...base,
+        dr_amt: dr,
+        cr_amt: cr,
+      });
+
+      if (vr_type !== 'JV') {
+        await insertVoucherLedgerRow(conn, {
+          ...base,
+          code: dc_code,
+          dc_code: code,
+          dr_amt: cr,
+          cr_amt: dr,
+        });
+      }
+
+      if (bill_date || bill_no) {
+        const schRow = await conn.execute(
+          `SELECT NVL(SCHEDULE, 0) AS SCHEDULE FROM MASTER WHERE COMP_CODE = :cc AND CODE = :cd AND ROWNUM = 1`,
+          { cc: comp_code, cd: code },
+          { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+        const sch = Number(schRow.rows?.[0]?.SCHEDULE ?? schRow.rows?.[0]?.schedule ?? 0);
+        const isCust = Math.floor(sch) === 8;
+        const billDr = isCust ? 0 : dr;
+        const billCr = isCust ? cr : dr;
+        await insertVoucherBillsRow(conn, {
+          ...base,
+          dr_amt: billDr,
+          cr_amt: billCr,
+        });
+      }
+
+      if (vr_type === 'BV') {
+        try {
+          await conn.execute(
+            `INSERT INTO BANKSTMT (
+              COMP_CODE, COMP_YEAR, VR_TYPE, VR_DATE, VR_NO, TYPE, TRN_NO, CODE,
+              DR_AMT, CR_AMT, DC_CODE, CHQ_NO, DETAIL, USER_NAME, ENT_DATE, V_DATE
+            ) VALUES (
+              :comp_code, :comp_year, :vr_type, TO_DATE(:vr_date, 'DD-MM-YYYY'), :vr_no, :type, :trn_no, :code,
+              :cr_amt, :dr_amt, :dc_code, RTRIM(:chq_no), RTRIM(:detail), :user_name, SYSDATE, TO_DATE(:v_date, 'DD-MM-YYYY')
+            )`,
+            {
+              comp_code,
+              comp_year,
+              vr_type,
+              vr_date,
+              vr_no,
+              type: docType,
+              trn_no: trn,
+              code: dc_code,
+              dc_code: code,
+              dr_amt: dr,
+              cr_amt: cr,
+              chq_no,
+              detail,
+              user_name,
+              v_date,
+            },
+            { autoCommit: false }
+          );
+        } catch (e) {
+          const m = String(e?.message || '');
+          if (!m.includes('ORA-00942') && !/invalid identifier/i.test(m)) throw e;
+        }
+      }
+
+      trn += 1;
+    }
+
+    if (vr_type === 'CV' && docType === 'R' && mode === 'add') {
+      const crTotal = lines.reduce((s, l) => s + (Number(l.cr_amt) || 0), 0);
+      try {
+        await conn.execute(
+          `INSERT INTO HI_RECEIPT (COMP_CODE, COMP_YEAR, VR_DATE, VR_NO, USER_NAME, CODE, CR_AMT)
+           VALUES (:comp_code, :comp_year, TO_DATE(:vr_date, 'DD-MM-YYYY'), :vr_no, :user_name, :code, :cr_amt)`,
+          {
+            comp_code,
+            comp_year,
+            vr_date,
+            vr_no,
+            user_name,
+            code: Math.floor(Number(lines[0]?.code)) || null,
+            cr_amt: crTotal,
+          },
+          { autoCommit: false }
+        );
+      } catch (e) {
+        const m = String(e?.message || '');
+        if (!m.includes('ORA-00942') && !/invalid identifier/i.test(m)) throw e;
+      }
+    }
+
+    await conn.commit();
+    res.json({
+      ok: true,
+      mode,
+      vr_type,
+      vr_date,
+      vr_no,
+      type: docType,
+      cd_vr_type,
+      cd_vr_date,
+      cd_vr_no,
+      int_vr_type,
+      int_vr_date,
+      int_vr_no,
+    });
+  } catch (err) {
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (_) {}
+    }
+    console.error('❌ voucher-save error:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) {
+      try {
+        await conn.close();
+      } catch (_) {}
+    }
   }
 });
 

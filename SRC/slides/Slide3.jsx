@@ -80,8 +80,33 @@ const REPORT_MENU = [
     index: 7,
     title: 'Voucher Module',
     subtitle: 'Cash, bank & journal',
+    entry: true,
     items: [
+      {
+        id: 'voucher-entry',
+        title: 'Cash / Bank / Journal Entry',
+        description: 'Add, edit, or delete CV, BV, and JV vouchers; posts VOUCHER, LEDGER, and BILLS',
+      },
       { id: 'voucher-list', title: 'Cash / Bank / Journal Voucher List', description: 'Vouchers with date range, party, cash/bank code, Dr/Cr filter' },
+    ],
+  },
+  {
+    id: 'master-module',
+    index: 8,
+    title: 'Master Module',
+    subtitle: 'Account & item maintenance',
+    entry: true,
+    items: [
+      {
+        id: 'account-master',
+        title: 'A/c Master',
+        description: 'Add, edit, or delete accounts in MASTER (party, broker, supplier, etc.)',
+      },
+      {
+        id: 'item-master',
+        title: 'Item Master',
+        description: 'Add, edit, or delete items in ITEMMAST with sale/purchase GL codes',
+      },
     ],
   },
 ];

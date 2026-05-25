@@ -43,6 +43,8 @@ export default function MasterPartyPickList({
   getFilterText,
   getOptionTitle,
   panelVariant,
+  openOnFocus = false,
+  onAfterSelect,
 }) {
   const triggerLabel = getTriggerLabel ?? getLabel;
   const optionLabel = getOptionLabel ?? getLabel;
@@ -93,13 +95,16 @@ export default function MasterPartyPickList({
       suppressToggleRef.current = true;
       onChange(val);
       close();
+      if (onAfterSelect) {
+        window.setTimeout(() => onAfterSelect(val), 0);
+      }
       window.setTimeout(() => {
         pickGuardRef.current = false;
         selectingRef.current = false;
         suppressToggleRef.current = false;
       }, 600);
     },
-    [onChange, close]
+    [onChange, close, onAfterSelect]
   );
 
   const updatePanelPosition = useCallback(() => {
@@ -314,6 +319,13 @@ export default function MasterPartyPickList({
     [filtered, getValue, selectOption, close, moveHighlight]
   );
 
+  const handleTriggerFocus = () => {
+    if (disabled || !openOnFocus || selectingRef.current) return;
+    setFilter('');
+    setHighlightIndex(0);
+    setOpen(true);
+  };
+
   const handleTrigger = (e) => {
     if (disabled || suppressToggleRef.current) return;
     e.preventDefault();
@@ -397,6 +409,16 @@ export default function MasterPartyPickList({
                 enterKeyHint="done"
                 onChange={(e) => setFilter(e.target.value)}
                 onFocus={handleFilterFocus}
+                onBlur={() => {
+                  window.setTimeout(() => {
+                    if (
+                      !panelRef.current?.contains(document.activeElement) &&
+                      !triggerRef.current?.contains(document.activeElement)
+                    ) {
+                      close();
+                    }
+                  }, 120);
+                }}
                 onKeyDown={handleListKeyDown}
               />
             </div>
@@ -463,6 +485,7 @@ export default function MasterPartyPickList({
         aria-expanded={open}
         aria-haspopup="listbox"
         onClick={handleTrigger}
+        onFocus={handleTriggerFocus}
         onKeyDown={(e) => {
           if (!open && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')) {
             e.preventDefault();

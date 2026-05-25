@@ -1,0 +1,358 @@
+/* Voucher entry (Slide 28) */
+.slide-28-voucher-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.voucher-entry-header {
+  background: #fff;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+}
+
+.voucher-entry-header__types {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.voucher-entry-label {
+  font-weight: 600;
+  color: #334155;
+  font-size: 0.88rem;
+}
+
+.voucher-entry-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.voucher-entry-header__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 0.65rem 0.85rem;
+  align-items: end;
+}
+
+.voucher-entry-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.voucher-entry-field span {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.voucher-entry-field--wide {
+  grid-column: span 2;
+}
+
+.voucher-entry-hint {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.voucher-entry-transfer-readonly {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.65rem;
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+.voucher-entry-lines-wrap {
+  overflow: auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  max-height: min(58vh, 520px);
+}
+
+.voucher-entry-lines td {
+  overflow: hidden;
+}
+
+.voucher-entry-lines {
+  width: 100%;
+  min-width: 88rem;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  table-layout: fixed;
+}
+
+.voucher-col-sno { width: 2.5rem; }
+.voucher-col-code { width: 9rem; }
+.voucher-col-name { width: 8rem; }
+.voucher-col-sched { width: 3.5rem; }
+.voucher-col-vdate { width: 8.5rem; }
+.voucher-col-chq { width: 5rem; }
+.voucher-col-detail { width: 10rem; }
+.voucher-col-billdt { width: 8.5rem; }
+.voucher-col-billno { width: 5rem; }
+.voucher-col-btype { width: 2.75rem; }
+.voucher-col-bills-help { width: 2.25rem; }
+.voucher-col-bills-help-th { width: 2.25rem; padding: 0 !important; }
+.voucher-col-amt { width: 11.5rem; }
+.voucher-col-actions { width: 2.5rem; }
+
+.voucher-entry-bills-help {
+  text-align: center;
+  padding: 0.2rem !important;
+}
+
+.voucher-entry-bills-btn {
+  min-width: 1.65rem;
+  padding: 0.1rem 0.35rem !important;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.voucher-entry-lines th {
+  position: sticky;
+  top: 0;
+  background: #f1f5f9;
+  padding: 0.4rem 0.35rem;
+  border-bottom: 2px solid #cbd5e1;
+  text-align: left;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.voucher-entry-lines td {
+  padding: 0.25rem 0.3rem;
+  border-bottom: 1px solid #e8ecf0;
+  vertical-align: middle;
+}
+
+.voucher-entry-lines tr.is-active {
+  background: #eff6ff;
+}
+
+.voucher-entry-lines tfoot td {
+  background: #f8fafc;
+  font-weight: 600;
+}
+
+.voucher-entry-lines .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.voucher-entry-code-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 9rem;
+}
+
+.voucher-entry-code-cell .master-party-pick {
+  flex: 1;
+  min-width: 0;
+}
+
+.voucher-entry-vdate {
+  width: 100%;
+  min-width: 8rem;
+  padding: 0.25rem 0.35rem;
+  font-size: 0.8rem;
+}
+
+.voucher-entry-mini {
+  width: 100%;
+  min-width: 5rem;
+  padding: 0.25rem 0.35rem;
+  font-size: 0.8rem;
+}
+
+.voucher-entry-detail {
+  width: 100%;
+  min-width: 8rem;
+  padding: 0.25rem 0.35rem;
+  font-size: 0.8rem;
+}
+
+.voucher-entry-btype {
+  width: 100%;
+  text-align: center;
+  padding: 0.25rem;
+}
+
+.voucher-entry-amt {
+  width: 100%;
+  min-width: 11rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.85rem;
+}
+
+.voucher-entry-row-actions {
+  white-space: nowrap;
+}
+
+.btn-xs {
+  padding: 0.15rem 0.4rem;
+  font-size: 0.72rem;
+  min-height: 1.6rem;
+}
+
+.voucher-entry-add-row {
+  padding: 0.45rem 0.5rem !important;
+}
+
+.voucher-entry-list-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  align-items: flex-end;
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.voucher-entry-list-empty {
+  text-align: center;
+  color: #64748b;
+  padding: 1rem !important;
+}
+
+.slide-28-voucher-list .report-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Pending bills modal */
+.voucher-pending-modal {
+  max-width: min(96vw, 920px);
+  max-height: min(92vh, 640px);
+  display: flex;
+  flex-direction: column;
+}
+
+.voucher-pending-modal__head {
+  flex-shrink: 0;
+}
+
+.voucher-pending-modal__sub {
+  margin: 0.15rem 0 0;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.voucher-pending-modal__body {
+  padding: 0.85rem 1rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.voucher-pending-modal__modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 0.65rem;
+}
+
+.voucher-pending-modal__recv {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: flex-end;
+  margin-bottom: 0.65rem;
+}
+
+.voucher-pending-modal__table-wrap {
+  margin-top: 0.75rem;
+  overflow: auto;
+  max-height: 320px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+
+.voucher-pending-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.voucher-pending-table th,
+.voucher-pending-table td {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid #e8ecf0;
+}
+
+.voucher-pending-table th {
+  background: #f8fafc;
+  position: sticky;
+  top: 0;
+}
+
+.voucher-pending-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.voucher-pending-total-pick {
+  cursor: pointer;
+  color: #2563eb;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.voucher-pending-total-pick:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.voucher-pending-adj {
+  width: 6rem;
+  min-width: 5.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.voucher-pending-table__empty {
+  text-align: center;
+  color: #64748b;
+  padding: 1rem !important;
+}
+
+.voucher-pending-modal__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .voucher-entry-field--wide {
+    grid-column: span 1;
+  }
+
+  .voucher-entry-lines-wrap {
+    max-height: 50vh;
+  }
+}
