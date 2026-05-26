@@ -317,6 +317,38 @@ const PDF_REPORT_STYLES = `
           max-width: none;
         }
         .purchase-list-pdf { overflow: visible !important; max-width: none !important; width: 100%; }
+        /* Wide voucher list: fixed columns, compact cells */
+        .voucher-list-pdf.report-doc { font-size: 7px; overflow: visible !important; max-width: none !important; width: 100%; }
+        .voucher-list-pdf table.table-report { table-layout: fixed; width: 100%; }
+        .voucher-list-pdf table.table-report thead th {
+          font-size: 6px;
+          padding: 4px 3px;
+          letter-spacing: 0;
+          word-break: break-word;
+          hyphens: auto;
+        }
+        .voucher-list-pdf table.table-report tbody td {
+          font-size: 6px;
+          padding: 2px 3px;
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+        }
+        .voucher-list-pdf table.table-report td.amount {
+          font-size: 6px;
+          padding: 2px 3px;
+        }
+        .voucher-list-pdf .col-vr-type { width: 4%; white-space: nowrap; }
+        .voucher-list-pdf .col-date { width: 7%; white-space: nowrap; }
+        .voucher-list-pdf .col-vr-no { width: 4%; white-space: nowrap; }
+        .voucher-list-pdf .col-ac-type { width: 3%; white-space: nowrap; }
+        .voucher-list-pdf .col-code { width: 5%; white-space: nowrap; padding-right: 5px !important; }
+        .voucher-list-pdf .col-name { width: 11%; word-wrap: break-word; min-width: 0; padding-left: 5px !important; }
+        .voucher-list-pdf .col-amt { width: 6%; }
+        .voucher-list-pdf .col-bill-no { width: 5%; white-space: nowrap; }
+        .voucher-list-pdf .col-btype { width: 3%; white-space: nowrap; }
+        .voucher-list-pdf .col-chq { width: 5%; white-space: nowrap; }
+        .voucher-list-pdf .col-detail { width: 30%; word-wrap: break-word; min-width: 0; }
+        .voucher-list-pdf .col-dc { width: 5%; white-space: nowrap; }
         table.table-report .col-vr { width: 6%; white-space: nowrap; }
         table.table-report .col-type { width: 5%; white-space: nowrap; }
         table.table-report .col-detail { word-wrap: break-word; max-width: 220px; }
@@ -3748,6 +3780,520 @@ function buildProfitLossReportHtml(data, metadata) {
   `;
 }
 
+/** Voucher entry list (Slide 28 list / Slide 14). */
+function buildVoucherListReportHtml(data, metadata) {
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  const company = escHtml(metadata.companyName || '');
+  const sdt = escHtml(formatLedgerDateDisplay(metadata.startDate) || metadata.startDate || '');
+  const edt = escHtml(formatLedgerDateDisplay(metadata.endDate) || metadata.endDate || '');
+  const vtype = escHtml(metadata.vrTypeLabel || 'All types');
+  const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
+
+  let tdr = 0;
+  let tcr = 0;
+  let body = '';
+  rows.forEach((r) => {
+    const dr = Number(r.DR_AMT ?? r.dr_amt ?? 0) || 0;
+    const cr = Number(r.CR_AMT ?? r.cr_amt ?? 0) || 0;
+    tdr += dr;
+    tcr += cr;
+    body += `<tr>
+      <td class="col-vr-type">${escHtml(String(r.VR_TYPE ?? r.vr_type ?? ''))}</td>
+      <td class="col-date">${escHtml(formatLedgerDateDisplay(r.VR_DATE ?? r.vr_date))}</td>
+      <td class="col-vr-no">${escHtml(String(r.VR_NO ?? r.vr_no ?? ''))}</td>
+      <td class="col-ac-type">${escHtml(String(r.TYPE ?? r.type ?? ''))}</td>
+      <td class="col-code">${escHtml(String(r.CODE ?? r.code ?? ''))}</td>
+      <td class="col-name">${escHtml(String(r.NAME ?? r.name ?? ''))}</td>
+      <td class="amount col-amt">${formatStockPdf(dr)}</td>
+      <td class="amount col-amt">${formatStockPdf(cr)}</td>
+      <td class="col-date">${escHtml(formatLedgerDateDisplay(r.BILL_DATE ?? r.bill_date))}</td>
+      <td class="col-bill-no">${escHtml(String(r.BILL_NO ?? r.bill_no ?? ''))}</td>
+      <td class="col-btype">${escHtml(String(r.B_TYPE ?? r.b_type ?? ''))}</td>
+      <td class="col-chq">${escHtml(String(r.CHQ_NO ?? r.chq_no ?? ''))}</td>
+      <td class="col-detail">${escHtml(String(r.DETAIL ?? r.detail ?? ''))}</td>
+      <td class="col-dc">${escHtml(String(r.DC_CODE ?? r.dc_code ?? ''))}</td>
+    </tr>`;
+  });
+
+  const grand = `<tr class="report-grand-total">
+    <td colspan="6" class="lbl-total">Grand total (${rows.length} lines)</td>
+    <td class="amount col-amt">${formatStockPdf(tdr)}</td>
+    <td class="amount col-amt">${formatStockPdf(tcr)}</td>
+    <td colspan="6"></td>
+  </tr>`;
+
+  return `
+    <div class="report-doc voucher-list-pdf">
+      <style>${PDF_REPORT_STYLES}</style>
+      <div class="report-topbar">
+        <div class="kicker">VOUCHER</div>
+        <h1>Cash / bank / journal voucher list</h1>
+        <div class="company">${company}</div>
+        <table class="report-grid">
+          <tr><td class="lbl">Period</td><td class="val">${sdt} to ${edt}</td><td class="lbl">Voucher type</td><td class="val">${vtype}</td></tr>
+        </table>
+        <div class="report-period">Generated: ${generated}</div>
+      </div>
+      <table class="table-report">
+        <thead>
+          <tr>
+            <th class="col-vr-type">Vr type</th><th class="col-date">Vr date</th><th class="col-vr-no">Vr no</th>
+            <th class="col-ac-type">Type</th><th class="col-code">Code</th><th class="col-name">Name</th>
+            <th class="amount col-amt">Dr amt</th><th class="amount col-amt">Cr amt</th><th class="col-date">Bill date</th>
+            <th class="col-bill-no">Bill no</th><th class="col-btype">B type</th><th class="col-chq">Chq no</th>
+            <th class="col-detail">Detail</th><th class="col-dc">Dc code</th>
+          </tr>
+        </thead>
+        <tbody>${body || '<tr><td colspan="14">(No rows)</td></tr>'}${rows.length ? grand : ''}</tbody>
+      </table>
+      <div class="report-foot">Report generated from voucher list with selected filters.</div>
+    </div>
+  `;
+}
+
+/** Single voucher print (VouPrn) — FoxPro-style layout. */
+function voucherPrintDocTitle(vrType) {
+  const t = String(vrType ?? '').trim().toUpperCase();
+  if (t === 'CV') return 'CASH VOUCHER';
+  if (t === 'BV') return 'BANK VOUCHER';
+  if (t === 'JV') return 'JOURNAL VOUCHER';
+  return t ? `${t} VOUCHER` : 'VOUCHER';
+}
+
+function voucherPrintAmtCell(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v) || Math.abs(v) < 0.0005) return '';
+  return v.toFixed(2);
+}
+
+function voucherPrintLineSubtext(line) {
+  const detail = String(line.detail ?? '').trim();
+  if (detail) return detail;
+  const bd = String(line.bill_date ?? '').trim();
+  const bn = String(line.bill_no ?? '').trim();
+  if (bd && bn) return `Bill ${bd} #${bn}`;
+  if (bd) return `Bill ${bd}`;
+  const chq = String(line.chq_no ?? '').trim();
+  if (chq) return `Chq ${chq}`;
+  return '';
+}
+
+function voucherPrintAmountInWords(amount) {
+  const raw = rupeesToWords(amount);
+  if (!raw) return '';
+  let s = raw.replace(/^Rupees\s+/i, '');
+  s = s.replace(/\s+and\s+(.+?)\s+Paise\s+Only$/i, ' AND PAISE $1 ONLY');
+  if (!/\sONLY$/i.test(s)) s = `${s} ONLY`;
+  return `RS. ${s.toUpperCase()}`;
+}
+
+export function isCashReceiptVoucher(header) {
+  return (
+    String(header?.vr_type ?? '').trim().toUpperCase() === 'CV' &&
+    String(header?.type ?? '').trim().toUpperCase() === 'R'
+  );
+}
+
+function cashReceiptFmtAmt(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return '0.00';
+  return v.toFixed(2);
+}
+
+function cashReceiptLineAmounts(line) {
+  const cr = Number(line.cr_amt ?? 0) || 0;
+  const dr = Number(line.dr_amt ?? 0) || 0;
+  const intAmt = Number(line.int_amt ?? 0) || 0;
+  const cashReceived = cr || dr;
+  const total = cashReceived;
+  const billAmt = Math.max(0, total - intAmt);
+  return { billAmt, intAmt, total, cashReceived };
+}
+
+function cashReceiptTelLine(metadata) {
+  const parts = [
+    cleanPrintText(metadata?.compTel1),
+    cleanPrintText(metadata?.compTel2),
+    cleanPrintText(metadata?.compTel3),
+  ].filter(Boolean);
+  return parts.length ? `Tel: ${parts.join(', ')}` : '';
+}
+
+function buildCashReceiptCopyHtml(data, metadata) {
+  const header = data?.header || {};
+  const lines = Array.isArray(data?.lines) ? data.lines : [];
+  const company = escHtml(metadata.companyName || '');
+  const add1 = escHtml(metadata.compAdd1 || '');
+  const add2 = escHtml(metadata.compAdd2 || '');
+  const compPan = escHtml(metadata.compPan || '');
+  const fssai = escHtml(metadata.compFssai || '');
+  const telLine = escHtml(cashReceiptTelLine(metadata));
+  const receiptDate = escHtml(String(header.vr_date ?? ''));
+  const receiptNo = escHtml(String(header.vr_no ?? ''));
+  const partyLabel = escHtml(
+    String(metadata.partyName || metadata.partyCode || '').trim() || '—'
+  );
+  const partyPan = escHtml(String(metadata.partyPan || '').trim() || '—');
+  const forCompany = company || 'Company';
+
+  let totalCash = 0;
+  let body = '';
+  lines.forEach((l) => {
+    const { billAmt, intAmt, total, cashReceived } = cashReceiptLineAmounts(l);
+    totalCash += cashReceived;
+    body += `<tr>
+      <td style="padding:4px 2px;text-align:left;">${escHtml(String(l.bill_date ?? ''))}</td>
+      <td style="padding:4px 2px;text-align:center;">${escHtml(String(l.bill_no ?? ''))}</td>
+      <td style="padding:4px 2px;text-align:center;">${escHtml(String(l.v_date ?? ''))}</td>
+      <td style="padding:4px 2px;text-align:right;">${cashReceiptFmtAmt(billAmt)}</td>
+      <td style="padding:4px 2px;text-align:right;">${cashReceiptFmtAmt(intAmt)}</td>
+      <td style="padding:4px 2px;text-align:right;">${cashReceiptFmtAmt(total)}</td>
+      <td style="padding:4px 2px;text-align:right;">${cashReceiptFmtAmt(cashReceived)}</td>
+    </tr>`;
+  });
+  const blankRows = Math.max(0, 4 - lines.length);
+  for (let i = 0; i < blankRows; i += 1) {
+    body += `<tr class="cash-receipt-blank-row"><td colspan="7" style="padding:7px 2px;">&nbsp;</td></tr>`;
+  }
+
+  const fssaiHtml = fssai ? `FSSAI No. ${fssai}` : '';
+  const panHtml = compPan ? `PAN ${compPan}` : '';
+
+  return `
+    <div class="cash-receipt-copy">
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:9pt;">
+        <tr>
+          <td colspan="3" align="center" style="font-weight:700;font-size:11pt;padding-bottom:3px;">${company}</td>
+        </tr>
+        <tr>
+          <td width="22%" align="left" valign="top" style="font-size:8pt;padding-bottom:2px;">${panHtml}</td>
+          <td width="56%" align="center" valign="top" style="font-size:8pt;line-height:1.3;padding-bottom:2px;">
+            ${add1 ? `<div>${add1}</div>` : ''}
+            ${add2 ? `<div>${add2}</div>` : ''}
+          </td>
+          <td width="22%">&nbsp;</td>
+        </tr>
+        <tr>
+          <td align="left" style="font-size:8pt;">&nbsp;</td>
+          <td align="center" style="font-size:8pt;">${fssaiHtml}</td>
+          <td align="right" style="font-size:8pt;white-space:nowrap;">${telLine}</td>
+        </tr>
+      </table>
+      <hr class="cash-receipt-rule" />
+      <table width="100%" cellspacing="0" cellpadding="2" style="border-collapse:collapse;font-size:9pt;">
+        <tr>
+          <td width="33%" align="left">Receipt Date ${receiptDate}</td>
+          <td width="34%" align="center" style="font-weight:700;font-size:10pt;">CASH RECEIPT</td>
+          <td width="33%" align="right">Receipt No. ${receiptNo}</td>
+        </tr>
+      </table>
+      <hr class="cash-receipt-rule" />
+      <table width="100%" cellspacing="0" cellpadding="2" style="border-collapse:collapse;font-size:9pt;margin-bottom:4px;">
+        <tr>
+          <td width="55%" align="left">Party&nbsp;&nbsp;${partyLabel}</td>
+          <td width="45%" align="right">PAN&nbsp;&nbsp;${partyPan}</td>
+        </tr>
+      </table>
+      <hr class="cash-receipt-rule" />
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:8.5pt;table-layout:fixed;">
+        <colgroup>
+          <col style="width:14%;" />
+          <col style="width:10%;" />
+          <col style="width:14%;" />
+          <col style="width:14%;" />
+          <col style="width:14%;" />
+          <col style="width:12%;" />
+          <col style="width:22%;" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th align="left" style="font-weight:700;padding:2px;border-bottom:1px solid #000;">Bill Date</th>
+            <th align="center" style="font-weight:700;padding:2px;border-bottom:1px solid #000;">Bill No.</th>
+            <th align="center" style="font-weight:700;padding:2px;border-bottom:1px solid #000;">V. Date</th>
+            <th align="right" style="font-weight:700;padding:2px;border-bottom:1px solid #000;">Bill Amount</th>
+            <th align="right" style="font-weight:700;padding:2px;border-bottom:1px solid #000;">Int. Amount</th>
+            <th align="right" style="font-weight:700;padding:2px;border-bottom:1px solid #000;">Total</th>
+            <th align="right" style="font-weight:700;padding:2px;border-bottom:1px solid #000;">Cash Received</th>
+          </tr>
+        </thead>
+        <tbody>${body || '<tr><td colspan="7" style="padding:8px 2px;">&nbsp;</td></tr>'}</tbody>
+        <tfoot>
+          <tr>
+            <td colspan="6" style="border-top:1px solid #000;padding-top:4px;"></td>
+            <td align="right" style="border-top:1px solid #000;padding-top:4px;font-weight:700;white-space:nowrap;">
+              TOTAL&nbsp;&nbsp;<span style="display:inline-block;border-top:3px double #000;border-bottom:1px solid #000;padding:2px 0 3px;min-width:4.5rem;">${cashReceiptFmtAmt(totalCash)}</span>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:8.5pt;margin-top:10px;">
+        <tr>
+          <td align="left" valign="top">E. &amp; O.E.</td>
+          <td align="right" valign="top" style="font-weight:700;">For ${forCompany}</td>
+        </tr>
+        <tr>
+          <td>&nbsp;</td>
+          <td align="right" style="padding-top:28px;">Auth. Signatory</td>
+        </tr>
+      </table>
+    </div>
+  `;
+}
+
+function buildCashReceiptPrintReportHtml(data, metadata) {
+  const copy = buildCashReceiptCopyHtml(data, metadata);
+  return `
+    <div class="voucher-doc cash-receipt-sheet">
+      ${copy}
+      ${copy}
+    </div>
+  `;
+}
+
+const CASH_RECEIPT_PRINT_DOC_CSS = `
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #fff !important;
+    width: 210mm;
+    box-sizing: border-box;
+  }
+  .cash-receipt-sheet {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 9pt;
+    color: #000;
+    width: 210mm;
+    max-width: 210mm;
+    margin: 0 auto;
+    padding: 4mm 0 6mm;
+    box-sizing: border-box;
+    background: #fff !important;
+  }
+  .cash-receipt-copy {
+    width: 148mm;
+    max-width: 148mm;
+    min-height: 132mm;
+    margin: 0 auto;
+    padding: 2mm 3mm;
+    box-sizing: border-box;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .cash-receipt-copy + .cash-receipt-copy {
+    border-top: 1px dashed #444;
+    margin-top: 3mm;
+    padding-top: 4mm;
+  }
+  .cash-receipt-rule {
+    border: none;
+    border-top: 1px solid #000;
+    margin: 4px 0;
+    height: 0;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 6mm;
+  }
+  @media print {
+    html, body { width: auto; }
+    .cash-receipt-sheet { width: 100%; max-width: none; padding: 0; }
+    .cash-receipt-copy + .cash-receipt-copy {
+      border-top: 1px dashed #444;
+    }
+  }
+`;
+
+const VOUCHER_PRINT_DOC_CSS = `
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #fff !important;
+    width: 794px;
+    box-sizing: border-box;
+  }
+  .voucher-doc {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 11px;
+    color: #000;
+    width: 754px;
+    max-width: 754px;
+    margin: 0 auto;
+    padding: 8px 0 24px;
+    box-sizing: border-box;
+    background: #fff !important;
+  }
+  .voucher-doc table { border-collapse: collapse; }
+  .voucher-doc__rule {
+    border: none;
+    border-top: 1px solid #000;
+    margin: 6px 0;
+    height: 0;
+  }
+  @media print {
+    html, body { width: auto; }
+    .voucher-doc { width: 100%; max-width: none; padding: 0; }
+  }
+`;
+
+function buildVoucherPrintReportHtml(data, metadata) {
+  const header = data?.header || {};
+  if (isCashReceiptVoucher(header)) {
+    return buildCashReceiptPrintReportHtml(data, metadata);
+  }
+  const lines = Array.isArray(data?.lines) ? data.lines : [];
+  const company = escHtml(metadata.companyName || header.comp_name || '');
+  const add1 = escHtml(metadata.compAdd1 || '');
+  const add2 = escHtml(metadata.compAdd2 || '');
+  const addressLine = [add1, add2].filter(Boolean).join(', ');
+  const vrTypeRaw = String(header.vr_type ?? '');
+  const vrDate = escHtml(String(header.vr_date ?? ''));
+  const vrNo = escHtml(String(header.vr_no ?? ''));
+  const docTitle = escHtml(voucherPrintDocTitle(vrTypeRaw));
+  const preparedBy = escHtml(String(metadata.userName || metadata.preparedBy || '').trim());
+  const printedOn = escHtml(String(metadata.printedDate || metadata.printDate || ''));
+
+  let tdr = 0;
+  let tcr = 0;
+  let body = '';
+  lines.forEach((l) => {
+    const dr = Number(l.dr_amt ?? 0) || 0;
+    const cr = Number(l.cr_amt ?? 0) || 0;
+    tdr += dr;
+    tcr += cr;
+    const name = escHtml(String(l.name ?? '').trim() || String(l.code ?? ''));
+    const sub = voucherPrintLineSubtext(l);
+    const subHtml = sub
+      ? `<div style="margin-top:2px;padding-left:18px;font-weight:400;line-height:1.25;">${escHtml(sub)}</div>`
+      : '';
+    body += `<tr>
+      <td style="width:68%;text-align:left;vertical-align:top;padding:6px 8px 8px 0;">
+        <div style="font-weight:700;line-height:1.25;">${name}</div>
+        ${subHtml}
+      </td>
+      <td style="width:16%;text-align:right;vertical-align:top;padding:6px 4px 8px 0;">${escHtml(voucherPrintAmtCell(dr))}</td>
+      <td style="width:16%;text-align:right;vertical-align:top;padding:6px 0 8px 4px;">${escHtml(voucherPrintAmtCell(cr))}</td>
+    </tr>`;
+  });
+
+  const amountForWords = Math.max(tdr, tcr) || tdr || tcr;
+  const words = escHtml(voucherPrintAmountInWords(amountForWords));
+  const forCompany = company || 'Company';
+
+  return `
+    <div class="voucher-doc voucher-print-pdf-wrap">
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+        <tr>
+          <td align="center" style="font-weight:700;font-size:13px;padding-bottom:4px;">${company}</td>
+        </tr>
+        ${
+          addressLine
+            ? `<tr><td align="center" style="font-size:10px;line-height:1.35;padding-bottom:8px;">${addressLine}</td></tr>`
+            : ''
+        }
+      </table>
+      <hr class="voucher-doc__rule" />
+      <table width="100%" cellspacing="0" cellpadding="2" style="border-collapse:collapse;font-size:11px;">
+        <tr>
+          <td width="33%" align="left" style="vertical-align:middle;">Vr.Date ${vrDate}</td>
+          <td width="34%" align="center" style="vertical-align:middle;font-weight:700;letter-spacing:0.04em;">${docTitle}</td>
+          <td width="33%" align="right" style="vertical-align:middle;">Vr.No. ${vrNo}</td>
+        </tr>
+      </table>
+      <hr class="voucher-doc__rule" />
+      <table width="100%" cellspacing="0" cellpadding="4" style="border-collapse:collapse;table-layout:fixed;">
+        <colgroup>
+          <col style="width:68%;" />
+          <col style="width:16%;" />
+          <col style="width:16%;" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th align="left" style="font-weight:700;font-size:11px;padding:4px 8px 6px 0;border-bottom:1px solid #000;">PARTICULARS</th>
+            <th align="right" style="font-weight:700;font-size:11px;padding:4px 4px 6px 0;border-bottom:1px solid #000;">Dr.Amount</th>
+            <th align="right" style="font-weight:700;font-size:11px;padding:4px 0 6px 4px;border-bottom:1px solid #000;">Cr.Amount</th>
+          </tr>
+        </thead>
+        <tbody>${body || '<tr><td colspan="3">(No lines)</td></tr>'}</tbody>
+        <tfoot>
+          <tr>
+            <td style="border-top:1px solid #000;padding-top:6px;"></td>
+            <td align="right" style="border-top:1px solid #000;padding-top:6px;font-weight:700;">${escHtml(voucherPrintAmtCell(tdr))}</td>
+            <td align="right" style="border-top:1px solid #000;padding-top:6px;font-weight:700;">${escHtml(voucherPrintAmtCell(tcr))}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <hr class="voucher-doc__rule" />
+      <div style="font-size:10.5px;line-height:1.4;margin:8px 0 12px;text-transform:uppercase;">${words}</div>
+      <hr class="voucher-doc__rule" />
+      <div style="text-align:right;font-weight:700;margin:18px 0 28px;">For ${forCompany}</div>
+      <table width="100%" cellspacing="0" cellpadding="4" style="border-collapse:collapse;font-size:10.5px;margin-top:8px;">
+        <tr>
+          <td width="33%" align="center" valign="top">
+            <div>Prepared By</div>
+            <div style="margin-top:28px;font-size:10px;text-transform:uppercase;">${preparedBy}${preparedBy && printedOn ? ' ' : ''}${printedOn}</div>
+          </td>
+          <td width="34%" align="center" valign="top">Checked By</td>
+          <td width="33%" align="center" valign="top">Auth.Signatory</td>
+        </tr>
+      </table>
+    </div>
+  `;
+}
+
+/** Full HTML document for voucher print / PDF (styles in head — html2pdf needs this). */
+export function buildVoucherPrintDocumentHtml(data, metadata) {
+  const header = data?.header || {};
+  const bodyHtml = buildVoucherPrintReportHtml(data, metadata);
+  const isReceipt = isCashReceiptVoucher(header);
+  const css = isReceipt ? CASH_RECEIPT_PRINT_DOC_CSS : VOUCHER_PRINT_DOC_CSS;
+  const bodyStyle = isReceipt
+    ? 'margin:0;padding:0;background:#fff;width:210mm;box-sizing:border-box;'
+    : 'margin:0;padding:20px 20px 24px;background:#fff;width:794px;box-sizing:border-box;';
+  const viewport = isReceipt ? 'width=794' : 'width=794';
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="${viewport}" />
+    <style>${css}</style>
+  </head>
+  <body style="${bodyStyle}">${bodyHtml}</body>
+</html>`;
+}
+
+async function htmlDocumentToPdfBlob(documentHtml, options) {
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText =
+    'position:fixed;left:0;top:0;width:794px;height:1123px;border:0;opacity:0;pointer-events:none;z-index:-1;';
+  document.body.appendChild(iframe);
+  const idoc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!idoc) {
+    document.body.removeChild(iframe);
+    throw new Error('Could not create print frame for PDF.');
+  }
+  idoc.open();
+  idoc.write(documentHtml);
+  idoc.close();
+  await new Promise((resolve) => {
+    const done = () => resolve();
+    if (iframe.contentWindow?.document?.readyState === 'complete') done();
+    else iframe.onload = done;
+  });
+  await new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+  try {
+    const root =
+      idoc.querySelector('.cash-receipt-sheet') ||
+      idoc.querySelector('.voucher-doc') ||
+      idoc.body;
+    return await html2pdf().set(options).from(root).outputPdf('blob');
+  } finally {
+    document.body.removeChild(iframe);
+  }
+}
+
 export function buildReportHtml(reportType, data, metadata) {
   if (reportType === 'ledger') return buildLedgerReportHtml(data, metadata);
   if (reportType === 'trading-ledger') return buildTradingLedgerReportHtml(data, metadata);
@@ -3785,11 +4331,14 @@ export function buildReportHtml(reportType, data, metadata) {
       orderDocTitle: metadata?.orderDocTitle || 'PURCHASE ORDER',
     });
   }
+  if (reportType === 'voucher-list') return buildVoucherListReportHtml(data, metadata);
+  if (reportType === 'voucher-print') return buildVoucherPrintReportHtml(data, metadata);
   return buildTrialBalanceReportHtml(data, metadata);
 }
 
 function getPdfOptions(metadata, reportType, data) {
   const rowCount = Array.isArray(data) ? data.length : 0;
+  const cashReceiptPrint = reportType === 'voucher-print' && isCashReceiptVoucher(data?.header);
   const stamp = new Date().toISOString().split('T')[0];
   const inv = safeFilenamePart(metadata.invoiceNo || metadata.saleInvNo || '');
   const pbKey = safeFilenamePart(metadata.purchaseBillKey || '');
@@ -3798,11 +4347,15 @@ function getPdfOptions(metadata, reportType, data) {
       ? `${safeFilenamePart(metadata.companyName)}_SaleBill_${inv || 'inv'}_${stamp}.pdf`
       : reportType === 'purchase-bill'
         ? `${safeFilenamePart(metadata.companyName)}_PurchaseBill_${pbKey || 'bill'}_${stamp}.pdf`
+        : reportType === 'voucher-print'
+          ? cashReceiptPrint
+            ? `${safeFilenamePart(metadata.companyName)}_CashReceipt_${safeFilenamePart(data?.header?.vr_no || metadata.voucherKey || 'rcpt')}_${stamp}.pdf`
+            : `${safeFilenamePart(metadata.companyName)}_Voucher_${safeFilenamePart(metadata.voucherKey || 'vr')}_${stamp}.pdf`
         : reportType === 'stock-sum-detail'
           ? `${safeFilenamePart(metadata.companyName)}_StockDetail_${safeFilenamePart(metadata.itemCode || 'item')}_${stamp}.pdf`
           : `${safeFilenamePart(metadata.companyName)}_${reportType}_${stamp}.pdf`;
   const html2canvas =
-    reportType === 'purchase-list'
+    reportType === 'purchase-list' || reportType === 'voucher-list'
       ? {
           scale: 1.75,
           useCORS: true,
@@ -3844,6 +4397,17 @@ function getPdfOptions(metadata, reportType, data) {
               scrollX: 0,
               scrollY: 0,
             }
+          : reportType === 'voucher-print'
+            ? {
+                scale: cashReceiptPrint ? 1.85 : 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff',
+                windowWidth: 794,
+                width: 794,
+                scrollX: 0,
+                scrollY: 0,
+              }
           : { scale: 2, useCORS: true };
 
   const base = {
@@ -3852,8 +4416,11 @@ function getPdfOptions(metadata, reportType, data) {
       reportType === 'purchase-bill' ||
       reportType === 'dispatch-challan-print' ||
       reportType === 'sales-order-print' ||
-      reportType === 'purchase-order-print'
-        ? 8
+      reportType === 'purchase-order-print' ||
+      reportType === 'voucher-print'
+        ? cashReceiptPrint
+          ? 5
+          : 8
         : reportType === 'balance-sheet'
           ? 6
           : 10,
@@ -3866,7 +4433,8 @@ function getPdfOptions(metadata, reportType, data) {
         reportType === 'purchase-bill' ||
         reportType === 'dispatch-challan-print' ||
         reportType === 'sales-order-print' ||
-        reportType === 'purchase-order-print'
+        reportType === 'purchase-order-print' ||
+        reportType === 'voucher-print'
           ? 'portrait'
           : 'landscape',
       unit: 'mm',
@@ -3882,6 +4450,10 @@ function getPdfOptions(metadata, reportType, data) {
     };
   }
 
+  if (reportType === 'voucher-print') {
+    base.pagebreak = { mode: ['avoid-all', 'css', 'legacy'] };
+  }
+
   return base;
 }
 
@@ -3889,8 +4461,13 @@ function getPdfOptions(metadata, reportType, data) {
  * @returns {Promise<{ blob: Blob, filename: string }>}
  */
 export async function getPdfBlob(reportType, data, metadata) {
-  const htmlContent = buildReportHtml(reportType, data, metadata);
   const options = getPdfOptions(metadata, reportType, data);
+  if (reportType === 'voucher-print') {
+    const docHtml = buildVoucherPrintDocumentHtml(data, metadata);
+    const blob = await htmlDocumentToPdfBlob(docHtml, options);
+    return { blob, filename: options.filename };
+  }
+  const htmlContent = buildReportHtml(reportType, data, metadata);
   const blob = await html2pdf().set(options).from(htmlContent).outputPdf('blob');
   return { blob, filename: options.filename };
 }

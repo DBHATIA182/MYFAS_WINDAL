@@ -40,10 +40,13 @@ export default function MasterPartyPickList({
   getTriggerLabel,
   getOptionLabel,
   getOptionHint,
+  getOptionCity,
   getFilterText,
   getOptionTitle,
   panelVariant,
   openOnFocus = false,
+  showSearchIcon = false,
+  searchBtnTabIndex,
   onAfterSelect,
 }) {
   const triggerLabel = getTriggerLabel ?? getLabel;
@@ -51,10 +54,12 @@ export default function MasterPartyPickList({
   const filterFor = getFilterText
     ?? ((o) => {
       const hint = getOptionHint ? getOptionHint(o) : '';
-      return `${optionLabel(o)} ${hint}`.trim();
+      const city = getOptionCity ? getOptionCity(o) : '';
+      return `${optionLabel(o)} ${hint} ${city}`.trim();
     });
 
   const triggerRef = useRef(null);
+  const searchBtnRef = useRef(null);
   const panelRef = useRef(null);
   const filterRef = useRef(null);
   const suppressToggleRef = useRef(false);
@@ -113,33 +118,40 @@ export default function MasterPartyPickList({
 
     const vv = visibleViewport();
     const mobile = window.matchMedia(MOBILE_MQ).matches;
-    const minW = panelVariant === 'stateName' ? 320 : PANEL_MIN_W;
+    const minW =
+      panelVariant === 'voucherParty' ? 640
+      : panelVariant === 'stateName' ? 320
+      : PANEL_MIN_W;
 
     if (mobile) {
       const pad = VIEWPORT_PAD;
-      const maxH = Math.max(220, Math.min(420, Math.floor(vv.height * 0.52)));
-      const layoutBottom = window.innerHeight;
-      const visualBottom = vv.top + vv.height;
+      const maxH = Math.max(260, Math.min(480, Math.floor(vv.height * 0.78)));
+      const top = Math.max(vv.top + pad, vv.top + vv.height - maxH - pad);
       setPanelStyle({
         position: 'fixed',
         left: vv.left + pad,
         width: Math.max(200, vv.width - pad * 2),
         height: maxH,
         maxHeight: maxH,
-        top: 'auto',
-        bottom: Math.max(pad, layoutBottom - visualBottom + pad),
+        top,
+        bottom: 'auto',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        zIndex: 11000,
+        zIndex: 12050,
       });
       return;
     }
 
-    const r = el.getBoundingClientRect();
-    const width = Math.min(Math.max(r.width, minW), vv.width - VIEWPORT_PAD * 2);
+    const anchorEl =
+      showSearchIcon && searchBtnRef.current ? searchBtnRef.current : el;
+    const r = anchorEl.getBoundingClientRect();
+    const width = Math.min(
+      panelVariant === 'voucherParty' ? Math.max(minW, 640) : Math.max(r.width, minW),
+      vv.width - VIEWPORT_PAD * 2
+    );
     const left = Math.min(
-      Math.max(vv.left + VIEWPORT_PAD, r.left),
+      Math.max(vv.left + VIEWPORT_PAD, r.right - width),
       vv.left + vv.width - width - VIEWPORT_PAD
     );
 
@@ -161,6 +173,7 @@ export default function MasterPartyPickList({
       top,
       left,
       width,
+      minWidth: panelVariant === 'voucherParty' ? Math.min(minW, width) : undefined,
       height: maxHeight,
       maxHeight,
       bottom: 'auto',
@@ -169,7 +182,7 @@ export default function MasterPartyPickList({
       overflow: 'hidden',
       zIndex: 11000,
     });
-  }, [panelVariant]);
+  }, [panelVariant, showSearchIcon]);
 
   useLayoutEffect(() => {
     if (open) updatePanelPosition();
@@ -214,6 +227,7 @@ export default function MasterPartyPickList({
       const t = e.target;
       if (panelRef.current?.contains(t)) return;
       if (triggerRef.current?.contains(t)) return;
+      if (searchBtnRef.current?.contains(t)) return;
       close();
     };
     document.addEventListener('pointerdown', onOutside);
@@ -319,15 +333,24 @@ export default function MasterPartyPickList({
     [filtered, getValue, selectOption, close, moveHighlight]
   );
 
-  const handleTriggerFocus = () => {
-    if (disabled || !openOnFocus || selectingRef.current) return;
+  const openSearch = useCallback(() => {
+    if (disabled) return;
     setFilter('');
     setHighlightIndex(0);
     setOpen(true);
+  }, [disabled]);
+
+  const handleTriggerFocus = () => {
+    if (disabled || !openOnFocus || showSearchIcon || selectingRef.current) return;
+    openSearch();
   };
 
   const handleTrigger = (e) => {
     if (disabled || suppressToggleRef.current) return;
+    if (showSearchIcon) {
+      e.preventDefault();
+      return;
+    }
     e.preventDefault();
     if (open) close();
     else setOpen(true);
@@ -355,7 +378,7 @@ export default function MasterPartyPickList({
         <>
           <button
             type="button"
-            className={`master-party-pick__backdrop${isMobile ? ' master-party-pick__backdrop--pass' : ''}`}
+            className="master-party-pick__backdrop"
             aria-label="Close"
             tabIndex={-1}
             onClick={close}
@@ -410,10 +433,12 @@ export default function MasterPartyPickList({
                 onChange={(e) => setFilter(e.target.value)}
                 onFocus={handleFilterFocus}
                 onBlur={() => {
+                  if (isMobile) return;
                   window.setTimeout(() => {
                     if (
                       !panelRef.current?.contains(document.activeElement) &&
-                      !triggerRef.current?.contains(document.activeElement)
+                      !triggerRef.current?.contains(document.activeElement) &&
+                      !searchBtnRef.current?.contains(document.activeElement)
                     ) {
                       close();
                     }
@@ -422,6 +447,18 @@ export default function MasterPartyPickList({
                 onKeyDown={handleListKeyDown}
               />
             </div>
+            {panelVariant === 'voucherParty' && getOptionHint && getOptionCity ? (
+              <div className="master-party-pick__cols-head" aria-hidden="true">
+                <span className="master-party-pick__cols-head-code">Code</span>
+                <span className="master-party-pick__cols-head-name">Name</span>
+                <span className="master-party-pick__cols-head-city">City</span>
+              </div>
+            ) : panelVariant === 'voucherParty' && getOptionHint ? (
+              <div className="master-party-pick__cols-head master-party-pick__cols-head--dual" aria-hidden="true">
+                <span className="master-party-pick__cols-head-code">Code</span>
+                <span className="master-party-pick__cols-head-name">Name</span>
+              </div>
+            ) : null}
             <div className="master-party-pick__list" onTouchMove={(e) => e.stopPropagation()}>
               {filtered.length === 0 ? (
                 <div className="master-party-pick__empty">
@@ -441,7 +478,8 @@ export default function MasterPartyPickList({
                       aria-selected={String(value) === v}
                       className={[
                         'master-party-pick__opt',
-                        getOptionHint ? 'master-party-pick__opt--dual' : '',
+                        getOptionHint && getOptionCity ? 'master-party-pick__opt--triple' : '',
+                        getOptionHint && !getOptionCity ? 'master-party-pick__opt--dual' : '',
                         idx === highlightIndex ? 'is-highlighted' : '',
                         String(value) === v && idx !== highlightIndex ? 'is-saved' : '',
                       ]
@@ -455,7 +493,13 @@ export default function MasterPartyPickList({
                       }}
                       onClick={(e) => handleOptionActivate(v, e)}
                     >
-                      {getOptionHint ? (
+                      {getOptionHint && getOptionCity ? (
+                        <>
+                          <span className="master-party-pick__opt-code">{optionLabel(o)}</span>
+                          <span className="master-party-pick__opt-name">{getOptionHint(o)}</span>
+                          <span className="master-party-pick__opt-city">{getOptionCity(o) || '—'}</span>
+                        </>
+                      ) : getOptionHint ? (
                         <>
                           <span className="master-party-pick__opt-code">{optionLabel(o)}</span>
                           <span className="master-party-pick__opt-hint">{getOptionHint(o)}</span>
@@ -475,7 +519,15 @@ export default function MasterPartyPickList({
     : null;
 
   return (
-    <div className={`master-party-pick${open ? ' master-party-pick--open' : ''}`}>
+    <div
+      className={[
+        'master-party-pick',
+        open ? 'master-party-pick--open' : '',
+        showSearchIcon ? 'master-party-pick--with-search-btn' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <button
         ref={triggerRef}
         type="button"
@@ -487,6 +539,10 @@ export default function MasterPartyPickList({
         onClick={handleTrigger}
         onFocus={handleTriggerFocus}
         onKeyDown={(e) => {
+          if (showSearchIcon) {
+            onKeyDown?.(e);
+            return;
+          }
           if (!open && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')) {
             e.preventDefault();
             if (!disabled) setOpen(true);
@@ -498,10 +554,30 @@ export default function MasterPartyPickList({
         <span className={`master-party-pick__value${!selected && !value ? ' is-placeholder' : ''}`}>
           {displayText}
         </span>
-        <span className="master-party-pick__chevron" aria-hidden>
-          ▾
-        </span>
+        {!showSearchIcon ? (
+          <span className="master-party-pick__chevron" aria-hidden>
+            ▾
+          </span>
+        ) : null}
       </button>
+      {showSearchIcon ? (
+        <button
+          ref={searchBtnRef}
+          type="button"
+          className="master-party-pick__search-btn"
+          disabled={disabled}
+          title="Search"
+          aria-label={`Search ${title}`}
+          tabIndex={searchBtnTabIndex}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openSearch();
+          }}
+        >
+          ?
+        </button>
+      ) : null}
       {panel}
     </div>
   );

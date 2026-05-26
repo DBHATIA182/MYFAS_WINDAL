@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { toInputDateString, toDisplayDate } from '../utils/dateFormat';
+import { applyCdCalToBillRow } from '../utils/voucherCdCal';
 
 const reqOpts = { withCredentials: true, timeout: 120000 };
 
@@ -38,6 +39,7 @@ export default function VoucherPendingBillsModal({
   vDate,
   pndBills,
   vouIntShow,
+  gCdCal = 'N',
   onApply,
 }) {
   const [mode, setMode] = useState('manual');
@@ -76,7 +78,14 @@ export default function VoucherPendingBillsModal({
         },
         ...reqOpts,
       });
-      let list = Array.isArray(data) ? data.map((r) => ({ ...r, ADJ_AMT: '' })) : [];
+      let list = Array.isArray(data)
+        ? data.map((r) => ({
+            ...r,
+            ADJ_AMT: '',
+            CD_PER: r.CD_PER ?? r.cd_per ?? '',
+            CD_AMT: r.CD_AMT ?? r.cd_amt ?? '',
+          }))
+        : [];
       let remaining = Number(autoAmt) || 0;
       if (remaining > 0) {
         list = list.map((r) => {
@@ -120,6 +129,23 @@ export default function VoucherPendingBillsModal({
     setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ADJ_AMT: s } : r)));
   };
 
+  const setCdPer = (idx, val) => {
+    const s = String(val ?? '').replace(/[^\d.]/g, '');
+    setRows((prev) =>
+      prev.map((r, i) => {
+        if (i !== idx) return r;
+        const next = { ...r, CD_PER: s };
+        if (String(gCdCal).toUpperCase() === 'Y') {
+          return { ...next, ...applyCdCalToBillRow(next) };
+        }
+        return next;
+      })
+    );
+  };
+
+  const showCdCal = String(gCdCal).toUpperCase() === 'Y';
+  const colSpan = showCdCal ? 10 : 7;
+
   const fillAdjFromTotal = (idx) => {
     setRows((prev) =>
       prev.map((r, i) => {
@@ -150,7 +176,10 @@ export default function VoucherPendingBillsModal({
         if (e.target === e.currentTarget) onClose?.();
       }}
     >
-      <div className="sale-bill-modal voucher-pending-modal" role="dialog">
+      <div
+        className={`sale-bill-modal voucher-pending-modal${showCdCal ? ' voucher-pending-modal--cd-cal' : ''}`}
+        role="dialog"
+      >
         <div className="sale-bill-modal-head voucher-pending-modal__head">
           <div>
             <h3>Pending bills</h3>
@@ -203,16 +232,19 @@ export default function VoucherPendingBillsModal({
                   <th>Bill date</th>
                   <th>Bill no</th>
                   <th>Type</th>
+                  {showCdCal ? <th>Bill amt</th> : null}
                   <th>Cur bal</th>
                   <th>Int</th>
                   <th>Total</th>
+                  {showCdCal ? <th>CD %</th> : null}
+                  {showCdCal ? <th>CD amt</th> : null}
                   <th>Adj amt</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="voucher-pending-table__empty">
+                    <td colSpan={colSpan} className="voucher-pending-table__empty">
                       {loading ? 'Loading…' : 'No pending bills.'}
                     </td>
                   </tr>
@@ -222,6 +254,7 @@ export default function VoucherPendingBillsModal({
                       <td>{toDisplayDate(toInputDateString(r.BILL_DATE ?? r.bill_date))}</td>
                       <td>{r.BILL_NO ?? r.bill_no}</td>
                       <td>{r.B_TYPE ?? r.b_type}</td>
+                      {showCdCal ? <td className="num">{fmtAmt(r.DR_AMT ?? r.dr_amt)}</td> : null}
                       <td className="num">{fmtAmt(r.CUR_BAL ?? r.cur_bal)}</td>
                       <td className="num">{fmtAmt(r.INT_AMT ?? r.int_amt)}</td>
                       <td
@@ -239,6 +272,21 @@ export default function VoucherPendingBillsModal({
                       >
                         {fmtAmt(billTotal(r))}
                       </td>
+                      {showCdCal ? (
+                        <td>
+                          <input
+                            className="form-input voucher-pending-cd-per"
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0"
+                            value={r.CD_PER ?? r.cd_per ?? ''}
+                            onChange={(e) => setCdPer(i, e.target.value)}
+                          />
+                        </td>
+                      ) : null}
+                      {showCdCal ? (
+                        <td className="num">{fmtAmt(r.CD_AMT ?? r.cd_amt)}</td>
+                      ) : null}
                       <td>
                         <input
                           className="form-input voucher-pending-adj"
@@ -256,7 +304,7 @@ export default function VoucherPendingBillsModal({
               {rows.length > 0 ? (
                 <tfoot>
                   <tr>
-                    <td colSpan={6} className="num">
+                    <td colSpan={colSpan - 1} className="num">
                       <strong>Total adjustment</strong>
                     </td>
                     <td className="num">

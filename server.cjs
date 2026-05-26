@@ -1605,6 +1605,112 @@ async function insertVoucherBillsRow(conn, binds) {
   await conn.execute(sql, execBinds, { autoCommit: false });
 }
 
+/** Delete linked CD/INT transfer JV (TYPE=N) before edit/delete of the main voucher. */
+async function deleteLinkedVoucherTransferJv(conn, comp_code, { vr_type, vr_date, vr_no }) {
+  const vt = normalizeVrType(vr_type);
+  const vd = String(vr_date ?? '').trim();
+  const vn = Math.floor(Number(vr_no ?? 0));
+  if (!vt || !vd || !vn) return;
+  await deleteVoucherDocumentRows(conn, {
+    comp_code,
+    vr_type: vt,
+    vr_date: vd,
+    vr_no: vn,
+    type: 'N',
+  });
+}
+
+/** FoxPro G_CD_TRF / G_INT_TRF — separate JV document lines + ledger + bills. */
+async function insertVoucherTransferJvPair(conn, opts) {
+  const amount = Number(opts.amount) || 0;
+  if (amount === 0) return;
+  const party_code = Math.floor(Number(opts.party_code));
+  const contra_code = Math.floor(Number(opts.contra_code));
+  if (!party_code || !contra_code) return;
+
+  const xferType = 'N';
+  const jvBase = {
+    comp_code: opts.comp_code,
+    comp_year: opts.comp_year,
+    user_name: opts.user_name,
+    vr_type: normalizeVrType(opts.transfer_vr_type) || 'JV',
+    vr_date: String(opts.transfer_vr_date).trim(),
+    type: xferType,
+    vr_no: Math.floor(Number(opts.transfer_vr_no)),
+    trn_no: Math.floor(Number(opts.trn_no)),
+    v_date: String(opts.v_date).trim(),
+    chq_no: String(opts.chq_no ?? '').trim().slice(0, 8),
+    detail: String(opts.detail ?? '').trim().slice(0, 254),
+    bill_date: opts.bill_date ? String(opts.bill_date).trim() : null,
+    bill_no:
+      opts.bill_no != null && String(opts.bill_no).trim() !== ''
+        ? Math.floor(Number(opts.bill_no))
+        : null,
+    b_type: String(opts.b_type ?? ' ').trim() || ' ',
+    int_amt: 0,
+    cd_amt: 0,
+    cd_per: 0,
+    cd_vr_type: null,
+    cd_vr_date: null,
+    cd_vr_no: null,
+    int_vr_type: null,
+    int_vr_date: null,
+    int_vr_no: null,
+  };
+
+  await insertVoucherLineRow(conn, {
+    ...jvBase,
+    code: party_code,
+    dc_code: contra_code,
+    dr_amt: 0,
+    cr_amt: amount,
+  });
+  await insertVoucherLedgerRow(conn, {
+    ...jvBase,
+    code: party_code,
+    dc_code: contra_code,
+    dr_amt: 0,
+    cr_amt: amount,
+  });
+  await insertVoucherLineRow(conn, {
+    ...jvBase,
+    code: contra_code,
+    dc_code: party_code,
+    dr_amt: amount,
+    cr_amt: 0,
+  });
+  await insertVoucherLedgerRow(conn, {
+    ...jvBase,
+    code: contra_code,
+    dc_code: party_code,
+    dr_amt: amount,
+    cr_amt: 0,
+  });
+
+  const billsKind = opts.billsKind;
+  if (billsKind === 'cd') {
+    await insertVoucherBillsRow(conn, {
+      ...jvBase,
+      code: party_code,
+      dr_amt: 0,
+      cr_amt: amount,
+      cd_per: Number(opts.cd_per) || 0,
+      cd_amt: amount,
+      int_amt: 0,
+    });
+  } else if (billsKind === 'int') {
+    await insertVoucherBillsRow(conn, {
+      ...jvBase,
+      code: party_code,
+      dr_amt: 0,
+      cr_amt: amount,
+      int_amt: amount,
+      cd_per: 0,
+      cd_amt: 0,
+    });
+  }
+}
+
 function rightsPermissionsFromString(s, legacyFlag, flagName) {
   const str = String(s || '');
   const ch = (i) => (str.length > i ? str.charAt(i) : '');
@@ -9448,6 +9554,7 @@ app.get('/api/voucher-list', async (req, res) => {
         A.BILL_DATE,
         A.BILL_NO,
         A.B_TYPE,
+        A.CHQ_NO,
         A.DETAIL,
         A.DR_AMT,
         A.CR_AMT,
@@ -9524,7 +9631,7 @@ app.get('/api/voucher-entry-lookups', async (req, res) => {
       return res.status(400).json({ error: 'comp_code and comp_uid are required' });
     }
     const partySql = `
-      SELECT CODE, NAME, CITY, NVL(SCHEDULE, 0) AS SCHEDULE
+      SELECT CODE, NAME, CITY, PAN, NVL(SCHEDULE, 0) AS SCHEDULE
       FROM MASTER
       WHERE COMP_CODE = :comp_code
       ORDER BY NAME, CITY, CODE`;
@@ -9881,6 +9988,16 @@ app.post('/api/voucher-save', async (req, res) => {
     const fy = assertSaleBillDateInFinancialYear(vr_date, compdet);
     if (!fy.ok) return res.status(400).json({ error: fy.error });
 
+    if (vr_type === 'JV') {
+      const sumDr = lines.reduce((s, l) => s + (Number(l.dr_amt) || 0), 0);
+      const sumCr = lines.reduce((s, l) => s + (Number(l.cr_amt) || 0), 0);
+      if (Math.abs(sumDr - sumCr) > 0.005) {
+        return res.status(400).json({
+          error: `Journal voucher is not balanced (Dr ${sumDr.toFixed(2)} / Cr ${sumCr.toFixed(2)})`,
+        });
+      }
+    }
+
     let vr_no = header.vr_no != null ? Math.floor(Number(header.vr_no)) : null;
     const orig = body.original || {};
     const origKey =
@@ -9925,12 +10042,32 @@ app.post('/api/voucher-save', async (req, res) => {
     conn = await getDbConnection(connCfg);
 
     if (mode === 'delete') {
+      await deleteLinkedVoucherTransferJv(conn, comp_code, {
+        vr_type: header.cd_vr_type,
+        vr_date: header.cd_vr_date,
+        vr_no: header.cd_vr_no,
+      });
+      await deleteLinkedVoucherTransferJv(conn, comp_code, {
+        vr_type: header.int_vr_type,
+        vr_date: header.int_vr_date,
+        vr_no: header.int_vr_no,
+      });
       await deleteVoucherDocumentRows(conn, { comp_code, ...origKey });
       await conn.commit();
       return res.json({ ok: true, mode: 'delete' });
     }
 
     if (mode === 'edit') {
+      await deleteLinkedVoucherTransferJv(conn, comp_code, {
+        vr_type: header.cd_vr_type,
+        vr_date: header.cd_vr_date,
+        vr_no: header.cd_vr_no,
+      });
+      await deleteLinkedVoucherTransferJv(conn, comp_code, {
+        vr_type: header.int_vr_type,
+        vr_date: header.int_vr_date,
+        vr_no: header.int_vr_no,
+      });
       await deleteVoucherDocumentRows(conn, { comp_code, ...origKey });
     }
 
@@ -9952,15 +10089,31 @@ app.post('/api/voucher-save', async (req, res) => {
 
     const sumCd = lines.reduce((s, l) => s + (Number(l.cd_amt) || 0), 0);
     const sumInt = lines.reduce((s, l) => s + (Number(l.int_amt) || 0), 0);
+    if (ctx.G_CD_TRF === 'Y' && sumCd !== 0 && (!ctx.G_CD_CODE || ctx.G_CD_CODE <= 0)) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'CD transfer account (CD_CODE) is not set in company settings' });
+    }
+    if (ctx.G_INT_TRF === 'Y' && sumInt !== 0 && (!ctx.G_INT_CODE || ctx.G_INT_CODE <= 0)) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Interest transfer account (INT_CODE) is not set in company settings' });
+    }
     if (ctx.G_CD_TRF === 'Y' && sumCd !== 0 && (mode === 'add' || cd_vr_no === 0)) {
       cd_vr_type = 'JV';
       cd_vr_date = vr_date;
       cd_vr_no = await fetchVoucherNextNo(comp_code, comp_uid, { vr_type: 'JV', vr_date, type: 'N' });
+    } else if (sumCd === 0) {
+      cd_vr_type = null;
+      cd_vr_date = null;
+      cd_vr_no = 0;
     }
     if (ctx.G_INT_TRF === 'Y' && sumInt !== 0 && (mode === 'add' || int_vr_no === 0)) {
       int_vr_type = 'JV';
       int_vr_date = vr_date;
       int_vr_no = await fetchVoucherNextNo(comp_code, comp_uid, { vr_type: 'JV', vr_date, type: 'N' });
+    } else if (sumInt === 0) {
+      int_vr_type = null;
+      int_vr_date = null;
+      int_vr_no = 0;
     }
 
     let trn = 1;
@@ -10047,6 +10200,51 @@ app.post('/api/voucher-save', async (req, res) => {
           ...base,
           dr_amt: billDr,
           cr_amt: billCr,
+        });
+      }
+
+      if (ctx.G_CD_TRF === 'Y' && cd_amt !== 0 && cd_vr_no) {
+        await insertVoucherTransferJvPair(conn, {
+          comp_code,
+          comp_year,
+          user_name,
+          transfer_vr_type: cd_vr_type,
+          transfer_vr_date: cd_vr_date,
+          transfer_vr_no: cd_vr_no,
+          trn_no: trn,
+          party_code: code,
+          contra_code: ctx.G_CD_CODE,
+          amount: cd_amt,
+          chq_no,
+          detail,
+          v_date,
+          bill_date,
+          bill_no,
+          b_type,
+          billsKind: 'cd',
+          cd_per,
+        });
+      }
+
+      if (ctx.G_INT_TRF === 'Y' && int_amt !== 0 && int_vr_no) {
+        await insertVoucherTransferJvPair(conn, {
+          comp_code,
+          comp_year,
+          user_name,
+          transfer_vr_type: int_vr_type,
+          transfer_vr_date: int_vr_date,
+          transfer_vr_no: int_vr_no,
+          trn_no: trn,
+          party_code: code,
+          contra_code: ctx.G_INT_CODE,
+          amount: int_amt,
+          chq_no,
+          detail,
+          v_date,
+          bill_date,
+          bill_no,
+          b_type,
+          billsKind: 'int',
         });
       }
 

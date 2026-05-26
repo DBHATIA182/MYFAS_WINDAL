@@ -24,8 +24,30 @@
 .app--desktop .slide-22-dispatch-challan.sale-entry-desktop,
 .app--desktop .slide-23-sales-order.sale-entry-desktop,
 .app--desktop .slide-24-purchase-order.sale-entry-desktop,
-.app--desktop .slide-25-purchase-bill.sale-entry-desktop {
+.app--desktop .slide-25-purchase-bill.sale-entry-desktop,
+.app--desktop .slide-28-voucher-entry.sale-entry-desktop,
+.app--desktop .slide-28-voucher-list.sale-entry-desktop {
   padding-bottom: 0.45rem;
+}
+
+.app--desktop .slide-28-voucher-entry.sale-entry-desktop > .voucher-entry-card {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app--desktop .slide-28-voucher-entry.sale-entry-desktop > .sale-entry-top-bar {
+  flex-shrink: 0;
+  margin-bottom: 0.22rem;
+}
+
+.app--desktop .slide-28-voucher-entry .voucher-entry-lines-wrap {
+  flex: 1 1 0;
+  min-height: 8rem;
+  max-height: none !important;
+  overflow: auto;
 }
 
 /* —— Compact screen header —— */
