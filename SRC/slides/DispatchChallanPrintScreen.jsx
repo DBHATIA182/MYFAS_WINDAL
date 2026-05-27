@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { buildReportHtml, generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
 import { DcActionBar } from '../components/DispatchChallanActionBar';
+import { printHtmlDocument } from '../utils/openPrintPreviewWindow';
 
 const reqOpts = { withCredentials: true, timeout: 120000 };
 
@@ -99,6 +100,7 @@ export default function DispatchChallanPrintScreen({
     typeof window !== 'undefined' ? window.innerWidth <= 768 : false
   );
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const previewFrameRef = useRef(null);
 
   useEffect(() => {
     const onResize = () => setMobilePdfPreview(window.innerWidth <= 768);
@@ -248,26 +250,9 @@ export default function DispatchChallanPrintScreen({
     );
   }, [pdfData, pdfMeta, shareText]);
 
-  const openPrintWindow = useCallback(() => {
-    if (!previewIframeHtml) {
-      alert('Show challans first.');
-      return null;
-    }
-    const w = window.open('', '_blank');
-    if (!w) {
-      alert('Allow pop-ups to print.');
-      return null;
-    }
-    w.document.write(previewIframeHtml);
-    w.document.close();
-    return w;
+  const handleBrowserPrint = useCallback(() => {
+    printHtmlDocument(previewIframeHtml, { existingFrame: previewFrameRef.current });
   }, [previewIframeHtml]);
-
-  const handleBrowserPrint = () => {
-    const w = openPrintWindow();
-    if (!w) return;
-    w.onload = () => w.print();
-  };
 
   const hasChallans = challans.length > 0;
   const previewReady = !!previewIframeHtml;
@@ -339,6 +324,7 @@ export default function DispatchChallanPrintScreen({
           </div>
           <div className="sale-bill-modal-body sale-bill-print-body">
             <iframe
+              ref={previewFrameRef}
               title="Dispatch challan mobile preview"
               className="sale-bill-mobile-pdf-preview"
               srcDoc={previewIframeHtml}
@@ -435,6 +421,7 @@ export default function DispatchChallanPrintScreen({
           </div>
           {challans.length ? (
             <iframe
+              ref={previewFrameRef}
               title="Dispatch challan print preview"
               className="dc-print-preview-frame"
               srcDoc={previewIframeHtml}

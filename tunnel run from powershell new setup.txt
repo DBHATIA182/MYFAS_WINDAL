@@ -1,0 +1,14 @@
+In PowerShell, scripts in the current folder need a .\ prefix:
+
+cd E:\windal\apptest
+.\setup-windal-tunnel.cmd login
+Then create the tunnel:
+
+.\setup-windal-tunnel.cmd dal-srfipulses
+Start services:
+
+.\start-windal-stack.cmd
+In CMD.exe (not PowerShell), you can omit .\:
+
+
+setup-windal-tunnel.cmd login

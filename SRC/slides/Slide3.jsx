@@ -70,6 +70,7 @@ const REPORT_MENU = [
     subtitle: 'Purchase documents',
     items: [
       { id: 'purchase-order-entry', title: 'Purchase Order', description: 'Add, edit, or delete purchase orders (SORDER type PO)' },
+      { id: 'grn-entry', title: 'Goods Receipt Note', description: 'Goods receipt notes (ISSUE type I); pending PO on lines' },
       { id: 'purchase-bill-entry', title: 'Purchase Bill', description: 'Add, edit, or delete purchase bills (PURCHASE type PU); posts stock & ledger' },
       { id: 'purchase-list', title: 'Purchase List', description: 'PURCHASE lines (PU, DN) with filters; DN shown as negative' },
     ],

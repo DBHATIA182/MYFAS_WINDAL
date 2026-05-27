@@ -6792,6 +6792,715 @@ app.post('/api/dispatch-challan-save', async (req, res) => {
 });
 
 
+
+/** Goods receipt note (ISSUE TYPE I): DAL.USERS F11 — pos 1–4 = open, add, edit, delete. */
+async function fetchGrnUserF11String(user_name, comp_uid) {
+  const u = String(user_name || '').trim().toUpperCase();
+  if (!u) return { f11: '', source: 'empty_user' };
+  const schemas = isEffectiveCompUid(comp_uid) ? [String(comp_uid).trim(), null] : [null];
+  const tables = ['DAL.USERS', 'USERS'];
+  for (const sch of schemas) {
+    for (const t of tables) {
+      const sql = `SELECT F11 FROM ${t} WHERE UPPER(TRIM(USER_NAME)) = :u AND ROWNUM = 1`;
+      try {
+        const rows = await runQuery(sql, { u }, sch, { suppressDbErrorLog: true });
+        const raw = rows?.[0]?.F11 ?? rows?.[0]?.f11;
+        if (raw != null && String(raw).trim() !== '') {
+          return { f11: String(raw).trim(), source: t };
+        }
+      } catch (err) {
+        if (!isLoginOptionalTableError(err) && !isUnknownUsersColumnError(err)) {
+          /* ignore */
+        }
+      }
+    }
+  }
+  return { f11: '', source: 'none' };
+}
+
+function grnPermissionsFromF11(f11) {
+  const s = String(f11 || '');
+  const bit = (i) => (s.length > i ? s.charAt(i) === '1' : false);
+  if (!s) {
+    return { canOpen: true, canAdd: true, canEdit: true, canDelete: true, flags: 'legacy_no_f11' };
+  }
+  return {
+    canOpen: bit(0),
+    canAdd: bit(1),
+    canEdit: bit(2),
+    canDelete: bit(3),
+    flags: 'f11',
+  };
+}
+
+const GRN_TYPE = 'I';
+const GRN_CO = 'I';
+const GRN_PARTY_SCHEDULE = null;
+
+function clampGrnWeightSql(n) {
+  const x = Number(n) || 0;
+  const c = Math.max(0, Math.min(SALE_BILL_MAX_WEIGHT, x));
+  return Math.round(c * 1000) / 1000;
+}
+
+function clampGrnAmountSql(n) {
+  const x = Number(n) || 0;
+  return Math.round(x * 100) / 100;
+}
+
+app.get('/api/grn-user-permissions', async (req, res) => {
+  try {
+    const { comp_uid, user_name } = req.query;
+    if (comp_uid == null || String(comp_uid).trim() === '' || !user_name) {
+      return res.status(400).json({ error: 'comp_uid and user_name are required' });
+    }
+    const { f11, source } = await fetchGrnUserF11String(user_name, comp_uid);
+    res.json({ f11, source, ...grnPermissionsFromF11(f11) });
+  } catch (err) {
+    console.error('❌ grn-user-permissions error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/grn-form-context', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, comp_year } = req.query;
+    if (!comp_code || comp_uid == null || String(comp_uid).trim() === '') {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const row = await runCompdetHeaderRow(comp_code, comp_uid, parseCompYearOpt(comp_year));
+    if (!row) return res.status(404).json({ error: 'compdet row not found' });
+    enrichCompdetSalePrintGlobals(row);
+    const tv = (k) => {
+      const v = rowValueCI(row, k);
+      if (v == null || typeof v === 'object') return null;
+      return String(v).trim();
+    };
+    res.json({
+      G_FIN_YEAR: row.G_FIN_YEAR ?? computeGFinYearFromCompdetRow(row),
+      G_COMP_YEAR: Number(row.COMP_YEAR ?? row.comp_year ?? 0) || 0,
+      G_AMT_CAL: String(tv('amt_cal') ?? 'K').trim().toUpperCase() || 'K',
+      COMP_S_DT: tv('comp_s_dt'),
+      COMP_E_DT: tv('comp_e_dt'),
+      MTYPE: GRN_TYPE,
+    });
+  } catch (err) {
+    console.error('❌ grn-form-context error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/grn-lookups', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const partySql = `
+      SELECT M.CODE, M.NAME, M.CITY, M.GST_NO
+      FROM MASTER M
+      WHERE M.COMP_CODE = :comp_code
+      ORDER BY M.NAME, M.CITY, M.CODE`;
+    const plantSql = `SELECT PLANT_CODE, PLANT_NAME FROM PLANT WHERE COMP_CODE = :comp_code ORDER BY PLANT_CODE`;
+    const markaSql = `SELECT DISTINCT TRIM(MARKA) AS MARKA FROM marka WHERE COMP_CODE = :comp_code ORDER BY 1`;
+    const itemSql = `
+      SELECT ITEM_CODE, ITEM_NAME, NVL(UNIT_WGT, 0) AS UNIT_WGT
+      FROM ITEMMAST
+      WHERE COMP_CODE = :comp_code
+      ORDER BY ITEM_NAME, ITEM_CODE`;
+    const [parties, plants, markas, items] = await Promise.all([
+      runQuery(partySql, { comp_code }, comp_uid),
+      runQuery(plantSql, { comp_code }, comp_uid),
+      runQuery(markaSql, { comp_code }, comp_uid).catch(() => []),
+      runQuery(itemSql, { comp_code }, comp_uid).catch(() => []),
+    ]);
+    res.json({ parties: parties || [], plants: plants || [], markas: markas || [], items: items || [] });
+  } catch (err) {
+    console.error('❌ grn-lookups error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/grn-next-r-no', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, ch_type } = req.query;
+    if (!comp_code || comp_uid == null || !ch_type) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, and ch_type are required' });
+    }
+    const ct = String(ch_type).trim().toUpperCase().slice(0, 1) || ' ';
+    const sql = `
+      SELECT NVL(MAX(TO_NUMBER(TRIM(TO_CHAR(A.R_NO)))), 0) + 1 AS NEXT_R_NO
+      FROM ISSUE A
+      WHERE A.COMP_CODE = :comp_code
+        AND TRIM(TO_CHAR(A.TYPE)) = :mtype
+        AND NVL(TRIM(A.CH_TYPE), ' ') = NVL(TRIM(:ch_type), ' ')`;
+    const rows = await runQuery(sql, { comp_code, mtype: GRN_TYPE, ch_type: ct }, comp_uid);
+    const n = rows?.[0]?.NEXT_R_NO ?? rows?.[0]?.next_r_no ?? 1;
+    res.json({ next_r_no: Number(n) || 1 });
+  } catch (err) {
+    console.error('❌ grn-next-r-no error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/grn-raw', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, ch_type, r_no } = req.query;
+    if (!comp_code || comp_uid == null || !ch_type || r_no == null) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, ch_type, and r_no are required' });
+    }
+    const ct = String(ch_type).trim().toUpperCase().slice(0, 1) || ' ';
+    const sql = `
+      SELECT A.*
+      FROM ISSUE A
+      WHERE A.COMP_CODE = :comp_code
+        AND TRIM(TO_CHAR(A.TYPE)) = :mtype
+        AND NVL(TRIM(A.CH_TYPE), ' ') = NVL(TRIM(:ch_type), ' ')
+        AND TRIM(TO_CHAR(A.R_NO)) = TRIM(TO_CHAR(:r_no))
+      ORDER BY A.TRN_NO`;
+    const rows = await runQuery(
+      sql,
+      { comp_code, mtype: GRN_TYPE, ch_type: ct, r_no: String(r_no).trim() },
+      comp_uid
+    );
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ grn-raw error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/grn-list', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const binds = { comp_code, mtype: GRN_TYPE };
+    let dateClause = '';
+    if (s_date && e_date) {
+      binds.s_date = String(s_date).trim();
+      binds.e_date = String(e_date).trim();
+      dateClause = `AND TRUNC(A.R_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))`;
+    }
+    const sql = `
+      SELECT A.CH_TYPE, A.R_NO, MAX(A.R_DATE) AS R_DATE, MAX(A.CODE) AS CODE,
+        MAX(B.NAME) AS NAME, MAX(A.REMARKS) AS REMARKS,
+        SUM(NVL(A.QNTY, 0)) AS TOT_QNTY, SUM(NVL(A.WEIGHT, 0)) AS TOT_WEIGHT, SUM(NVL(A.AMOUNT, 0)) AS TOT_AMOUNT
+      FROM ISSUE A
+      LEFT JOIN MASTER B ON B.COMP_CODE = A.COMP_CODE AND B.CODE = A.CODE
+      WHERE A.COMP_CODE = :comp_code
+        AND TRIM(TO_CHAR(A.TYPE)) = :mtype
+        ${dateClause}
+      GROUP BY A.CH_TYPE, A.R_NO
+      ORDER BY A.R_NO DESC`;
+    const rows = await runQuery(sql, binds, comp_uid);
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ grn-list error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Goods receipt note print — ISSUE type I, range by date / ch no / ch type (Fox print browse). */
+app.get('/api/grn-print', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, s_no, e_no, ch_type } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (!s_date || !e_date) {
+      return res.status(400).json({ error: 's_date and e_date (DD-MM-YYYY) are required' });
+    }
+    const sno = Math.max(0, Math.floor(Number(s_no) || 0));
+    const eno = Math.max(sno, Math.floor(Number(e_no) || 0));
+    const ct = String(ch_type ?? 'I').trim().toUpperCase().slice(0, 1) || 'I';
+    const sql = `
+      SELECT A.TYPE, A.R_DATE, A.R_NO, A.CH_TYPE, A.CODE,
+        B.NAME, B.ADD1, B.ADD2, B.CITY, B.GST_NO, B.PAN, B.TEL_NO_O,
+        A.TRN_NO, A.ITEM_CODE, C.ITEM_NAME, A.MARKA, C.HSN_CODE, A.STATUS,
+        A.QNTY, A.WEIGHT, A.RATE, A.AMOUNT,
+        A.REMARKS, A.TRUCK_NO, A.TPT, A.GR_NO
+      FROM ISSUE A
+      LEFT JOIN MASTER B ON B.COMP_CODE = A.COMP_CODE AND B.CODE = A.CODE
+      LEFT JOIN ITEMMAST C ON C.COMP_CODE = A.COMP_CODE AND C.ITEM_CODE = A.ITEM_CODE
+      WHERE A.COMP_CODE = :comp_code
+        AND TRIM(TO_CHAR(A.TYPE)) = 'I'
+        AND NVL(TRIM(A.CH_TYPE), ' ') = NVL(TRIM(:ch_type), ' ')
+        AND TO_NUMBER(TRIM(TO_CHAR(A.R_NO))) >= :sno
+        AND TO_NUMBER(TRIM(TO_CHAR(A.R_NO))) <= :eno
+        AND TRUNC(A.R_DATE) >= TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))
+        AND TRUNC(A.R_DATE) <= TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))
+      ORDER BY A.TYPE, A.CH_TYPE, A.R_NO, A.TRN_NO`;
+    const binds = {
+      comp_code,
+      ch_type: ct,
+      sno,
+      eno,
+      s_date: String(s_date).trim(),
+      e_date: String(e_date).trim(),
+    };
+    const rows = await runQuery(sql, binds, comp_uid);
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ grn-print error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Goods receipt note list report — line detail with optional date / party / item / marka filters. */
+app.get('/api/grn-list-report', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, code, item_code, marka } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (!s_date || !e_date) {
+      return res.status(400).json({ error: 's_date and e_date (DD-MM-YYYY) are required' });
+    }
+    const binds = {
+      comp_code,
+      mtype: GRN_TYPE,
+      s_date: String(s_date).trim(),
+      e_date: String(e_date).trim(),
+    };
+    let extra = '';
+    const partyCode = code != null && String(code).trim() !== '' ? parseMasterCodeForSql(code) : undefined;
+    if (partyCode !== undefined) {
+      binds.party_code = partyCode;
+      extra += ` AND TRIM(TO_CHAR(A.CODE)) = TRIM(TO_CHAR(:party_code))`;
+    }
+    const itemTrim = item_code != null ? String(item_code).trim() : '';
+    if (itemTrim) {
+      binds.item_code = itemTrim;
+      extra += ` AND TRIM(A.ITEM_CODE) = TRIM(:item_code)`;
+    }
+    const markaTrim = marka != null ? String(marka).trim() : '';
+    if (markaTrim) {
+      binds.marka = markaTrim;
+      extra += ` AND TRIM(NVL(A.MARKA, ' ')) = TRIM(:marka)`;
+    }
+    const sql = `
+      SELECT A.CH_TYPE, A.R_NO, A.R_DATE, A.CODE, B.NAME AS PARTY_NAME,
+        A.SO_NO, A.ITEM_CODE, NVL(C.ITEM_NAME, A.ITEM_CODE) AS ITEM_NAME, A.MARKA,
+        A.QNTY, A.STATUS, A.WEIGHT, A.RATE, A.AMOUNT, A.TRN_NO,
+        A.PLANT_CODE, A.REMARKS, A.TRUCK_NO, A.TPT, A.GR_NO
+      FROM ISSUE A
+      LEFT JOIN MASTER B ON B.COMP_CODE = A.COMP_CODE AND B.CODE = A.CODE
+      LEFT JOIN ITEMMAST C ON C.COMP_CODE = A.COMP_CODE AND C.ITEM_CODE = A.ITEM_CODE
+      WHERE A.COMP_CODE = :comp_code
+        AND TRIM(TO_CHAR(A.TYPE)) = :mtype
+        AND TRUNC(A.R_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))
+        ${extra}
+      ORDER BY A.R_DATE, A.CH_TYPE, A.R_NO, A.TRN_NO`;
+    const rows = await runQuery(sql, binds, comp_uid);
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ grn-list-report error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Fox GRN F1 pending PO (party CODE only):
+ * X1 SORDER TYPE=PO · X2 ISSUE TYPE=I · full join · BQTY=SOQTY-SLQTY · BQTY>0.
+ */
+async function fetchGrnPendingOrders(comp_code, comp_uid, code) {
+  const partyCode = parseMasterCodeForSql(code);
+  if (partyCode === undefined) return [];
+
+  const partyBinds = { comp_code, party_code: partyCode };
+
+  const x1Sql = `
+    SELECT A.SO_NO, A.SO_DATE, A.ITEM_CODE, A.STATUS, A.RATE,
+           SUM(NVL(A.QNTY, 0)) AS SOQTY
+    FROM SORDER A
+    WHERE A.COMP_CODE = :comp_code
+      AND TRIM(TO_CHAR(A.TYPE)) = 'PO'
+      AND TRIM(TO_CHAR(A.CODE)) = TRIM(TO_CHAR(:party_code))
+    GROUP BY A.SO_NO, A.SO_DATE, A.ITEM_CODE, A.STATUS, A.RATE
+    ORDER BY A.SO_NO`;
+
+  const x2Sql = `
+    SELECT A.SO_NO, A.ITEM_CODE, A.STATUS, A.RATE,
+           SUM(NVL(A.QNTY, 0)) AS SLQTY
+    FROM ISSUE A
+    WHERE A.COMP_CODE = :comp_code
+      AND TRIM(TO_CHAR(A.TYPE)) = 'I'
+      AND TRIM(TO_CHAR(A.CODE)) = TRIM(TO_CHAR(:party_code))
+    GROUP BY A.SO_NO, A.ITEM_CODE, A.STATUS, A.RATE
+    ORDER BY A.SO_NO`;
+
+  const [x1Rows, x2Rows] = await Promise.all([
+    runQuery(x1Sql, partyBinds, comp_uid),
+    runQuery(x2Sql, partyBinds, comp_uid),
+  ]);
+
+  const rowKey = (so, ic, st, rt) =>
+    `${numVal(so)}|${String(ic ?? '').trim()}|${String(st ?? '').trim()}|${Math.round(numVal(rt) * 100) / 100}`;
+
+  const x1Map = new Map();
+  for (const r of x1Rows || []) {
+    const k = rowKey(r.SO_NO, r.ITEM_CODE, r.STATUS, r.RATE);
+    let g = x1Map.get(k);
+    if (!g) {
+      g = {
+        SO_NO: numVal(r.SO_NO),
+        SO_DATE: r.SO_DATE ?? r.so_date,
+        ITEM_CODE: String(r.ITEM_CODE ?? r.item_code ?? '').trim(),
+        STATUS: String(r.STATUS ?? r.status ?? '').trim(),
+        RATE: Math.round(numVal(r.RATE ?? r.rate) * 100) / 100,
+        SOQTY: 0,
+        _dateParts: [],
+      };
+      x1Map.set(k, g);
+    }
+    g.SOQTY += numVal(r.SOQTY ?? r.soqty);
+    if (r.SO_DATE ?? r.so_date) g._dateParts.push(r.SO_DATE ?? r.so_date);
+  }
+
+  const x2Map = new Map();
+  for (const r of x2Rows || []) {
+    const k = rowKey(r.SO_NO, r.ITEM_CODE, r.STATUS, r.RATE);
+    let g = x2Map.get(k);
+    if (!g) {
+      g = {
+        SO_NO: numVal(r.SO_NO),
+        ITEM_CODE: String(r.ITEM_CODE ?? r.item_code ?? '').trim(),
+        STATUS: String(r.STATUS ?? r.status ?? '').trim(),
+        RATE: Math.round(numVal(r.RATE ?? r.rate) * 100) / 100,
+        SLQTY: 0,
+      };
+      x2Map.set(k, g);
+    }
+    g.SLQTY += numVal(r.SLQTY ?? r.slqty);
+  }
+
+  const merged = new Map();
+  for (const [k, a] of x1Map) {
+    merged.set(k, { ...a, SLQTY: x2Map.get(k)?.SLQTY || 0 });
+  }
+  for (const [k, b] of x2Map) {
+    if (merged.has(k)) continue;
+    merged.set(k, {
+      SO_NO: b.SO_NO,
+      SO_DATE: null,
+      ITEM_CODE: b.ITEM_CODE,
+      STATUS: b.STATUS,
+      RATE: b.RATE,
+      SOQTY: 0,
+      SLQTY: b.SLQTY,
+      _dateParts: [],
+    });
+  }
+
+  const x4Map = new Map();
+  const x4Key = (so, ic, st, rt) => rowKey(so, ic, st, rt);
+  for (const r of merged.values()) {
+    const k = x4Key(r.SO_NO, r.ITEM_CODE, r.STATUS, r.RATE);
+    let g = x4Map.get(k);
+    if (!g) {
+      g = {
+        SO_NO: r.SO_NO,
+        SO_DATE: r.SO_DATE,
+        ITEM_CODE: r.ITEM_CODE,
+        STATUS: r.STATUS,
+        RATE: r.RATE,
+        SOQTY: 0,
+        SLQTY: 0,
+        _dateParts: r._dateParts ? [...r._dateParts] : [],
+      };
+      x4Map.set(k, g);
+    }
+    g.SOQTY += numVal(r.SOQTY);
+    g.SLQTY += numVal(r.SLQTY);
+    if (r.SO_DATE) g._dateParts.push(r.SO_DATE);
+    if (r._dateParts?.length) g._dateParts.push(...r._dateParts);
+  }
+
+  const out = [];
+  for (const g of x4Map.values()) {
+    const bqty = Math.round((numVal(g.SOQTY) - numVal(g.SLQTY)) * 1000) / 1000;
+    if (numVal(g.SO_NO) < 1) continue;
+    if (bqty <= 0) continue;
+    let soDate = g.SO_DATE;
+    if (g._dateParts?.length) {
+      soDate = g._dateParts.reduce((a, b) => {
+        const da = parseDateOnly(a);
+        const db = parseDateOnly(b);
+        if (!da) return b;
+        if (!db) return a;
+        return da > db ? a : b;
+      });
+    }
+    out.push({
+      SO_NO: g.SO_NO,
+      SO_DATE: soDate,
+      ITEM_CODE: g.ITEM_CODE,
+      STATUS: g.STATUS,
+      RATE: g.RATE,
+      BQTY: bqty,
+      SOQTY: numVal(g.SOQTY),
+      SLQTY: numVal(g.SLQTY),
+    });
+  }
+  out.sort((a, b) => numVal(a.SO_NO) - numVal(b.SO_NO));
+  return out;
+}
+
+app.get('/api/grn-pending-orders', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, code } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (!code) {
+      return res.status(400).json({ error: 'code (party) is required' });
+    }
+    const rows = await fetchGrnPendingOrders(comp_code, comp_uid, code);
+    res.json({ rows, party_filter: 'code', balance_field: 'BQTY' });
+  } catch (err) {
+    console.error('❌ grn-pending-orders error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/grn-save', async (req, res) => {
+  let conn;
+  try {
+    const body = req.body || {};
+    const comp_code = String(body.comp_code || '').trim();
+    const comp_uid = String(body.comp_uid || '').trim();
+    const user_name = String(body.user_name || '').trim().toUpperCase();
+    const mode = String(body.mode || '').trim().toLowerCase();
+    const ch_type = String(body.ch_type ?? 'I').trim().toUpperCase().slice(0, 1) || 'I';
+    const r_date = String(body.r_date || '').trim();
+    const r_no = body.r_no;
+    const header = body.header && typeof body.header === 'object' ? body.header : {};
+    const linesIn = Array.isArray(body.lines) ? body.lines : [];
+
+    if (!comp_code || !comp_uid || !user_name || !['add', 'edit', 'delete'].includes(mode)) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, user_name, mode=add|edit|delete required' });
+    }
+    if (!r_date) return res.status(400).json({ error: 'r_date (DD-MM-YYYY) required' });
+
+    const { f11 } = await fetchGrnUserF11String(user_name, comp_uid);
+    const perms = grnPermissionsFromF11(f11);
+    if (!perms.canOpen) return res.status(403).json({ error: 'Access denied (F11 position 1).' });
+    if (mode === 'add' && !perms.canAdd) return res.status(403).json({ error: 'You cannot add (F11 position 2).' });
+    if (mode === 'edit' && !perms.canEdit) return res.status(403).json({ error: 'You cannot edit (F11 position 3).' });
+    if (mode === 'delete' && !perms.canDelete) return res.status(403).json({ error: 'You cannot delete (F11 position 4).' });
+
+    const comp_year_sel = parseCompYearOpt(body.comp_year);
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid, comp_year_sel);
+    if (!compdet) return res.status(400).json({ error: 'compdet not found' });
+    const comp_year = Number(compdet?.COMP_YEAR ?? compdet?.comp_year ?? comp_year_sel ?? 0) || 0;
+    const gAmtCal = String(rowValueCI(compdet, 'amt_cal') ?? 'K').trim().toUpperCase();
+    const fy = assertSaleBillDateInFinancialYear(r_date, compdet);
+    if (!fy.ok) return res.status(400).json({ error: fy.error });
+
+    const connCfg = {
+      user: comp_uid,
+      password: comp_uid,
+      connectString: activeDbConfig.connectString,
+    };
+    conn = await getDbConnection(connCfg);
+
+    const delSql = `
+      DELETE FROM ISSUE A
+      WHERE A.COMP_CODE = :comp_code
+        AND TRIM(TO_CHAR(A.TYPE)) = :mtype
+        AND NVL(TRIM(A.CH_TYPE), ' ') = NVL(TRIM(:ch_type), ' ')
+        AND TRIM(TO_CHAR(A.R_NO)) = TRIM(TO_CHAR(:r_no))`;
+
+    if (mode === 'delete') {
+      if (r_no == null) return res.status(400).json({ error: 'r_no required for delete' });
+      await conn.execute(
+        delSql,
+        { comp_code, mtype: GRN_TYPE, ch_type, r_no: String(r_no).trim() },
+        { autoCommit: false }
+      );
+      await conn.commit();
+      return res.json({ ok: true, mode: 'delete' });
+    }
+
+    let r_no_use = r_no;
+    if (mode === 'add') {
+      const manualRn = r_no != null && String(r_no).trim() !== '';
+      if (manualRn) {
+        r_no_use = String(r_no).trim();
+        const exRows = await conn.execute(
+          `SELECT COUNT(*) AS CNT FROM ISSUE A
+           WHERE A.COMP_CODE = :cc
+             AND TRIM(TO_CHAR(A.TYPE)) = :tp
+             AND NVL(TRIM(A.CH_TYPE), ' ') = NVL(TRIM(:ct), ' ')
+             AND TRIM(TO_CHAR(A.R_NO)) = TRIM(TO_CHAR(:rn))`,
+          { cc: comp_code, tp: GRN_TYPE, ct: ch_type, rn: r_no_use },
+          { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+        const cnt = Number(exRows.rows?.[0]?.CNT ?? exRows.rows?.[0]?.cnt) || 0;
+        if (cnt > 0) {
+          await conn.rollback();
+          return res.status(400).json({ error: `Challan number ${r_no_use} already exists.` });
+        }
+      } else {
+        const maxRows = await conn.execute(
+          `SELECT NVL(MAX(TO_NUMBER(TRIM(TO_CHAR(A.R_NO)))), 0) + 1 AS NB
+           FROM ISSUE A
+           WHERE A.COMP_CODE = :cc
+             AND TRIM(TO_CHAR(A.TYPE)) = :tp
+             AND NVL(TRIM(A.CH_TYPE), ' ') = NVL(TRIM(:ct), ' ')`,
+          { cc: comp_code, tp: GRN_TYPE, ct: ch_type },
+          { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+        r_no_use = Number(maxRows.rows?.[0]?.NB ?? maxRows.rows?.[0]?.nb) || 1;
+      }
+    }
+    if (r_no_use == null || String(r_no_use).trim() === '') {
+      return res.status(400).json({ error: 'r_no required for edit' });
+    }
+
+    const code = parseMasterCodeForSql(header.code);
+    if (code === undefined) return res.status(400).json({ error: 'Party code required' });
+    const plant_code = String(header.plant_code ?? '').trim();
+    const remarks = String(header.remarks ?? '').trim().slice(0, 50);
+    const truck_no = String(header.truck_no ?? '').trim().slice(0, 15);
+    const tpt = String(header.tpt ?? '').trim().slice(0, 30);
+    const gr_no = String(header.gr_no ?? '').trim().slice(0, 20);
+
+    if (mode === 'edit') {
+      await conn.execute(
+        delSql,
+        { comp_code, mtype: GRN_TYPE, ch_type, r_no: String(r_no_use).trim() },
+        { autoCommit: false }
+      );
+    }
+
+    const linesFiltered = linesIn.filter((raw) => {
+      const ic = String(raw?.item_code ?? raw?.ITEM_CODE ?? '').trim();
+      return ic !== '';
+    });
+    if (linesFiltered.length === 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'At least one line with item_code is required' });
+    }
+
+    let trn = 1;
+    const bindRows = linesFiltered.map((raw, idx) => {
+      const L = raw && typeof raw === 'object' ? raw : {};
+      const tno = Number(L.trn_no ?? L.TRN_NO ?? trn) || trn;
+      trn = tno + 1;
+      const qnty = Number(L.qnty ?? L.QNTY ?? 0) || 0;
+      const rate = Number(L.rate ?? L.RATE ?? 0) || 0;
+      const weight = clampGrnWeightSql(L.weight ?? L.WEIGHT ?? 0);
+      const amount = clampGrnAmountSql(L.amount ?? L.AMOUNT ?? 0);
+      const so_no = saleBillLineInt6(L.so_no ?? L.SO_NO);
+      return {
+        comp_code,
+        comp_year,
+        mtype: GRN_TYPE,
+        r_date,
+        r_no: String(r_no_use).trim(),
+        ch_type,
+        co: GRN_CO,
+        code,
+        plant_code,
+        trn_no: tno,
+        so_no,
+        item_code: String(L.item_code ?? L.ITEM_CODE ?? '').trim(),
+        marka: String(L.marka ?? L.MARKA ?? '').trim(),
+        qnty,
+        status: String(L.status ?? L.STATUS ?? 'B').trim().toUpperCase().slice(0, 1) || 'B',
+        weight,
+        rate,
+        amount,
+        remarks,
+        truck_no,
+        tpt,
+        gr_no,
+        ref_no: String(r_no_use).trim(),
+        ref_ch_type: ch_type,
+        user_name,
+      };
+    });
+
+    const insertSql = `
+      INSERT INTO ISSUE (
+        COMP_CODE, COMP_YEAR, TYPE, R_DATE, R_NO, CH_TYPE, C_O, CODE, PLANT_CODE,
+        TRN_NO, SO_NO, ITEM_CODE, MARKA, QNTY, STATUS, WEIGHT, RATE, AMOUNT,
+        REMARKS, TRUCK_NO, TPT, GR_NO, REF_NO, REF_CH_TYPE, USER_NAME, ENT_DATE, V_DATE
+      ) VALUES (
+        :comp_code, :comp_year, :mtype, TO_DATE(:r_date, 'DD-MM-YYYY'), :r_no, :ch_type, :co, :code, :plant_code,
+        :trn_no, :so_no, :item_code, :marka, :qnty, :status, :weight, :rate, :amount,
+        :remarks, :truck_no, :tpt, :gr_no, :ref_no, :ref_ch_type, :user_name, SYSDATE, TO_DATE(:r_date, 'DD-MM-YYYY')
+      )`;
+
+    const insertSqlNoRef = `
+      INSERT INTO ISSUE (
+        COMP_CODE, COMP_YEAR, TYPE, R_DATE, R_NO, CH_TYPE, C_O, CODE, PLANT_CODE,
+        TRN_NO, SO_NO, ITEM_CODE, MARKA, QNTY, STATUS, WEIGHT, RATE, AMOUNT,
+        REMARKS, TRUCK_NO, TPT, GR_NO, USER_NAME, ENT_DATE, V_DATE
+      ) VALUES (
+        :comp_code, :comp_year, :mtype, TO_DATE(:r_date, 'DD-MM-YYYY'), :r_no, :ch_type, :co, :code, :plant_code,
+        :trn_no, :so_no, :item_code, :marka, :qnty, :status, :weight, :rate, :amount,
+        :remarks, :truck_no, :tpt, :gr_no, :user_name, SYSDATE, TO_DATE(:r_date, 'DD-MM-YYYY')
+      )`;
+
+    const insertSqlNoSo = `
+      INSERT INTO ISSUE (
+        COMP_CODE, COMP_YEAR, TYPE, R_DATE, R_NO, CH_TYPE, C_O, CODE, PLANT_CODE,
+        TRN_NO, ITEM_CODE, MARKA, QNTY, STATUS, WEIGHT, RATE, AMOUNT,
+        REMARKS, TRUCK_NO, TPT, GR_NO, USER_NAME, ENT_DATE, V_DATE
+      ) VALUES (
+        :comp_code, :comp_year, :mtype, TO_DATE(:r_date, 'DD-MM-YYYY'), :r_no, :ch_type, :co, :code, :plant_code,
+        :trn_no, :item_code, :marka, :qnty, :status, :weight, :rate, :amount,
+        :remarks, :truck_no, :tpt, :gr_no, :user_name, SYSDATE, TO_DATE(:r_date, 'DD-MM-YYYY')
+      )`;
+
+    const bindRowsNoRef = bindRows.map(({ ref_no: _rn, ref_ch_type: _rct, ...rest }) => rest);
+    const bindRowsNoSo = bindRowsNoRef.map(({ so_no: _sn, ...rest }) => rest);
+
+    const isOraInvalidCol = (err) => {
+      const msg = String(err?.message || '');
+      return msg.includes('ORA-00904') || msg.includes('invalid identifier');
+    };
+
+    try {
+      await conn.executeMany(insertSql, bindRows, { autoCommit: false });
+    } catch (e1) {
+      if (!isOraInvalidCol(e1)) throw e1;
+      try {
+        await conn.executeMany(insertSqlNoRef, bindRowsNoRef, { autoCommit: false });
+      } catch (e2) {
+        if (!isOraInvalidCol(e2)) throw e2;
+        if (/SO_NO/i.test(String(e2?.message || ''))) {
+          await conn.executeMany(insertSqlNoSo, bindRowsNoSo, { autoCommit: false });
+        } else {
+          throw e2;
+        }
+      }
+    }
+
+    await conn.commit();
+    res.json({ ok: true, mode, r_no: r_no_use, ch_type, lines: bindRows.length });
+  } catch (err) {
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (_) {}
+    }
+    console.error('❌ grn-save error:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) {
+      try {
+        await conn.close();
+      } catch (_) {}
+    }
+  }
+});
+
+
 /** Sales order (SORDER TYPE=SO): DAL.USERS F12 — pos 1–4 = open, add, edit, delete. */
 const SALES_ORDER_TYPE = 'SO';
 

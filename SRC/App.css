@@ -7718,6 +7718,7 @@ body.force-desktop-view .app--desktop {
 .slide-23-sales-order-print.dc-print-screen,
 .slide-24-purchase-order-list.dc-list-screen,
 .slide-24-purchase-order-print.dc-print-screen,
+.slide-29-grn-print.dc-print-screen,
 .slide-25-purchase-bill-list.dc-list-screen {
   padding-bottom: 5rem;
 }
@@ -7751,7 +7752,8 @@ body.force-desktop-view .app--desktop {
 .slide-24-purchase-order-list .dc-list-screen__head,
 .slide-25-purchase-bill-list .dc-list-screen__head,
 .slide-23-sales-order-print .dc-print-screen__head,
-.slide-24-purchase-order-print .dc-print-screen__head {
+.slide-24-purchase-order-print .dc-print-screen__head,
+.slide-29-grn-print .dc-print-screen__head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -8130,7 +8132,8 @@ body.force-desktop-view .app--desktop {
 
 .slide-22-dispatch-challan-print.dc-print-screen,
 .slide-23-sales-order-print.dc-print-screen,
-.slide-24-purchase-order-print.dc-print-screen {
+.slide-24-purchase-order-print.dc-print-screen,
+.slide-29-grn-print.dc-print-screen {
   max-width: 96rem;
   margin: 0 auto;
   padding: 0.5rem 0.75rem 2rem;
@@ -8175,7 +8178,8 @@ body.force-desktop-view .app--desktop {
 
 .slide-22-dispatch-challan-print .dc-print-preview-frame,
 .slide-23-sales-order-print .dc-print-preview-frame,
-.slide-24-purchase-order-print .dc-print-preview-frame {
+.slide-24-purchase-order-print .dc-print-preview-frame,
+.slide-29-grn-print .dc-print-preview-frame {
   display: block;
   width: 100%;
   max-width: 100%;
@@ -8190,16 +8194,50 @@ body.force-desktop-view .app--desktop {
 /* Scale A4 preview to readable size inside iframe */
 .slide-22-dispatch-challan-print .dc-print-preview-frame,
 .slide-23-sales-order-print .dc-print-preview-frame,
-.slide-24-purchase-order-print .dc-print-preview-frame {
+.slide-24-purchase-order-print .dc-print-preview-frame,
+.slide-29-grn-print .dc-print-preview-frame {
   zoom: 1;
 }
 
+.dc-print-silent-frame {
+  position: fixed !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 @supports not (zoom: 1) {
-  .slide-22-dispatch-challan-print .dc-print-results,
-  .slide-23-sales-order-print .dc-print-results,
-  .slide-24-purchase-order-print .dc-print-results {
+.slide-22-dispatch-challan-print .dc-print-results,
+.slide-23-sales-order-print .dc-print-results,
+.slide-24-purchase-order-print .dc-print-results,
+.slide-29-grn-print .dc-print-results {
     overflow: auto;
   }
+}
+
+.dc-print-results__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+}
+
+.dc-print-modal-body--external {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+  padding: 1rem 0.85rem 1.1rem;
+  text-align: center;
+}
+
+.dc-print-modal-body--external .btn-primary {
+  align-self: center;
 }
 
 .slide-22-dispatch-challan-print .dc-print-mobile-preview {

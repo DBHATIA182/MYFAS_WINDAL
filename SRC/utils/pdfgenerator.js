@@ -3214,6 +3214,18 @@ function buildDispatchChallanListReportHtml(data, metadata) {
   `;
 }
 
+/** Goods receipt note print (ISSUE type I) — same layout as dispatch challan. */
+function buildGrnPrintReportHtml(data, metadata) {
+  return buildDispatchChallanPrintReportHtml(data, metadata).replace(/DISPATCH CHALLAN/g, 'GOODS RECEIPT NOTE');
+}
+
+/** Goods receipt note list (ISSUE type I line detail). */
+function buildGrnListReportHtml(data, metadata) {
+  return buildDispatchChallanListReportHtml(data, metadata)
+    .replace(/Dispatch challan list/g, 'Goods receipt note list')
+    .replace(/<th>SO<\/th>/g, '<th>PO</th>');
+}
+
 /** Sales order list (SORDER type SO). */
 function buildSalesOrderListReportHtml(data, metadata) {
   const rows = Array.isArray(data?.rows) ? data.rows : [];
@@ -4316,7 +4328,9 @@ export function buildReportHtml(reportType, data, metadata) {
   if (reportType === 'trading-account') return buildTradingAccountReportHtml(data, metadata);
   if (reportType === 'profit-loss') return buildProfitLossReportHtml(data, metadata);
   if (reportType === 'dispatch-challan-list') return buildDispatchChallanListReportHtml(data, metadata);
+  if (reportType === 'grn-list') return buildGrnListReportHtml(data, metadata);
   if (reportType === 'dispatch-challan-print') return buildDispatchChallanPrintReportHtml(data, metadata);
+  if (reportType === 'grn-print') return buildGrnPrintReportHtml(data, metadata);
   if (reportType === 'sales-order-list') return buildSalesOrderListReportHtml(data, metadata);
   if (reportType === 'sales-order-print') return buildSalesOrderPrintReportHtml(data, metadata);
   if (reportType === 'purchase-order-list') {
@@ -4388,7 +4402,7 @@ function getPdfOptions(metadata, reportType, data) {
             useCORS: true,
             logging: false,
           }
-        : reportType === 'dispatch-challan-print'
+        : reportType === 'dispatch-challan-print' || reportType === 'grn-print'
           ? {
               scale: 2,
               useCORS: true,
@@ -4415,6 +4429,7 @@ function getPdfOptions(metadata, reportType, data) {
       reportType === 'sale-bill' ||
       reportType === 'purchase-bill' ||
       reportType === 'dispatch-challan-print' ||
+      reportType === 'grn-print' ||
       reportType === 'sales-order-print' ||
       reportType === 'purchase-order-print' ||
       reportType === 'voucher-print'
@@ -4442,7 +4457,7 @@ function getPdfOptions(metadata, reportType, data) {
     },
   };
 
-  if (reportType === 'dispatch-challan-print' || reportType === 'sales-order-print' || reportType === 'purchase-order-print') {
+  if (reportType === 'dispatch-challan-print' || reportType === 'grn-print' || reportType === 'sales-order-print' || reportType === 'purchase-order-print') {
     base.pagebreak = {
       mode: ['css', 'legacy'],
       before: '.dc-pdf-page--new',

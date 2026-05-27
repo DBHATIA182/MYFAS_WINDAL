@@ -4,20 +4,30 @@ import { buildReportHtml, generatePDF, sharePdfWithWhatsApp } from '../utils/pdf
 import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
 import { DcActionBar } from '../components/DispatchChallanActionBar';
-import { printHtmlDocument } from '../utils/openPrintPreviewWindow';
+import { openPrintPreviewWindow, printHtmlDocument } from '../utils/openPrintPreviewWindow';
 
 const reqOpts = { withCredentials: true, timeout: 120000 };
 
-function groupPurchaseOrderPrintRows(rows) {
+function normChType(raw) {
+  const c = String(raw ?? 'I')
+    .trim()
+    .toUpperCase()
+    .slice(0, 1);
+  return c || 'I';
+}
+
+function groupGrnPrintRows(rows) {
   const map = new Map();
   for (const r of rows) {
-    const rn = r.SO_NO ?? r.so_no;
-    const key = String(rn);
+    const ct = normChType(r.CH_TYPE ?? r.ch_type);
+    const rn = r.R_NO ?? r.r_no;
+    const key = `${ct}|${rn}`;
     if (!map.has(key)) {
-      const rd = r.SO_DATE ?? r.so_date;
+      const rd = r.R_DATE ?? r.r_date;
       map.set(key, {
-        so_no: rn,
-        so_date_display: toDisplayDate(toInputDateString(rd)),
+        ch_type: ct,
+        r_no: rn,
+        r_date_display: toDisplayDate(toInputDateString(rd)),
         party: {
           name: r.NAME ?? r.name,
           add1: r.ADD1 ?? r.add1,
@@ -28,20 +38,24 @@ function groupPurchaseOrderPrintRows(rows) {
           tel: r.TEL_NO_O ?? r.tel_no_o,
         },
         footer: {
-          po_no: r.PO_NO ?? r.po_no,
           remarks: r.REMARKS ?? r.remarks,
-          remarks2: r.REMARKS2 ?? r.remarks2,
+          truck_no: r.TRUCK_NO ?? r.truck_no,
+          tpt: r.TPT ?? r.tpt,
+          gr_no: r.GR_NO ?? r.gr_no,
         },
         lines: [],
       });
     }
     map.get(key).lines.push(r);
   }
-  return Array.from(map.values()).sort((a, b) => (Number(a.so_no) || 0) - (Number(b.so_no) || 0));
+  return Array.from(map.values()).sort((a, b) => {
+    if (a.ch_type !== b.ch_type) return a.ch_type.localeCompare(b.ch_type);
+    return (Number(a.r_no) || 0) - (Number(b.r_no) || 0);
+  });
 }
 
 /** Same iframe document wrapper as sale bill print — styles come from buildReportHtml body. */
-function buildPurchaseOrderIframeDoc(bodyHtml) {
+function buildGrnIframeDoc(bodyHtml) {
   return `<!doctype html>
 <html>
   <head>
@@ -56,11 +70,12 @@ function buildPurchaseOrderIframeDoc(bodyHtml) {
 </html>`;
 }
 
-export default function PurchaseOrderPrintScreen({
+export default function GrnPrintScreen({
   apiBase,
   formData,
-  defaultPoNo = '',
-  defaultPoDateYmd = '',
+  defaultChType = 'I',
+  defaultRNo = '',
+  defaultRDateYmd = '',
   onClose,
 }) {
   const compCode = formData.comp_code ?? formData.COMP_CODE;
@@ -70,10 +85,12 @@ export default function PurchaseOrderPrintScreen({
   const fyStart = toInputDateString(formData.comp_s_dt ?? formData.COMP_S_DT);
   const fyEnd = toInputDateString(formData.comp_e_dt ?? formData.COMP_E_DT);
 
-  const [sDate, setSDate] = useState(() => (defaultPoDateYmd || defaultPoNo ? defaultPoDateYmd : fyStart));
-  const [eDate, setEDate] = useState(() => defaultPoDateYmd || fyEnd);
-  const [sNo, setSNo] = useState(() => String(defaultPoNo ?? '').trim());
-  const [eNo, setENo] = useState(() => String(defaultPoNo ?? '').trim());
+  const [sDate, setSDate] = useState(() => defaultRDateYmd || fyStart);
+  const [eDate, setEDate] = useState(() => defaultRDateYmd || fyEnd);
+  const [sNo, setSNo] = useState(() => String(defaultRNo ?? '').trim());
+  const [eNo, setENo] = useState(() => String(defaultRNo ?? '').trim());
+  const [chType, setChType] = useState(() => normChType(defaultChType));
+
   const [compdet, setCompdet] = useState(null);
   const [rawRows, setRawRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -91,14 +108,14 @@ export default function PurchaseOrderPrintScreen({
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const orders = useMemo(() => groupPurchaseOrderPrintRows(rawRows), [rawRows]);
+  const challans = useMemo(() => groupGrnPrintRows(rawRows), [rawRows]);
 
   const pdfData = useMemo(
     () => ({
       compdet: compdet || {},
-      orders,
+      challans,
     }),
-    [compdet, orders]
+    [compdet, challans]
   );
 
   const pdfMeta = useMemo(
@@ -107,34 +124,36 @@ export default function PurchaseOrderPrintScreen({
       apiBase,
       startDate: toDisplayDate(sDate),
       endDate: toDisplayDate(eDate),
+      chTypeLabel: chType,
       sNo,
       eNo,
     }),
-    [compName, apiBase, sDate, eDate, sNo, eNo]
+    [compName, apiBase, sDate, eDate, chType, sNo, eNo]
   );
 
   const shareText = [
     compName,
-    'Purchase order',
+    'Goods receipt note',
     `${toDisplayDate(sDate)} to ${toDisplayDate(eDate)}`,
-    `SO ${sNo || '0'}–${eNo || '0'}`,
+    `Type ${normChType(chType)} · Ch ${sNo || '0'}–${eNo || '0'}`,
   ].join('\n');
 
   const previewBodyHtml = useMemo(() => {
-    if (!ran || !orders.length) return '';
-    return buildReportHtml('purchase-order-print', pdfData, pdfMeta);
-  }, [ran, orders.length, pdfData, pdfMeta]);
+    if (!ran || !challans.length) return '';
+    return buildReportHtml('grn-print', pdfData, pdfMeta);
+  }, [ran, challans.length, pdfData, pdfMeta]);
 
   const previewIframeHtml = useMemo(() => {
     if (!previewBodyHtml) return '';
-    return buildPurchaseOrderIframeDoc(previewBodyHtml);
+    return buildGrnIframeDoc(previewBodyHtml);
   }, [previewBodyHtml]);
 
   const excelRows = useMemo(
     () =>
       rawRows.map((r) => ({
-        SoNo: r.SO_NO ?? r.so_no,
-        SoDate: toDisplayDate(toInputDateString(r.SO_DATE ?? r.so_date)),
+        ChType: r.CH_TYPE ?? r.ch_type,
+        ChNo: r.R_NO ?? r.r_no,
+        ChDate: toDisplayDate(toInputDateString(r.R_DATE ?? r.r_date)),
         Party: r.NAME ?? r.name,
         Trn: r.TRN_NO ?? r.trn_no,
         Item: r.ITEM_CODE ?? r.item_code,
@@ -147,8 +166,9 @@ export default function PurchaseOrderPrintScreen({
         Rate: r.RATE ?? r.rate,
         Amount: r.AMOUNT ?? r.amount,
         Remarks: r.REMARKS ?? r.remarks,
-        PoNo: r.PO_NO ?? r.po_no,
-        Remarks2: r.REMARKS2 ?? r.remarks2,
+        TruckNo: r.TRUCK_NO ?? r.truck_no,
+        Tpt: r.TPT ?? r.tpt,
+        GRNo: r.GR_NO ?? r.gr_no,
       })),
     [rawRows]
   );
@@ -177,20 +197,20 @@ export default function PurchaseOrderPrintScreen({
       setErr('Starting date and ending date are required.');
       return;
     }
-    const sTrim = String(sNo ?? '').trim();
-    const eTrim = String(eNo ?? '').trim();
+    const sn = Math.max(0, Math.floor(Number(sNo) || 0));
+    const en = Math.max(sn, Math.floor(Number(eNo) || 0));
     setLoading(true);
     try {
-      const params = {
-        comp_code: compCode,
-        comp_uid: compUid,
-        s_date: toOracleDate(sDate),
-        e_date: toOracleDate(eDate),
-      };
-      if (sTrim !== '') params.s_no = Math.max(0, Math.floor(Number(sTrim)));
-      if (eTrim !== '') params.e_no = Math.max(0, Math.floor(Number(eTrim)));
-      const { data } = await axios.get(`${apiBase}/api/purchase-order-print`, {
-        params,
+      const { data } = await axios.get(`${apiBase}/api/grn-print`, {
+        params: {
+          comp_code: compCode,
+          comp_uid: compUid,
+          s_date: toOracleDate(sDate),
+          e_date: toOracleDate(eDate),
+          s_no: sn,
+          e_no: en,
+          ch_type: normChType(chType),
+        },
         ...reqOpts,
       });
       setRawRows(Array.isArray(data) ? data : []);
@@ -200,16 +220,16 @@ export default function PurchaseOrderPrintScreen({
     } finally {
       setLoading(false);
     }
-  }, [apiBase, compCode, compUid, sDate, eDate, sNo, eNo]);
+  }, [apiBase, compCode, compUid, sDate, eDate, sNo, eNo, chType]);
 
   useEffect(() => {
-    if (mobilePdfPreview && ran && orders.length > 0) {
+    if (mobilePdfPreview && ran && challans.length > 0) {
       setPreviewModalOpen(true);
     }
     if (!ran) {
       setPreviewModalOpen(false);
     }
-  }, [mobilePdfPreview, ran, orders.length]);
+  }, [mobilePdfPreview, ran, challans.length]);
 
   const backToRange = () => {
     setRan(false);
@@ -221,20 +241,28 @@ export default function PurchaseOrderPrintScreen({
   const closePreviewModal = () => setPreviewModalOpen(false);
 
   const handlePdf = useCallback(() => {
-    generatePDF('purchase-order-print', pdfData, pdfMeta).catch((e) => alert(e?.message || String(e)));
+    generatePDF('grn-print', pdfData, pdfMeta).catch((e) => alert(e?.message || String(e)));
   }, [pdfData, pdfMeta]);
 
   const handleWhatsApp = useCallback(() => {
-    sharePdfWithWhatsApp('purchase-order-print', pdfData, pdfMeta, shareText).catch((e) =>
+    sharePdfWithWhatsApp('grn-print', pdfData, pdfMeta, shareText).catch((e) =>
       alert(e?.message || String(e))
     );
   }, [pdfData, pdfMeta, shareText]);
+
+  const handleOpenPreview = useCallback(() => {
+    if (!previewIframeHtml) {
+      alert('Show goods receipt notes first.');
+      return;
+    }
+    openPrintPreviewWindow(previewIframeHtml, { title: 'Goods receipt note' });
+  }, [previewIframeHtml]);
 
   const handleBrowserPrint = useCallback(() => {
     printHtmlDocument(previewIframeHtml, { existingFrame: previewFrameRef.current });
   }, [previewIframeHtml]);
 
-  const hasOrders = orders.length > 0;
+  const hasChallans = challans.length > 0;
   const previewReady = !!previewIframeHtml;
 
   const printActionButtons = (
@@ -242,21 +270,24 @@ export default function PurchaseOrderPrintScreen({
       <button type="button" className="btn btn-secondary" onClick={onClose}>
         ← Back
       </button>
+      <button type="button" className="btn btn-secondary" disabled={!previewReady} onClick={handleOpenPreview}>
+        Preview
+      </button>
       <button type="button" className="btn btn-secondary" disabled={!previewReady} onClick={handleBrowserPrint}>
         Print
       </button>
-      <button type="button" className="btn btn-export" disabled={!hasOrders} onClick={handlePdf}>
+      <button type="button" className="btn btn-export" disabled={!hasChallans} onClick={handlePdf}>
         Pdf
       </button>
       <button
         type="button"
         className="btn btn-excel"
         disabled={!rawRows.length}
-        onClick={() => downloadExcelRows(excelRows, 'PurchaseOrderPrint', `${compName}_DispatchOrder_Print`)}
+        onClick={() => downloadExcelRows(excelRows, 'GrnPrint', `${compName}_GRN_Print`)}
       >
         Excel
       </button>
-      <button type="button" className="btn btn-whatsapp" disabled={!hasOrders} onClick={handleWhatsApp}>
+      <button type="button" className="btn btn-whatsapp" disabled={!hasChallans} onClick={handleWhatsApp}>
         WhatsApp
       </button>
     </>
@@ -272,29 +303,32 @@ export default function PurchaseOrderPrintScreen({
         <div
           className="sale-bill-modal sale-bill-print-modal"
           role="dialog"
-          aria-labelledby="po-print-modal-title"
+          aria-labelledby="dc-print-modal-title"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="sale-bill-modal-head no-print">
-            <h3 id="po-print-modal-title">
-              Purchase order · {orders.length} · {rawRows.length} line(s)
+            <h3 id="dc-print-modal-title">
+              Goods receipt note · {challans.length} · {rawRows.length} line(s)
             </h3>
             <div className="sale-bill-print-actions">
+              <button type="button" className="btn btn-secondary" disabled={!previewReady} onClick={handleOpenPreview}>
+                Preview
+              </button>
               <button type="button" className="btn btn-secondary" disabled={!previewReady} onClick={handleBrowserPrint}>
                 Print
               </button>
-              <button type="button" className="btn btn-export" disabled={!hasOrders} onClick={handlePdf}>
+              <button type="button" className="btn btn-export" disabled={!hasChallans} onClick={handlePdf}>
                 Pdf
               </button>
               <button
                 type="button"
                 className="btn btn-excel"
                 disabled={!rawRows.length}
-                onClick={() => downloadExcelRows(excelRows, 'PurchaseOrderPrint', `${compName}_DispatchOrder_Print`)}
+                onClick={() => downloadExcelRows(excelRows, 'GrnPrint', `${compName}_GRN_Print`)}
               >
                 Excel
               </button>
-              <button type="button" className="btn btn-whatsapp" disabled={!hasOrders} onClick={handleWhatsApp}>
+              <button type="button" className="btn btn-whatsapp" disabled={!hasChallans} onClick={handleWhatsApp}>
                 WhatsApp
               </button>
               <button type="button" className="sale-bill-modal-close" onClick={closePreviewModal} aria-label="Close">
@@ -305,7 +339,7 @@ export default function PurchaseOrderPrintScreen({
           <div className="sale-bill-modal-body sale-bill-print-body">
             <iframe
               ref={previewFrameRef}
-              title="Purchase order mobile preview"
+              title="Goods receipt note mobile preview"
               className="sale-bill-mobile-pdf-preview"
               srcDoc={previewIframeHtml}
             />
@@ -315,9 +349,9 @@ export default function PurchaseOrderPrintScreen({
     ) : null;
 
   return (
-    <div className="slide slide-24-purchase-order-print dc-print-screen">
+    <div className="slide slide-29-grn-print dc-print-screen">
       <header className="dc-print-screen__head">
-        <h2 className="sale-bill-page__title">Purchase order print</h2>
+        <h2 className="sale-bill-page__title">Goods receipt note print</h2>
       </header>
 
       {!mobilePdfPreview ? (
@@ -338,7 +372,7 @@ export default function PurchaseOrderPrintScreen({
             <input type="date" className="form-input" value={eDate} onChange={(e) => setEDate(e.target.value)} />
           </label>
           <label className="sale-bill-field">
-            <span className="sale-bill-field__label">Starting SO no.</span>
+            <span className="sale-bill-field__label">Starting ch.no.</span>
             <input
               type="number"
               min={0}
@@ -348,7 +382,7 @@ export default function PurchaseOrderPrintScreen({
             />
           </label>
           <label className="sale-bill-field">
-            <span className="sale-bill-field__label">Ending SO no.</span>
+            <span className="sale-bill-field__label">Ending ch.no.</span>
             <input
               type="number"
               min={0}
@@ -357,10 +391,19 @@ export default function PurchaseOrderPrintScreen({
               onChange={(e) => setENo(e.target.value)}
             />
           </label>
+          <label className="sale-bill-field">
+            <span className="sale-bill-field__label">Ch.type</span>
+            <input
+              className="form-input dc-print-ch-type"
+              maxLength={1}
+              value={chType}
+              onChange={(e) => setChType(normChType(e.target.value))}
+            />
+          </label>
         </div>
         <div className="dc-print-filters-actions">
           <button type="button" className="btn btn-primary" disabled={loading} onClick={() => void runReport()}>
-            {loading ? 'Loading…' : 'Show orders'}
+            {loading ? 'Loading…' : 'Show GRN'}
           </button>
           {ran ? (
             <button type="button" className="btn btn-secondary" disabled={loading} onClick={backToRange}>
@@ -369,7 +412,7 @@ export default function PurchaseOrderPrintScreen({
           ) : null}
           {ran && mobilePdfPreview && !previewModalOpen ? (
             <button type="button" className="btn btn-secondary" disabled={!previewReady} onClick={() => setPreviewModalOpen(true)}>
-              View orders
+              View GRN
             </button>
           ) : null}
         </div>
@@ -379,7 +422,7 @@ export default function PurchaseOrderPrintScreen({
 
       {!ran && !loading ? (
         <p className="sale-bill-section__hint dc-print-run-hint">
-          Enter date and order number range, then click Show orders.
+          Enter date and GRN number range, then click Show GRN.
         </p>
       ) : null}
 
@@ -387,25 +430,35 @@ export default function PurchaseOrderPrintScreen({
         <section className="sale-bill-section sale-bill-section--card dc-print-results">
           <div className="dc-print-results__toolbar">
             <p className="sale-bill-totals-summary">
-              {orders.length} order(s) · {rawRows.length} line(s)
+              {challans.length} GRN(s) · {rawRows.length} line(s)
             </p>
+            {challans.length ? (
+              <>
+                <div className="dc-print-results__actions">
+                  <button type="button" className="btn btn-primary" disabled={!previewReady} onClick={handleOpenPreview}>
+                    Open preview in new tab
+                  </button>
+                  <p className="sale-bill-section__hint">
+                    Or scroll the preview below. Use Print to open the print dialog.
+                  </p>
+                </div>
+                <iframe
+                  ref={previewFrameRef}
+                  title="Goods receipt note print preview"
+                  className="dc-print-preview-frame"
+                  srcDoc={previewIframeHtml}
+                />
+              </>
+            ) : (
+              <p className="sale-bill-section__hint">No goods receipt notes in the selected range.</p>
+            )}
           </div>
-          {orders.length ? (
-            <iframe
-              ref={previewFrameRef}
-              title="Purchase order print preview"
-              className="dc-print-preview-frame"
-              srcDoc={previewIframeHtml}
-            />
-          ) : (
-            <p className="sale-bill-section__hint">No orders in the selected range.</p>
-          )}
         </section>
       ) : null}
 
       {ran && mobilePdfPreview && !previewModalOpen ? (
         <p className="sale-bill-section__hint dc-print-mobile-hint">
-          {orders.length} order(s) loaded. Tap <strong>View orders</strong> to open preview with Print, Pdf, and
+          {challans.length} GRN(s) loaded. Tap <strong>View GRN</strong> to open preview with Print, Pdf, and
           WhatsApp.
         </p>
       ) : null}
@@ -421,7 +474,7 @@ export default function PurchaseOrderPrintScreen({
           </button>
           {ran ? (
             <button type="button" className="btn btn-primary" disabled={!previewReady} onClick={() => setPreviewModalOpen(true)}>
-              View orders
+              View GRN
             </button>
           ) : null}
         </DcActionBar>

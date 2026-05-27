@@ -27,6 +27,7 @@ import Slide22DispatchChallan from './slides/Slide22DispatchChallan';
 import Slide23SalesOrder from './slides/Slide23SalesOrder';
 import Slide24PurchaseOrder from './slides/Slide24PurchaseOrder';
 import Slide25PurchaseBill from './slides/Slide25PurchaseBill';
+import Slide29Grn from './slides/Slide29Grn';
 import Slide26AccountMaster from './slides/Slide26AccountMaster';
 import Slide27ItemMaster from './slides/Slide27ItemMaster';
 import Slide28VoucherEntry from './slides/Slide28VoucherEntry';
@@ -552,6 +553,7 @@ function App() {
     else if (reportType === 'dispatch-challan-entry') setCurrentSlide(22);
     else if (reportType === 'sales-order-entry') setCurrentSlide(23);
     else if (reportType === 'purchase-order-entry') setCurrentSlide(24);
+    else if (reportType === 'grn-entry') setCurrentSlide(29);
     else if (reportType === 'purchase-bill-entry') setCurrentSlide(25);
     else if (reportType === 'account-master') setCurrentSlide(26);
     else if (reportType === 'item-master') setCurrentSlide(27);
@@ -1039,6 +1041,15 @@ function App() {
         )}
         {currentSlide === 25 && (
           <Slide25PurchaseBill
+            apiBase={API_BASE}
+            formData={formData}
+            userName={loginUserName}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+          />
+        )}
+        {currentSlide === 29 && (
+          <Slide29Grn
             apiBase={API_BASE}
             formData={formData}
             userName={loginUserName}

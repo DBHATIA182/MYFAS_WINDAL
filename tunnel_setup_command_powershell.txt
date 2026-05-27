@@ -1,32 +1,31 @@
-# Use YOUR app folder — drive letter does not matter (E:, D:, etc.).
-# Example on client: D:\windal\apptest   Example on dev PC: E:\WINDAL\APPTEST
+# WINDAL tunnel — run from APPTEST folder (E:\WINDAL\APPTEST or D:\windal\apptest)
+# In PowerShell always use .\ before .cmd files in the current folder.
 
-cd D:\windal\apptest
-# Or:  cd E:\WINDAL\APPTEST
+cd E:\WINDAL\APPTEST
 
-# Tunnel dal-demo ALREADY EXISTS? Use -SkipClientSetup only to refresh config.yml + JSON on this PC
-# (or copy config.yml + <uuid>.json from the machine where tunnel was created).
+# 1) Login (once)
+.\setup-windal-tunnel.cmd login
 
-# A) Link existing tunnel + write config.yml + JSON (no new tunnel if name exists):
-powershell -ExecutionPolicy Bypass -File .\setup-new-client-tunnel.ps1 `
-  -ClientKey "dal-demo" `
-  -SkipClientSetup `
-  -OraclePrimaryUser "DAL" `
-  -OraclePrimaryPassword "DAL" `
-  -OracleSecondaryUser "DAL" `
-  -OracleSecondaryPassword "DAL" `
-  -OracleConnectString "XE"
+# 2) Create tunnel + routes + config.yml
+.\setup-windal-tunnel.cmd dal-srfipulses
 
-# B) Full client setup (npm + task FAS-dal-demo-API) — PowerShell as Administrator:
-# powershell -ExecutionPolicy Bypass -File .\setup-new-client-tunnel.ps1 `
-#   -ClientKey "dal-demo" `
-#   -OraclePrimaryUser "DAL" ...
+# 2b) Routes only (tunnel already exists)
+.\setup-windal-tunnel.cmd dal-srfipulses routes
 
-# Public URLs (tunnel name dal-demo — not fas-dal-demo):
-# - https://dal-demo.fasaccountingsoftware.in
-# - https://dal-demo-api.fasaccountingsoftware.in
+# 3) Start API + web + tunnel
+.\start-windal-stack.cmd
 
-# Then start stack (from the same APP folder you used above):
-#   npm.cmd run server
-#   npm.cmd run dev -- --host 0.0.0.0 --port 5174
-#   cloudflared tunnel --config .\config.yml run
+# --- Or from CMD.exe (no .\ needed) ---
+# setup-windal-tunnel.cmd login
+# setup-windal-tunnel.cmd dal-srfipulses
+
+# --- PowerShell .ps1 single lines ---
+powershell -ExecutionPolicy Bypass -File .\setup-windal-tunnel.ps1 -Login
+powershell -ExecutionPolicy Bypass -File .\setup-windal-tunnel.ps1 -ClientKey dal-srfipulses
+
+# cloudflared on this PC:
+#   C:\Program Files (x86)\Cloudflared\cloudflared.exe
+
+# URLs:
+#   https://dal-srfipulses.fasaccountingsoftware.in
+#   https://dal-srfipulses-api.fasaccountingsoftware.in

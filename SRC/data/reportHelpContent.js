@@ -275,6 +275,18 @@ export const REPORT_HELP = {
     ],
   },
 
+  'grn-entry': {
+    title: 'Goods Receipt Note',
+    summary: 'Goods receipt notes (ISSUE type I).',
+    sections: [
+      section('Use', [
+        'Select supplier; pick pending PO on lines (F1).',
+        'Manual GRN number on add; save posts receipt to ISSUE.',
+        'List and print screens from action bar.',
+      ]),
+    ],
+  },
+
   'sale-bill-entry': {
     title: 'Sale Bill Entry',
     summary: 'Sale bills posting SALE, LEDGER, STOCK, BILLS.',
