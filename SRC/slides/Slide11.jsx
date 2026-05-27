@@ -5,7 +5,6 @@ import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, formatLedgerDateDisplay } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
 import PurchaseBillPrintModal from '../components/PurchaseBillPrintModal';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 
 function n(row, upper, lower) {
@@ -281,10 +280,10 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
           billParams={billPrintParams}
           companyName={compName}
         />
+        <SessionInfoLine formData={formData} helpReportId="purchase-list" />
         <div className="report-toolbar">
           <h2>Purchase list</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="purchase-list" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
               ← Back
@@ -529,7 +528,7 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
   return (
     <div className="slide slide-11">
       <h2>Purchase list</h2>
-      <SessionInfoLine formData={formData}>
+      <SessionInfoLine formData={formData} helpReportId="purchase-list">
         <br />
         <span className="compdet-date-hint">
           Purchase report with filters for type, party, broker, item and plant.

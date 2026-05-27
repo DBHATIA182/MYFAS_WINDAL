@@ -241,7 +241,7 @@ export default function VoucherEntryListScreen({ apiBase, formData, defaultVrTyp
         </div>
       </div>
 
-      <SessionInfoLine formData={formData} />
+      <SessionInfoLine formData={formData} helpReportId="voucher-list" />
 
       <div className="voucher-entry-list-filters">
         <label className="voucher-entry-field">

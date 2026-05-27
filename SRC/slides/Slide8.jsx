@@ -6,7 +6,6 @@ import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 import {
   filterCodeNameCityRows,
@@ -371,10 +370,10 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
           billParams={billPrintParams}
           companyName={compName}
         />
+        <SessionInfoLine formData={formData} helpReportId="sale-list" />
         <div className="report-toolbar">
           <h2>Sale bill list</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="sale-list" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
               ← Back
@@ -491,7 +490,7 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
   return (
     <div className="slide slide-8">
       <h2>Sale bill list</h2>
-      <SessionInfoLine formData={formData}>
+      <SessionInfoLine formData={formData} helpReportId="sale-list">
         <br />
         <span className="compdet-date-hint">
           Same as VFP9 <code>MVAR</code>: <code>SALE.TYPE</code> is a <strong>number</strong> (1–9) matching the document list; filter is{' '}

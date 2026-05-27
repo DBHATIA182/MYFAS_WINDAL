@@ -4,7 +4,6 @@ import ReportTable from '../components/ReportTable';
 import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, getCurBal, formatCurBal } from '../utils/dateFormat';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SessionInfoLine from '../components/SessionInfoLine';
 import { filterCodeNameCityRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
 
@@ -245,10 +244,10 @@ export default function Slide6({ apiBase, onPrev, onReset, formData }) {
   if (showReport && reportData.length > 0) {
     return (
       <div className="slide slide-report">
+        <SessionInfoLine formData={formData} helpReportId="customer-ledger" />
         <div className="report-toolbar">
           <h2>{ledgerTitle}</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="customer-ledger" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
               ← Back
@@ -333,7 +332,7 @@ export default function Slide6({ apiBase, onPrev, onReset, formData }) {
     <div className="slide slide-6">
       <h2>{ledgerTitle} — parameters</h2>
 
-      <SessionInfoLine formData={formData}>
+      <SessionInfoLine formData={formData} helpReportId="customer-ledger">
         <br />
         <span className="compdet-date-hint">
           {isSupplierLedger

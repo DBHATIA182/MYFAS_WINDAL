@@ -1,5 +1,7 @@
 import React from 'react';
 import { buildAppSessionParts } from '../utils/appSessionLine';
+import { useAppSession } from './AppSessionContext';
+import SessionToolbarChrome from './SessionToolbarChrome';
 
 function Pipe() {
   return <span className="sale-entry-top-bar__pipe"> | </span>;
@@ -31,14 +33,31 @@ export function SaleEntryPermissionPills({ can, className = '' }) {
 
 /**
  * One top bar for sale bill / dispatch / sales order:
- * comp_code | comp_name | FY … | dates | comp_uid | USER | ACCESS | ADD | …
+ * comp_code | comp_name | FY … | dates | comp_uid | USER | ACCESS | ADD | … | [GST] | Help | Settings | Voice
  */
-export default function SaleEntryTopBar({ formData, ctx, userName, companyName, can }) {
+export default function SaleEntryTopBar({
+  formData,
+  ctx,
+  userName,
+  companyName,
+  can,
+  helpReportId,
+  helpViewKey,
+  helpLabel,
+  gstNo,
+}) {
+  const session = useAppSession();
+  const gst = String(gstNo ?? ctx?.G_GST_NO ?? '').trim();
+  const hasChrome = Boolean(helpReportId || session.headerActions);
   const parts = buildAppSessionParts({ formData, ctx, userName, companyName, includeUser: false });
   const user = String(userName ?? '').trim();
 
   return (
-    <div className="sale-entry-top-bar sale-entry-fy-strip" role="status" aria-label="Company session and user rights">
+    <div
+      className={`sale-entry-top-bar sale-entry-fy-strip${hasChrome ? ' sale-entry-top-bar--with-actions' : ''}`}
+      role="status"
+      aria-label="Company session and user rights"
+    >
       <span className="sale-entry-top-bar__line">
         {parts.map((p, i) => (
           <React.Fragment key={`${p}-${i}`}>
@@ -58,7 +77,23 @@ export default function SaleEntryTopBar({ formData, ctx, userName, companyName, 
             <SaleEntryPermissionPills can={can} />
           </>
         ) : null}
+        {gst ? (
+          <>
+            <Pipe />
+            <span className="sale-entry-top-bar__gst">GST {gst}</span>
+          </>
+        ) : null}
       </span>
+      {hasChrome ? (
+        <div className="sale-entry-top-bar__actions">
+          <SessionToolbarChrome
+            helpReportId={helpReportId}
+            helpViewKey={helpViewKey}
+            helpLabel={helpLabel}
+            helpCompanyName={formData?.comp_name ?? formData?.COMP_NAME ?? ''}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

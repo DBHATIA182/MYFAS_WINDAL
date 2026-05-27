@@ -5,7 +5,6 @@ import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFor
 import DispatchChallanListScreen from './DispatchChallanListScreen';
 import DispatchChallanPrintScreen from './DispatchChallanPrintScreen';
 import { DcActionBar } from '../components/DispatchChallanActionBar';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SaleEntryTopBar from '../components/SaleEntryTopBar';
 import SaleEntryScreenHeader from '../components/SaleEntryScreenHeader';
 import MasterPartyCreateModal, { PartyAddButton } from '../components/MasterPartyCreateModal';
@@ -937,8 +936,15 @@ export default function Slide22DispatchChallan({ apiBase, formData, userName, on
     >
       <SaleEntryScreenHeader
         title="Dispatch challan"
-        reportId="dispatch-challan-entry"
-        topBar={<SaleEntryTopBar formData={formData} ctx={ctx} userName={userName} can={can} />}
+        topBar={
+          <SaleEntryTopBar
+            formData={formData}
+            ctx={ctx}
+            userName={userName}
+            can={can}
+            helpReportId="dispatch-challan-entry"
+          />
+        }
         nav={showChNav ? chNavButtons : null}
       >
         {screenActionButtons}

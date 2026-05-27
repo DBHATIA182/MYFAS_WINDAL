@@ -1586,18 +1586,36 @@
 
   .slide-28-voucher-entry.sale-entry-desktop .voucher-entry-card {
     overflow: visible;
+    flex: 0 0 auto;
+    min-height: auto;
   }
 
   .slide-28-voucher-entry.sale-entry-desktop .voucher-entry-body {
-    min-height: 0;
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .slide-28-voucher-entry.sale-entry-desktop .voucher-entry-grid {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
   }
 
   .slide-28-voucher-entry.sale-entry-desktop .voucher-entry-lines-wrap,
   .voucher-entry-lines-wrap {
+    flex: 0 0 auto;
     overflow-x: auto;
     overflow-y: visible;
     max-height: none;
+    min-height: 8rem;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .slide-28-voucher-entry.sale-entry-desktop .voucher-entry-panel--summary {
+    margin: 0 0.55rem 0.35rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
   }
 
   .slide-28-voucher-entry.sale-entry-desktop .voucher-entry-lines {

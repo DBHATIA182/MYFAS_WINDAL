@@ -7,7 +7,6 @@ import { generatePDF, sharePdfWithWhatsApp, buildLedgerStatementPdfMetadata } fr
 import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, formatCurBal, getCurBal } from '../utils/dateFormat';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SessionInfoLine from '../components/SessionInfoLine';
 import { filterAccountRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
 
@@ -322,10 +321,10 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
     if (voucherRows != null) {
       return (
         <div className="slide slide-report">
+          <SessionInfoLine formData={formData} helpReportId={isLedgerInterest ? 'ledger-interest' : 'ledger'} />
           <div className="report-toolbar">
             <h2>Voucher entries</h2>
             <div className="toolbar-actions">
-            <ReportHelpButton reportId={isLedgerInterest ? 'ledger-interest' : 'ledger'} />
             
               <button type="button" className="btn btn-toolbar-back" onClick={() => setVoucherRows(null)}>
                 ← Back to ledger
@@ -377,10 +376,10 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
 
     return (
       <div className="slide slide-report">
+        <SessionInfoLine formData={formData} helpReportId={isLedgerInterest ? 'ledger-interest' : 'ledger'} />
         <div className="report-toolbar">
           <h2>{isLedgerInterest ? 'Ledger With Interest' : 'Ledger Report'}</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId={isLedgerInterest ? 'ledger-interest' : 'ledger'} />
             
             <button type="button" className="btn btn-toolbar-back" onClick={closeReport}>
               ← Back
@@ -450,7 +449,7 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
     <div className="slide slide-5">
       <h2>{isLedgerInterest ? 'Ledger With Interest Parameters' : 'Ledger Report Parameters'}</h2>
       
-      <SessionInfoLine formData={formData}>
+      <SessionInfoLine formData={formData} helpReportId={isLedgerInterest ? 'ledger-interest' : 'ledger'}>
         <br />
         <span className="compdet-date-hint">
           Dates below are comp_s_dt / comp_e_dt for this year (FY may span two calendar years).

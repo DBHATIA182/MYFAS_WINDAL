@@ -16,6 +16,23 @@ function readVisibleViewport() {
 
 const IOS_KEYBOARD_ACCESSORY = 52;
 
+function computeDesktopModalStyle() {
+  const pad = 20;
+  const width = Math.min(520, window.innerWidth - pad * 2);
+  const height = Math.min(460, window.innerHeight - pad * 2);
+  return {
+    position: 'fixed',
+    left: '50%',
+    top: '50%',
+    transform: 'translate(-50%, -50%)',
+    width,
+    height,
+    maxHeight: height,
+    zIndex: 12002,
+    bottom: 'auto',
+  };
+}
+
 /** Panel above the software keyboard (list-only or with filter). */
 export function computePbPickPanelStyle({ showFilter = false, anchor = 'bottom', sheet = false } = {}) {
   const vv = readVisibleViewport();
@@ -64,6 +81,7 @@ export default function PbPartyBrokerPickPortal({
   subtitle,
   autoFocusFilter = false,
   onFilterKeyDown,
+  modal = false,
 }) {
   const filterRef = useRef(null);
   const rafRef = useRef(0);
@@ -80,8 +98,8 @@ export default function PbPartyBrokerPickPortal({
   }, [showFilter, anchor, sheet]);
 
   useLayoutEffect(() => {
-    if (!open) {
-      setPanelStyle(null);
+    if (!open || modal) {
+      if (!open) setPanelStyle(null);
       return undefined;
     }
     setPanelStyle(computePbPickPanelStyle({ showFilter, anchor, sheet }));
@@ -95,7 +113,7 @@ export default function PbPartyBrokerPickPortal({
       vv?.removeEventListener('scroll', scheduleLayout);
       window.removeEventListener('resize', scheduleLayout);
     };
-  }, [open, showFilter, anchor, sheet, scheduleLayout]);
+  }, [open, showFilter, anchor, sheet, scheduleLayout, modal]);
 
   useEffect(() => {
     if (!open || !showFilter || !autoFocusFilter) return undefined;
@@ -109,16 +127,18 @@ export default function PbPartyBrokerPickPortal({
 
   if (!open) return null;
 
-  const layout = panelStyle ?? computePbPickPanelStyle({ showFilter, anchor, sheet });
+  const layout = modal
+    ? computeDesktopModalStyle()
+    : panelStyle ?? computePbPickPanelStyle({ showFilter, anchor, sheet });
 
   return createPortal(
     <div
-      className={`pb-pick-portal pb-pick-portal--viewport${sheet ? ' pb-pick-portal--sheet' : ''}`}
+      className={`pb-pick-portal pb-pick-portal--viewport${sheet ? ' pb-pick-portal--sheet' : ''}${modal ? ' pb-pick-portal--modal' : ''}`}
       role="presentation"
     >
       <button type="button" className="pb-pick-portal__backdrop" aria-label="Close" tabIndex={-1} onClick={onClose} />
       <div
-        className={`pb-pick-portal__panel pb-pick-portal__panel--anchored${showFilter ? '' : ' pb-pick-portal__panel--list-only'}${sheet ? ' pb-pick-portal__panel--sheet' : ''}`}
+        className={`pb-pick-portal__panel pb-pick-portal__panel--anchored${showFilter ? '' : ' pb-pick-portal__panel--list-only'}${sheet ? ' pb-pick-portal__panel--sheet' : ''}${modal ? ' pb-pick-portal__panel--modal' : ''}`}
         style={layout}
         role="listbox"
         aria-label={title}

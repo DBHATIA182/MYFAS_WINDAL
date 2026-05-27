@@ -6,7 +6,6 @@ import { toInputDateString, toOracleDate, toDisplayDate, formatLedgerDateDisplay
 import { formatApiOrigin } from '../utils/apiLabel';
 import PurchaseBillPrintModal from '../components/PurchaseBillPrintModal';
 import SaleBillPrintModal from '../components/SaleBillPrintModal';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 
 /** Maps Oracle SALE.TYPE (1–9) to print/API letter bucket (same as Slide13). */
@@ -518,6 +517,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
   if (showReport) {
     return (
       <div className="slide slide-report slide-9">
+        <SessionInfoLine formData={formData} helpReportId="stock-sum" />
         <PurchaseBillPrintModal
           open={purchaseBillOpen}
           onClose={() => {
@@ -550,7 +550,6 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
         <div className="report-toolbar">
           <h2>Stock sum</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="stock-sum" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
               ← Back
@@ -736,7 +735,6 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
                 {ledgerMeta?.plantCode ? `· Plant ${ledgerMeta.plantCode}` : ''}
               </h2>
               <div className="toolbar-actions">
-            <ReportHelpButton reportId="stock-sum" />
             
                 <button type="button" className="btn btn-toolbar-back" onClick={() => setStockPanel('summary')}>
                   ← Stock sum
@@ -881,7 +879,6 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
             <div className="report-toolbar stock-ledger-detail-toolbar">
               <h2 className="stock-panel-title stock-ledger-detail-title">{ledgerEntryTitle}</h2>
               <div className="toolbar-actions">
-            <ReportHelpButton reportId="stock-sum" />
             
                 <button type="button" className="btn btn-toolbar-back" onClick={goBackFromLedgerDetail}>
                   ← Stock ledger
@@ -1032,7 +1029,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
   return (
     <div className="slide slide-9">
       <h2>Stock sum</h2>
-      <SessionInfoLine formData={formData}>
+      <SessionInfoLine formData={formData} helpReportId="stock-sum">
         <br />
         <span className="compdet-date-hint">
           Item-wise stock movement summary by date range with optional filters.

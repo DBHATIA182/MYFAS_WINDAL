@@ -3,7 +3,6 @@ import axios from 'axios';
 import SaleBillPrintModal from '../components/SaleBillPrintModal';
 import { toDisplayDate, toInputDateString, toOracleDate } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 import { filterCodeNameCityRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
 
@@ -235,10 +234,10 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
           billParams={billPrintParams}
           companyName={compName}
         />
+        <SessionInfoLine formData={formData} helpReportId="sale-bill-printing" />
         <div className="report-toolbar">
           <h2>Sale Bill Printing</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="sale-bill-printing" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
               ← Back
@@ -351,7 +350,7 @@ export default function Slide13({ apiBase, formData, onPrev, onReset }) {
   return (
     <div className="slide slide-13">
       <h2>Sale Bill Printing</h2>
-      <SessionInfoLine formData={formData}>
+      <SessionInfoLine formData={formData} helpReportId="sale-bill-printing">
         <br />
         <span className="compdet-date-hint">
           VFP-style filters: <strong>date range</strong>, <strong>bill no range</strong>, <strong>SALETYPE</strong>, <strong>PAGETYPE</strong>,{' '}

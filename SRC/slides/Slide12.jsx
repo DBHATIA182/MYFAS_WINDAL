@@ -4,7 +4,6 @@ import ReportTable from '../components/ReportTable';
 import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { toDisplayDate, toInputDateString, toOracleDate } from '../utils/dateFormat';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 
 function todayInputValue() {
@@ -193,10 +192,10 @@ export default function Slide12({ apiBase, onPrev, onReset, formData }) {
   if (viewMode === VIEW.DETAIL && detailRows.length > 0) {
     return (
       <div className="slide slide-report">
+        <SessionInfoLine formData={formData} helpReportId="ageing" />
         <div className="report-toolbar">
           <h2>{mlb === 'B' ? 'Pending bill entries' : 'Pending ledger entries'}</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="ageing" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={() => setViewMode(VIEW.REPORT)}>
               ← Back to ageing
@@ -245,10 +244,10 @@ export default function Slide12({ apiBase, onPrev, onReset, formData }) {
   if (viewMode === VIEW.REPORT && reportData.length > 0) {
     return (
       <div className="slide slide-report">
+        <SessionInfoLine formData={formData} helpReportId="ageing" />
         <div className="report-toolbar">
           <h2>Ageing report</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="ageing" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={() => setViewMode(VIEW.FORM)}>
               ← Back
@@ -320,7 +319,7 @@ export default function Slide12({ apiBase, onPrev, onReset, formData }) {
     <div className="slide slide-ageing-form">
       <h2>Ageing report — parameters</h2>
 
-      <SessionInfoLine formData={formData}>
+      <SessionInfoLine formData={formData} helpReportId="ageing">
         <br />
         <span className="compdet-date-hint">Select schedule, ending date, source, and the five ageing buckets.</span>
       </SessionInfoLine>

@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { toInputDateString, toOracleDate, toDisplayDate, normalizeHtmlDateValue } from '../utils/dateFormat';
 import SaleBillPrintModal from '../components/SaleBillPrintModal';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SaleEntryTopBar from '../components/SaleEntryTopBar';
 import SaleEntryScreenHeader from '../components/SaleEntryScreenHeader';
 import MasterPartyCreateModal, { PartyAddButton } from '../components/MasterPartyCreateModal';
@@ -1705,21 +1704,21 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
       />
       <SaleEntryScreenHeader
         title="Sale bill"
-        reportId="sale-bill-entry"
-        topBar={<SaleEntryTopBar formData={formData} ctx={ctx} userName={userName} can={can} />}
+        topBar={
+          <SaleEntryTopBar
+            formData={formData}
+            ctx={ctx}
+            userName={userName}
+            can={can}
+            helpReportId="sale-bill-entry"
+          />
+        }
         extra={
-          <>
-            {!can.canOpen && !can.canAdd && !can.canEdit && !can.canDelete ? (
-              <p className="sale-bill-page__perms deploy-update-msg deploy-update-msg--err" role="status">
-                Access denied (F1)
-              </p>
-            ) : null}
-            {ctx && String(ctx.G_GST_NO || '').trim() ? (
-              <div className="sale-bill-page__context">
-                <span>GST {String(ctx.G_GST_NO || '').trim()}</span>
-              </div>
-            ) : null}
-          </>
+          !can.canOpen && !can.canAdd && !can.canEdit && !can.canDelete ? (
+            <p className="sale-bill-page__perms deploy-update-msg deploy-update-msg--err" role="status">
+              Access denied (F1)
+            </p>
+          ) : null
         }
       />
 

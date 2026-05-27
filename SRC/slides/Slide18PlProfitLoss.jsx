@@ -7,7 +7,6 @@ import SaleBillPrintModal from '../components/SaleBillPrintModal';
 import LedgerReportHeader from '../components/LedgerReportHeader';
 import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SessionInfoLine from '../components/SessionInfoLine';
 
 function num(v) {
@@ -362,10 +361,10 @@ export default function Slide18PlProfitLoss({ apiBase, formData = {}, onPrev, on
   if (screen === SCREEN.VOUCHER) {
     return (
       <div className="slide slide-report slide-18 pl-profit-loss">
+        <SessionInfoLine formData={formData} helpReportId="pl-profit-loss" />
         <div className="report-toolbar">
           <h2>Voucher entries</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="pl-profit-loss" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={() => setScreen(SCREEN.LEDGER)}>
               ← Back to ledger
@@ -420,10 +419,10 @@ export default function Slide18PlProfitLoss({ apiBase, formData = {}, onPrev, on
   if (screen === SCREEN.LEDGER) {
     return (
       <div className="slide slide-report slide-18 pl-profit-loss">
+        <SessionInfoLine formData={formData} helpReportId="pl-profit-loss" />
         <div className="report-toolbar">
           <h2>Ledger Report</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="pl-profit-loss" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={() => setScreen(SCREEN.REPORT)}>
               ← Back to P&L
@@ -475,10 +474,10 @@ export default function Slide18PlProfitLoss({ apiBase, formData = {}, onPrev, on
 
     return (
       <div className="slide slide-report slide-18 pl-profit-loss">
+        <SessionInfoLine formData={formData} helpReportId="pl-profit-loss" />
         <div className="report-toolbar">
           <h2>Profit &amp; Loss</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="pl-profit-loss" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={() => { setPlData(null); setScreen(SCREEN.FORM); }}>
               ← Back
@@ -679,7 +678,7 @@ export default function Slide18PlProfitLoss({ apiBase, formData = {}, onPrev, on
   if (screen === SCREEN.FORM) return (
     <div className="slide slide-report slide-18 pl-profit-loss pl-profit-loss--setup">
       <h2>Profit &amp; Loss Account</h2>
-      <SessionInfoLine formData={formData} />
+      <SessionInfoLine formData={formData} helpReportId="pl-profit-loss" />
       <p className="report-info">Uses current project Trading logic (TDG) with standard setup.</p>
       {error ? <div className="form-api-error">{error}</div> : null}
 

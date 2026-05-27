@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import ItemMasterFormModal from '../components/ItemMasterFormModal';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SessionInfoLine from '../components/SessionInfoLine';
 
 const reqOpts = { withCredentials: true, timeout: 120000 };
@@ -156,9 +155,8 @@ export default function Slide27ItemMaster({ apiBase, formData, userName, onPrev,
       <div className="account-master-screen__head">
         <div className="account-master-screen__title-row">
           <h2 className="sale-bill-page__title">Item Master</h2>
-          <ReportHelpButton reportId="item-master" />
         </div>
-        <SessionInfoLine formData={formData} userName={userName} />
+        <SessionInfoLine formData={formData} userName={userName} helpReportId="item-master" />
         <div className="account-master-screen__toolbar">
           <button type="button" className="btn btn-secondary" onClick={onPrev}>
             ← Back

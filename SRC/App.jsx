@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { IconSettings, IconVoice } from './components/ToolbarIcons';
 import LoginSlide from './slides/LoginSlide';
 import AppSessionLine from './components/AppSessionLine';
 import { AppSessionContext } from './components/AppSessionContext';
@@ -199,18 +200,10 @@ console.log('Current API Base:', API_BASE || '(same origin /api proxy)');
 console.log('UI branding:', APP_DISPLAY_NAME, '| Connecting label:', getConnectingClientLabel() || '(none)');
 
 function App() {
-  const renderHeaderBrand = () => (
-    <div className="app-header-brand">
-      <h1>{APP_DISPLAY_NAME}</h1>
-      {import.meta.env.DEV ? (
-        <span
-          className="windal-dev-strip"
-          title="Windal dev uses http://localhost:5174. If you see GRAINFAS on 5173, that is a different app — use port 5174 for this repo."
-        >
-          WINDAL APPTEST
-        </span>
-      ) : null}
-    </div>
+  const renderMinimalHeaderActions = () => (
+    <header className="app-header app-header--minimal">
+      <div className="app-header-actions">{renderViewSettings()}</div>
+    </header>
   );
 
   const initialAuth = readPersistedAuth();
@@ -702,10 +695,12 @@ function App() {
     <div className="view-settings">
       <button
         type="button"
-        className="view-settings-btn"
+        className="toolbar-icon-btn toolbar-icon-btn--settings view-settings-btn"
         onClick={() => setShowViewSettings((prev) => !prev)}
+        title="Settings"
+        aria-label="Settings"
       >
-        Settings
+        <IconSettings />
       </button>
       {showViewSettings ? (
         <div className="view-settings-menu">
@@ -825,7 +820,7 @@ function App() {
           <section className="slide startup-mode-card">
             <h2>Choose View Mode</h2>
             <p className="startup-mode-subtitle">
-              Select how you want to use {APP_DISPLAY_NAME} in this session.
+              Select how you want to use the application in this session.
             </p>
             <p className="startup-mode-shortcut-hint">Keyboard shortcut: press D for Desktop or M for Mobile.</p>
             <div className="startup-mode-actions">
@@ -844,15 +839,25 @@ function App() {
     );
   }
 
-  const hideGlobalSessionInHeader = [21, 22, 23, 24, 25, 26, 27, 28].includes(currentSlide);
-  const headerSessionLineEl =
-    authenticated &&
-    !hideGlobalSessionInHeader &&
-    (formData.comp_code != null || formData.comp_uid != null) ? (
-      <AppSessionLine formData={formData} userName={loginUserName} className="app-header-session-line" />
-    ) : null;
+  const hideAppHeaderChrome = authenticated && currentSlide >= 3;
+  const appClassName = `app ${viewMode === 'desktop' ? 'app--desktop' : 'app--mobile'}${hideAppHeaderChrome ? ' app--no-header' : ''}`;
 
-  const appClassName = `app ${viewMode === 'desktop' ? 'app--desktop' : 'app--mobile'}`;
+  const entryHeaderActions = (
+    <>
+      {renderViewSettings()}
+      {voiceSupported ? (
+        <button
+          type="button"
+          className={`toolbar-icon-btn toolbar-icon-btn--voice voice-command-btn${voiceListening ? ' voice-command-btn--listening toolbar-icon-btn--listening' : ''}`}
+          onClick={handleVoiceCommand}
+          title={voiceListening ? 'Listening…' : 'Voice command'}
+          aria-label={voiceListening ? 'Listening for voice command' : 'Voice command'}
+        >
+          <IconVoice />
+        </button>
+      ) : null}
+    </>
+  );
 
   if (!clientGuardChecked) {
     return (
@@ -894,13 +899,7 @@ function App() {
     return (
       <>
       <div className={appClassName}>
-        <header className="app-header">
-          {renderHeaderBrand()}
-          <div className="app-header-actions">
-            {renderViewSettings()}
-            <div className="status-badge">Sign in</div>
-          </div>
-        </header>
+        {renderMinimalHeaderActions()}
         <main className="app-main">
           <LoginSlide apiBase={API_BASE} onSuccess={handleLoginSuccess} onExit={exitApp} />
         </main>
@@ -914,12 +913,7 @@ function App() {
     return (
       <>
       <div className={appClassName}>
-        <header className="app-header">
-          {renderHeaderBrand()}
-          <div className="app-header-actions">
-            {renderViewSettings()}
-          </div>
-        </header>
+        {renderMinimalHeaderActions()}
         <main className="app-main">
           <div className="app-loading">
             <h2>Connecting to client</h2>
@@ -937,26 +931,26 @@ function App() {
   return (
     <>
     <div className={appClassName}>
-      <header className="app-header">
-        <div className="app-header-start">
-          {renderHeaderBrand()}
-          {headerSessionLineEl}
-        </div>
+      {!hideAppHeaderChrome ? (
+      <header className="app-header app-header--minimal">
         <div className="app-header-actions">
           {renderViewSettings()}
           {voiceSupported ? (
             <button
               type="button"
-              className={`voice-command-btn${voiceListening ? ' voice-command-btn--listening' : ''}`}
+              className={`toolbar-icon-btn toolbar-icon-btn--voice voice-command-btn${voiceListening ? ' voice-command-btn--listening toolbar-icon-btn--listening' : ''}`}
               onClick={handleVoiceCommand}
+              title={voiceListening ? 'Listening…' : 'Voice command'}
+              aria-label={voiceListening ? 'Listening for voice command' : 'Voice command'}
             >
-              {voiceListening ? 'Listening...' : 'Voice'}
+              <IconVoice />
             </button>
           ) : null}
         </div>
       </header>
+      ) : null}
 
-      <AppSessionContext.Provider value={{ formData, userName: loginUserName }}>
+      <AppSessionContext.Provider value={{ formData, userName: loginUserName, headerActions: entryHeaderActions }}>
       <main className="app-main">
         {currentSlide === 1 && (
           <Slide1 companies={companies} onNext={handleSlide1Next} onExit={handleExitApp} />

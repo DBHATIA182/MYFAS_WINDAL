@@ -5,7 +5,6 @@ import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFor
 import SalesOrderListScreen from './SalesOrderListScreen';
 import SalesOrderPrintScreen from './SalesOrderPrintScreen';
 import { DcActionBar } from '../components/DispatchChallanActionBar';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SaleEntryTopBar from '../components/SaleEntryTopBar';
 import SaleEntryScreenHeader from '../components/SaleEntryScreenHeader';
 import MasterPartyCreateModal, { PartyAddButton } from '../components/MasterPartyCreateModal';
@@ -839,8 +838,15 @@ export default function Slide23SalesOrder({ apiBase, formData, userName, onPrev,
     >
       <SaleEntryScreenHeader
         title="Sales order"
-        reportId="sales-order-entry"
-        topBar={<SaleEntryTopBar formData={formData} ctx={ctx} userName={userName} can={can} />}
+        topBar={
+          <SaleEntryTopBar
+            formData={formData}
+            ctx={ctx}
+            userName={userName}
+            can={can}
+            helpReportId="sales-order-entry"
+          />
+        }
         nav={showSoNav ? soNavButtons : null}
       >
         {screenActionButtons}

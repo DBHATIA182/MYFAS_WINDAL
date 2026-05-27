@@ -5,7 +5,6 @@ import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFor
 import PurchaseOrderListScreen from './PurchaseOrderListScreen';
 import PurchaseOrderPrintScreen from './PurchaseOrderPrintScreen';
 import { DcActionBar } from '../components/DispatchChallanActionBar';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SaleEntryTopBar from '../components/SaleEntryTopBar';
 import SaleEntryScreenHeader from '../components/SaleEntryScreenHeader';
 import MasterPartyCreateModal, { PartyAddButton } from '../components/MasterPartyCreateModal';
@@ -839,8 +838,15 @@ export default function Slide24PurchaseOrder({ apiBase, formData, userName, onPr
     >
       <SaleEntryScreenHeader
         title="Purchase order"
-        reportId="purchase-order-entry"
-        topBar={<SaleEntryTopBar formData={formData} ctx={ctx} userName={userName} can={can} />}
+        topBar={
+          <SaleEntryTopBar
+            formData={formData}
+            ctx={ctx}
+            userName={userName}
+            can={can}
+            helpReportId="purchase-order-entry"
+          />
+        }
         nav={showPoNav ? poNavButtons : null}
       >
         {screenActionButtons}

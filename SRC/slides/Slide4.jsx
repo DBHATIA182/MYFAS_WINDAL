@@ -8,7 +8,6 @@ import { generatePDF, sharePdfWithWhatsApp, buildLedgerStatementPdfMetadata } fr
 import { downloadExcelRows } from '../utils/excelExport';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
 import { sortTrialBalanceRows } from '../utils/trialBalanceSort';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SessionInfoLine from '../components/SessionInfoLine';
 
 const VIEW = { FORM: 'form', TRIAL: 'trial', LEDGER: 'ledger', VOUCHER: 'voucher' };
@@ -259,10 +258,10 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
   if (viewMode === VIEW.VOUCHER) {
     return (
       <div className="slide slide-report">
+        <SessionInfoLine formData={formData} helpReportId="trial-balance" helpViewKey="voucher" />
         <div className="report-toolbar">
           <h2>Voucher entries</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="trial-balance" viewKey="voucher" />
             <button type="button" className="btn btn-toolbar-back" onClick={() => setViewMode(VIEW.LEDGER)}>
               ← Back to ledger
             </button>
@@ -309,10 +308,10 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
   if (viewMode === VIEW.LEDGER) {
     return (
       <div className="slide slide-report">
+        <SessionInfoLine formData={formData} helpReportId="trial-balance" helpViewKey="ledger" />
         <div className="report-toolbar">
           <h2>Ledger Account</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="trial-balance" viewKey="ledger" />
             <button type="button" className="btn btn-toolbar-back" onClick={() => setViewMode(VIEW.TRIAL)}>
               ← Back
             </button>
@@ -396,7 +395,6 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
             <button type="button" className="btn btn-toolbar-back" onClick={() => setViewMode(VIEW.FORM)}>
               ← Back
             </button>
-            <ReportHelpButton reportId="trial-balance" />
             <button
               type="button"
               className="btn btn-export"
@@ -426,7 +424,7 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
             </button>
           </div>
         </div>
-        <SessionInfoLine formData={formData} as="div">
+        <SessionInfoLine formData={formData} as="div" helpReportId="trial-balance">
           <br />
           As of {toDisplayDate(endDate)}
         </SessionInfoLine>
@@ -454,12 +452,11 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
         <button type="button" className="btn btn-secondary" onClick={onPrev}>
           ← Back
         </button>
-        <ReportHelpButton reportId="trial-balance" />
         <button type="button" className="btn btn-primary form-top-bar__run" onClick={runTrialBalance} disabled={loading}>
           {loading ? 'Loading…' : 'Run'}
         </button>
       </div>
-      <SessionInfoLine formData={formData}>
+      <SessionInfoLine formData={formData} helpReportId="trial-balance">
         <br />
         <span className="compdet-date-hint">
           Set the as-of date (comp_e_dt) and optional schedule. Only Trial Balance runs from this screen; open a ledger

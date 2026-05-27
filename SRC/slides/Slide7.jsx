@@ -6,7 +6,6 @@ import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
 import { filterBrokerOsRawRowsByMinClosingAbs, parseBrokerOsRangeForUi } from '../utils/brokerOsDisplay';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 import { filterCodeNameCityRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
 
@@ -303,10 +302,10 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
     if (brokerOsFilteredReportData.length === 0) {
       return (
         <div className="slide slide-report">
+          <SessionInfoLine formData={formData} helpReportId="broker-os" />
           <div className="report-toolbar">
             <h2>Broker outstanding</h2>
             <div className="toolbar-actions">
-            <ReportHelpButton reportId="broker-os" />
             
               <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
                 ← Back
@@ -332,10 +331,10 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
 
     return (
       <div className="slide slide-report">
+        <SessionInfoLine formData={formData} helpReportId="broker-os" />
         <div className="report-toolbar">
           <h2>Broker outstanding</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="broker-os" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
               ← Back
@@ -414,7 +413,7 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
     <div className="slide slide-7">
       <h2>Broker outstanding (BrokerOs)</h2>
 
-      <SessionInfoLine formData={formData}>
+      <SessionInfoLine formData={formData} helpReportId="broker-os">
         <br />
         <span className="compdet-date-hint">
           Each included bill has at least one <strong>BILLS</strong> line with numeric <strong>b_code</strong> (column{' '}

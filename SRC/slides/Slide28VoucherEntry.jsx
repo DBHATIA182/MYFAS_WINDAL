@@ -4,7 +4,6 @@ import MasterPartyCreateModal, { PartyAddButton } from '../components/MasterPart
 import MasterPartyPickList from '../components/MasterPartyPickList';
 import SaleEntryScreenHeader from '../components/SaleEntryScreenHeader';
 import SaleEntryTopBar from '../components/SaleEntryTopBar';
-import ReportHelpButton from '../components/ReportHelpButton';
 import VoucherPendingBillsModal from '../components/VoucherPendingBillsModal';
 import VoucherEntryListScreen from '../components/VoucherEntryListScreen';
 import VoucherReportPreviewModal from '../components/VoucherReportPreviewModal';
@@ -996,9 +995,6 @@ export default function Slide28VoucherEntry({ apiBase, formData, userName, onPre
           <span className="voucher-entry-summary-box__value">{fmtTotal(lineTotals.cr)}</span>
         </div>
       </div>
-      <div className="voucher-entry-panel__help">
-        <ReportHelpButton reportId="voucher-entry" label="View help guide" />
-      </div>
     </section>
   );
 
@@ -1095,12 +1091,25 @@ export default function Slide28VoucherEntry({ apiBase, formData, userName, onPre
       {isMobileLayout ? (
         <SaleEntryScreenHeader
           title="Voucher entry"
-          reportId="voucher-entry"
-          topBar={<SaleEntryTopBar formData={formData} ctx={ctx} userName={userName} can={can} />}
+          topBar={
+            <SaleEntryTopBar
+              formData={formData}
+              ctx={ctx}
+              userName={userName}
+              can={can}
+              helpReportId="voucher-entry"
+            />
+          }
           nav={null}
         />
       ) : (
-        <SaleEntryTopBar formData={formData} ctx={ctx} userName={userName} can={can} />
+        <SaleEntryTopBar
+          formData={formData}
+          ctx={ctx}
+          userName={userName}
+          can={can}
+          helpReportId="voucher-entry"
+        />
       )}
 
       {err ? <p className="deploy-update-msg deploy-update-msg--err">{err}</p> : null}
@@ -1108,17 +1117,14 @@ export default function Slide28VoucherEntry({ apiBase, formData, userName, onPre
       <div className={`voucher-entry-card${isReadOnly ? ' is-readonly' : ''}`}>
       <div className="voucher-entry-panels">
         {isMobileLayout ? (
-          <>
-            <section className="voucher-entry-panel voucher-entry-panel--mobile-main">
-              <h3 className="voucher-entry-panel__title">Voucher entry</h3>
-              {renderVrTypeSegment()}
-              {renderVrDateField()}
-              {renderDocTypeField()}
-              {renderVrNoField()}
-              {renderDcAccountField()}
-            </section>
-            {renderSummaryPanel()}
-          </>
+          <section className="voucher-entry-panel voucher-entry-panel--mobile-main">
+            <h3 className="voucher-entry-panel__title">Voucher entry</h3>
+            {renderVrTypeSegment()}
+            {renderVrDateField()}
+            {renderDocTypeField()}
+            {renderVrNoField()}
+            {renderDcAccountField()}
+          </section>
         ) : (
           <div className="voucher-entry-panels voucher-entry-panels--desktop-compact">
             <div className="voucher-entry-compact-left">
@@ -1313,6 +1319,8 @@ export default function Slide28VoucherEntry({ apiBase, formData, userName, onPre
         </div>
       </div>
 
+      {isMobileLayout ? renderSummaryPanel() : null}
+
       <div className="voucher-entry-footer-bar">
         {!isMobileLayout && (ctx?.G_CD_TRF === 'Y' || ctx?.G_INT_TRF === 'Y') ? (
           <div className="voucher-entry-footer-transfer voucher-entry-footer-transfer-desktop">
@@ -1400,7 +1408,6 @@ export default function Slide28VoucherEntry({ apiBase, formData, userName, onPre
             </button>
             {!isMobileLayout ? (
               <span className="voucher-entry-footer-help">
-                <ReportHelpButton reportId="voucher-entry" />
               </span>
             ) : null}
           </div>

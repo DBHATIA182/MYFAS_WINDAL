@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SessionInfoLine from '../components/SessionInfoLine';
 
 /** Grouped report / module menu (order matches business workflow). */
@@ -286,7 +285,12 @@ export default function Slide3({ onPrev, onNext, formData }) {
 
   return (
     <div className="slide slide-3">
-      <SessionInfoLine formData={formData} />
+      <SessionInfoLine
+        formData={formData}
+        helpReportId="reports-menu"
+        helpShowFullGuidePdf
+        helpLabel="Menu help"
+      />
 
       <header className="slide-3-menu-header">
         <h2 className="slide-3-menu-header__title">Reports &amp; Modules</h2>
@@ -299,12 +303,6 @@ export default function Slide3({ onPrev, onNext, formData }) {
           </p>
         ) : null}
         <div className="slide-3-menu-help">
-          <ReportHelpButton
-            reportId="reports-menu"
-            companyName={formData.comp_name ?? formData.COMP_NAME}
-            showFullGuidePdf
-            label="Menu help"
-          />
           {hasExpandedSection ? (
             <button type="button" className="slide-3-menu-toolbar__btn" onClick={collapseAll}>
               Collapse section

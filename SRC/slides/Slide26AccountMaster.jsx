@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import MasterPartyCreateModal from '../components/MasterPartyCreateModal';
 import MasterPartyPickList from '../components/MasterPartyPickList';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SessionInfoLine from '../components/SessionInfoLine';
 
 const reqOpts = { withCredentials: true, timeout: 120000 };
@@ -195,9 +194,8 @@ export default function Slide26AccountMaster({ apiBase, formData, userName, onPr
       <div className="account-master-screen__head">
         <div className="account-master-screen__title-row">
           <h2 className="sale-bill-page__title">A/c Master</h2>
-          <ReportHelpButton reportId="account-master" />
         </div>
-        <SessionInfoLine formData={formData} userName={userName} />
+        <SessionInfoLine formData={formData} userName={userName} helpReportId="account-master" />
         <div className="account-master-screen__toolbar">
           <button type="button" className="btn btn-secondary" onClick={onPrev}>
             ← Back

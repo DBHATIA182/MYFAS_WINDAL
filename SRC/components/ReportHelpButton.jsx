@@ -11,6 +11,7 @@ export default function ReportHelpButton({
   includeSalesEntry = true,
   includeStockLot = false,
   label = 'Help',
+  iconOnly = false,
 }) {
   const [open, setOpen] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
@@ -107,7 +108,7 @@ export default function ReportHelpButton({
     <>
       <button
         type="button"
-        className="btn btn-report-help"
+        className={`btn btn-report-help${iconOnly ? ' btn-report-help--icon' : ''}`}
         onClick={openHelp}
         title={`Help: ${help.title}`}
         aria-label={`Help for ${help.title}`}
@@ -115,7 +116,7 @@ export default function ReportHelpButton({
         <span className="btn-report-help__icon" aria-hidden="true">
           ?
         </span>
-        <span className="btn-report-help__label">{label}</span>
+        {iconOnly ? null : <span className="btn-report-help__label">{label}</span>}
       </button>
       {modal}
     </>

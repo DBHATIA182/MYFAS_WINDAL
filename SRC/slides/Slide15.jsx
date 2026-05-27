@@ -3,7 +3,6 @@ import axios from 'axios';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
 import { downloadExcelWorkbook } from '../utils/excelExport';
 import { generatePDF } from '../utils/pdfgenerator';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 
 function toYesNo(v, defVal = 'Y') {
@@ -730,10 +729,10 @@ export default function Slide15({ apiBase, formData, onPrev, onReset }) {
     if (detailScreenOpen) {
       return (
         <div className="slide slide-report">
+          <SessionInfoLine formData={formData} helpReportId="gstr1" />
           <div className="report-toolbar">
             <h2>{saleDetailTitle || 'Detail view'}</h2>
             <div className="toolbar-actions">
-            <ReportHelpButton reportId="gstr1" />
             
               <button type="button" className="btn btn-toolbar-back" onClick={() => setDetailScreenOpen(false)}>
                 ← Back
@@ -801,10 +800,10 @@ export default function Slide15({ apiBase, formData, onPrev, onReset }) {
 
     return (
       <div className="slide slide-report">
+        <SessionInfoLine formData={formData} helpReportId="gstr1" />
         <div className="report-toolbar">
           <h2>GSTR-1 Report</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="gstr1" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={() => setReport(null)}>
               ← Back
@@ -899,7 +898,7 @@ export default function Slide15({ apiBase, formData, onPrev, onReset }) {
   return (
     <div className="slide slide-11">
       <h2>GSTR-1 parameters</h2>
-      <SessionInfoLine formData={formData} />
+      <SessionInfoLine formData={formData} helpReportId="gstr1" />
       <form onSubmit={runReport} className="report-form">
         <div className="button-group button-group--form-top">
           <button type="button" className="btn btn-secondary" onClick={onPrev}>← Back</button>

@@ -228,15 +228,16 @@ function pbNetWeightCellValue(idx, L, lineNumEdit) {
   if (L.weight_manual) return fmtWeightShow3(L.weight);
   const g = Number(L.g_weight) || 0;
   const d = pbDaneWgtEffective(idx, L, lineNumEdit);
-  if (L.dane_manual || d > 0) return fmtWeightShow3(roundWeight3(Math.max(0, g - d)));
-  return '';
+  const net = roundWeight3(Math.max(0, g - d));
+  if (g > 0 || d > 0 || net > 0) return fmtWeightShow3(net);
+  return Number(L.weight) > 0 ? fmtWeightShow3(L.weight) : '';
 }
 
 function pbNetWeightForEdit(idx, L, lineNumEdit) {
   if (L.weight_manual) return Number(L.weight) || 0;
   const g = Number(L.g_weight) || 0;
   const d = pbDaneWgtEffective(idx, L, lineNumEdit);
-  if (L.dane_manual || d > 0) return roundWeight3(Math.max(0, g - d));
+  if (g > 0 || d > 0) return roundWeight3(Math.max(0, g - d));
   return Number(L.weight) || 0;
 }
 
@@ -272,6 +273,7 @@ function applyItemFieldsToLine(L, ic, it, partyGst, compGst) {
     line.sgst_per = sgst;
     line.igst_per = igst;
     line.weight_manual = false;
+    line.g_weight_manual = false;
     line.dane_manual = false;
     line.amount_manual = false;
   } else {
@@ -284,14 +286,19 @@ function applyItemFieldsToLine(L, ic, it, partyGst, compGst) {
 function mergeAndRecalcPurchaseLine(L, patch, { gAmtCal, purDane, purStkGN, rDateYmd }) {
   const line = { ...L, ...patch };
   if (patch?.weight_manual != null) line.weight_manual = !!patch.weight_manual;
+  if (patch?.g_weight_manual != null) line.g_weight_manual = !!patch.g_weight_manual;
   if (patch?.dane_manual != null) line.dane_manual = !!patch.dane_manual;
   if (patch?.stk_weight_manual != null) line.stk_weight_manual = !!patch.stk_weight_manual;
   if (patch?.amount_manual != null) line.amount_manual = !!patch.amount_manual;
 
+  if ((patch?.qnty != null || patch?.status != null) && patch?.g_weight == null && patch?.g_weight_manual == null) {
+    line.g_weight_manual = false;
+  }
+
   const qnty = Number(line.qnty) || 0;
   if (patch?.g_weight != null) {
     line.g_weight = roundWeight3(Number(patch.g_weight) || 0);
-  } else {
+  } else if (!line.g_weight_manual) {
     line.g_weight = computeGWeight(qnty, line.status, gAmtCal);
   }
 
@@ -302,11 +309,7 @@ function mergeAndRecalcPurchaseLine(L, patch, { gAmtCal, purDane, purStkGN, rDat
   if (!line.weight_manual) {
     const g = Number(line.g_weight) || 0;
     const d = Number(line.dane_wgt) || 0;
-    if (line.dane_manual || d > 0) {
-      line.weight = roundWeight3(Math.max(0, g - d));
-    } else {
-      line.weight = 0;
-    }
+    line.weight = roundWeight3(Math.max(0, g - d));
   }
 
   if (!line.stk_weight_manual) {
@@ -566,20 +569,72 @@ function computePurchaseAmount(qnty, weight, rate, cal, gAmtCal) {
   return Math.round((Number(qnty) || 0) * r * 100) / 100;
 }
 
-function focusNextInForm(rootEl, currentEl) {
-  if (!rootEl || !currentEl) return;
-  const list = Array.from(
-    rootEl.querySelectorAll('input:not([type="hidden"]):not([type="button"]), select, textarea')
-  ).filter((el) => !el.disabled && !el.readOnly && el.getAttribute('tabindex') !== '-1');
-  const i = list.indexOf(currentEl);
-  if (i >= 0 && i < list.length - 1) {
-    list[i + 1].focus();
-    if (typeof list[i + 1].select === 'function' && list[i + 1].tagName === 'INPUT') {
-      try {
-        list[i + 1].select();
-      } catch (_) {}
-    }
+function isPbWeightField(field) {
+  return field === 'weight' || field === 'dane_wgt' || field === 'g_weight';
+}
+
+function isPbFocusable(el) {
+  if (!el || el.disabled) return false;
+  if (el.getAttribute('tabindex') === '-1') return false;
+  if (el.readOnly) return false;
+  const tag = el.tagName;
+  if (tag !== 'INPUT' && tag !== 'SELECT' && tag !== 'TEXTAREA') return false;
+  if (tag === 'INPUT') {
+    const type = (el.getAttribute('type') || 'text').toLowerCase();
+    if (type === 'hidden' || type === 'button' || type === 'submit') return false;
   }
+  const style = window.getComputedStyle(el);
+  if (style.display === 'none' || style.visibility === 'hidden') return false;
+  if (!el.offsetParent && style.position !== 'fixed') return false;
+  return true;
+}
+
+function focusPbInput(el) {
+  if (!el || el.disabled) return;
+  try {
+    el.focus();
+    if (typeof el.select === 'function' && el.tagName === 'INPUT') el.select();
+  } catch (_) {}
+}
+
+function focusNextInForm(rootEl, currentEl) {
+  if (!rootEl || !currentEl) return false;
+  const list = Array.from(
+    rootEl.querySelectorAll('input:not([type="hidden"]):not([type="button"]):not([type="submit"]), select, textarea')
+  ).filter(isPbFocusable);
+  const i = list.indexOf(currentEl);
+  if (i < 0) return false;
+  for (let j = i + 1; j < list.length; j += 1) {
+    focusPbInput(list[j]);
+    return true;
+  }
+  return false;
+}
+
+function focusNextPbGridCell(table, row, rowIdx, rows, currentEl) {
+  const inputs = Array.from(row.querySelectorAll('input:not([disabled]), select:not([disabled])')).filter((el) => {
+    if (el.readOnly || el.tabIndex === -1) return false;
+    const td = el.closest('td, th');
+    if (!td || td.offsetParent === null) return false;
+    return true;
+  });
+  const colIdx = inputs.indexOf(currentEl);
+  if (colIdx === -1) return false;
+  let next = null;
+  if (colIdx < inputs.length - 1) next = inputs[colIdx + 1];
+  else if (rowIdx < rows.length - 1) {
+    const below = Array.from(rows[rowIdx + 1].querySelectorAll('input:not([disabled]), select:not([disabled])')).filter(
+      (el) => {
+        if (el.readOnly || el.tabIndex === -1) return false;
+        const td = el.closest('td, th');
+        return td && td.offsetParent !== null;
+      }
+    );
+    if (below.length) next = below[0];
+  }
+  if (!next) return false;
+  focusPbInput(next);
+  return true;
 }
 
 function focusPbLineField(lineIdx, dataAttr) {
@@ -669,6 +724,7 @@ function emptyLine(defaultPlant = '', defaultStkDate = '') {
     stk_weight: 0,
     stk_date: String(defaultStkDate ?? '').trim(),
     weight_manual: false,
+    g_weight_manual: false,
     dane_manual: false,
     stk_weight_manual: false,
     amount_manual: false,
@@ -1037,7 +1093,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
     if (itemFinder == null) return [];
     const q = String(itemFinder.query ?? '').trim();
     if (!q) return [];
-    return filterItemCodeNameRows(lookups.items, q, 30);
+    return filterItemCodeNameRows(lookups.items, q, 50);
   }, [itemFinder, lookups.items]);
 
   const itemFinderSafeHi = Math.min(itemFinder?.hi ?? 0, Math.max(0, itemFinderMatches.length - 1));
@@ -1107,12 +1163,18 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
   const commitPbLineNumEdit = useCallback(
     (idx, field) => {
       if (!lineNumEdit || lineNumEdit.idx !== idx || lineNumEdit.field !== field) return;
-      const raw = sanitizeDecimalTyping(lineNumEdit.text, field === 'weight' || field === 'dane_wgt' ? 3 : 2);
+      const raw = sanitizeDecimalTyping(lineNumEdit.text, isPbWeightField(field) ? 3 : 2);
       setLineNumEdit(null);
       if (field === 'qnty') {
         recalcLine(idx, { qnty: parseNumInput(raw) });
       } else if (field === 'rate') {
         recalcLine(idx, { rate: roundRate2(parseNumInput(raw)) });
+      } else if (field === 'g_weight') {
+        recalcLine(idx, {
+          g_weight: roundWeight3(parseNumInput(raw)),
+          g_weight_manual: true,
+          weight_manual: false,
+        });
       } else if (field === 'weight') {
         recalcLine(idx, { weight: roundWeight3(parseNumInput(raw)), weight_manual: true });
       } else if (field === 'dane_wgt') {
@@ -1144,38 +1206,66 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
     });
 
   const focusLineInput = (el) => {
-    if (!el || el.disabled) return;
-    try {
-      el.focus();
-      if (typeof el.select === 'function' && el.tagName === 'INPUT') el.select();
-    } catch (_) {}
+    focusPbInput(el);
   };
+
+  const commitActiveLineNumEdit = useCallback(
+    (t) => {
+      if (!lineNumEdit || t?.tagName !== 'INPUT' || t.classList.contains('pb-exp-input')) return;
+      const { idx, field } = lineNumEdit;
+      const raw = sanitizeDecimalTyping(lineNumEdit.text, isPbWeightField(field) ? 3 : 2);
+      setLineNumEdit(null);
+      if (field === 'qnty') recalcLine(idx, { qnty: parseNumInput(raw) });
+      else if (field === 'rate') recalcLine(idx, { rate: roundRate2(parseNumInput(raw)) });
+      else if (field === 'g_weight') {
+        recalcLine(idx, {
+          g_weight: roundWeight3(parseNumInput(raw)),
+          g_weight_manual: true,
+          weight_manual: false,
+        });
+      } else if (field === 'weight') recalcLine(idx, { weight: roundWeight3(parseNumInput(raw)), weight_manual: true });
+      else if (field === 'dane_wgt') {
+        recalcLine(idx, { dane_wgt: roundWeight3(parseNumInput(raw)), dane_manual: true, weight_manual: false });
+      } else if (field === 'amount') recalcLine(idx, { amount: roundRate2(parseNumInput(raw)), amount_manual: true });
+      else if (field === 'dis_per') recalcLine(idx, { dis_per: clampTaxPer(parseNumInput(raw)) });
+      else if (field === 'cgst_per') {
+        const v = clampTaxPer(parseNumInput(raw));
+        recalcLine(idx, { cgst_per: v, sgst_per: v });
+      } else if (field === 'sgst_per') recalcLine(idx, { sgst_per: clampTaxPer(parseNumInput(raw)) });
+      else if (field === 'igst_per') recalcLine(idx, { igst_per: clampTaxPer(parseNumInput(raw)) });
+      else if (field === 'stk_weight') recalcLine(idx, { stk_weight: roundWeight3(parseNumInput(raw)), stk_weight_manual: true });
+    },
+    [lineNumEdit, recalcLine]
+  );
 
   const handlePbLineGridKeyDown = useCallback(
     (e) => {
       const key = e.key;
-      if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'ArrowUp' && key !== 'ArrowDown') return;
       const t = e.target;
-      if (!t?.closest('.pb-lines-table tbody')) return;
+      const inGridBody = t?.closest('.pb-lines-table tbody');
+      if (!inGridBody) return;
       if (t.tagName !== 'INPUT' && t.tagName !== 'SELECT') return;
 
+      if (key === 'Enter' && !isCompactMobile) {
+        commitActiveLineNumEdit(t);
+        e.preventDefault();
+        e.stopPropagation();
+        const row = t.closest('tr');
+        const table = t.closest('.pb-lines-table');
+        if (!row || !table) return;
+        const rows = Array.from(table.querySelectorAll('tbody tr'));
+        const rowIdx = rows.indexOf(row);
+        if (!focusNextPbGridCell(table, row, rowIdx, rows, t)) {
+          const root = t.closest('.slide-25-purchase-bill');
+          if (root) focusNextInForm(root, t);
+        }
+        return;
+      }
+
+      if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'ArrowUp' && key !== 'ArrowDown') return;
+
       if (lineNumEdit && t.tagName === 'INPUT') {
-        const { idx, field } = lineNumEdit;
-        const frac = field === 'weight' || field === 'dane_wgt' ? 3 : 2;
-        const raw = sanitizeDecimalTyping(lineNumEdit.text, frac);
-        setLineNumEdit(null);
-        if (field === 'qnty') recalcLine(idx, { qnty: parseNumInput(raw) });
-        else if (field === 'rate') recalcLine(idx, { rate: roundRate2(parseNumInput(raw)) });
-        else if (field === 'weight') recalcLine(idx, { weight: roundWeight3(parseNumInput(raw)), weight_manual: true });
-        else if (field === 'dane_wgt') recalcLine(idx, { dane_wgt: roundWeight3(parseNumInput(raw)), dane_manual: true, weight_manual: false });
-        else if (field === 'amount') recalcLine(idx, { amount: roundRate2(parseNumInput(raw)), amount_manual: true });
-        else if (field === 'dis_per') recalcLine(idx, { dis_per: clampTaxPer(parseNumInput(raw)) });
-        else if (field === 'cgst_per') {
-          const v = clampTaxPer(parseNumInput(raw));
-          recalcLine(idx, { cgst_per: v, sgst_per: v });
-        } else if (field === 'sgst_per') recalcLine(idx, { sgst_per: clampTaxPer(parseNumInput(raw)) });
-        else if (field === 'igst_per') recalcLine(idx, { igst_per: clampTaxPer(parseNumInput(raw)) });
-        else if (field === 'stk_weight') recalcLine(idx, { stk_weight: roundWeight3(parseNumInput(raw)), stk_weight_manual: true });
+        commitActiveLineNumEdit(t);
       }
 
       const row = t.closest('tr');
@@ -1202,7 +1292,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
       e.stopPropagation();
       focusLineInput(next);
     },
-    [lineNumEdit, recalcLine]
+    [lineNumEdit, recalcLine, isCompactMobile, commitActiveLineNumEdit]
   );
 
   const applyItemToLine = useCallback(
@@ -1232,6 +1322,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
           L.sgst_per = sgst;
           L.igst_per = igst;
           L.weight_manual = false;
+          L.g_weight_manual = false;
           L.dane_manual = false;
           L.amount_manual = false;
         } else {
@@ -1284,6 +1375,19 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
       return true;
     },
     [lookups.items, itemByCode, pickItemForLine, showNotice]
+  );
+
+  const openItemPick = useCallback(
+    (idx) => {
+      if (!canEditLines) return;
+      setItemFinder({
+        idx,
+        hi: 0,
+        query: '',
+      });
+      setItemSheetOpen(true);
+    },
+    [canEditLines]
   );
 
   const openSoPick = useCallback(
@@ -1429,6 +1533,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
           stk_date:
             toInputDateString(r.STK_DATE ?? r.stk_date ?? h0.STK_DATE ?? h0.stk_date ?? r.R_DATE ?? h0.R_DATE) || '',
           stk_weight_manual: true,
+          g_weight_manual: true,
           weight_manual: true,
           dane_manual: true,
           plant_code: normalizePlantCode(r.PLANT_CODE ?? h0.PLANT_CODE ?? ''),
@@ -1609,28 +1714,13 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
     (e) => {
       if (e.key !== 'Enter') return;
       const t = e.target;
-      if (!t || t.closest('.slide-25-purchase-bill-ignore-enter')) return;
+      if (!t) return;
+      if (t.closest('.slide-25-purchase-bill-ignore-enter') && t.tagName !== 'INPUT' && t.tagName !== 'SELECT') return;
+      if (t.closest('.pb-lines-table tbody')) return;
       if (t.tagName === 'TEXTAREA') return;
       if (t.tagName === 'BUTTON' && (t.type === 'submit' || t.getAttribute('type') === 'submit')) return;
       if (t.tagName === 'INPUT' && (t.type === 'submit' || t.type === 'button')) return;
-      if (lineNumEdit && t.tagName === 'INPUT' && !t.classList.contains('pb-exp-input')) {
-        const { idx, field } = lineNumEdit;
-        const raw = sanitizeDecimalTyping(lineNumEdit.text, field === 'weight' || field === 'dane_wgt' ? 3 : 2);
-        setLineNumEdit(null);
-        if (field === 'qnty') recalcLine(idx, { qnty: parseNumInput(raw) });
-        else if (field === 'rate') recalcLine(idx, { rate: roundRate2(parseNumInput(raw)) });
-        else if (field === 'weight') recalcLine(idx, { weight: roundWeight3(parseNumInput(raw)), weight_manual: true });
-        else if (field === 'dane_wgt') {
-          recalcLine(idx, { dane_wgt: roundWeight3(parseNumInput(raw)), dane_manual: true, weight_manual: false });
-        } else if (field === 'amount') recalcLine(idx, { amount: roundRate2(parseNumInput(raw)), amount_manual: true });
-        else if (field === 'dis_per') recalcLine(idx, { dis_per: clampTaxPer(parseNumInput(raw)) });
-        else if (field === 'cgst_per') {
-          const v = clampTaxPer(parseNumInput(raw));
-          recalcLine(idx, { cgst_per: v, sgst_per: v });
-        } else if (field === 'sgst_per') recalcLine(idx, { sgst_per: clampTaxPer(parseNumInput(raw)) });
-        else if (field === 'igst_per') recalcLine(idx, { igst_per: clampTaxPer(parseNumInput(raw)) });
-        else if (field === 'stk_weight') recalcLine(idx, { stk_weight: roundWeight3(parseNumInput(raw)), stk_weight_manual: true });
-      }
+      commitActiveLineNumEdit(t);
       if (expNumEdit && t.classList.contains('pb-exp-input')) {
         const { key, text } = expNumEdit;
         const raw = sanitizeDecimalTyping(text, 2);
@@ -1651,7 +1741,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
       const root = t.closest('.slide-25-purchase-bill');
       if (root) focusNextInForm(root, t);
     },
-    [lineNumEdit, expNumEdit, recalcLine]
+    [lineNumEdit, expNumEdit, recalcLine, commitActiveLineNumEdit]
   );
 
   const handleSave = async (saveMode) => {
@@ -1922,48 +2012,44 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
       }}
       role="presentation"
     >
-      <SaleEntryScreenHeader
-        title="Purchase bill"
-        reportId="purchase-bill-entry"
-        topBar={<SaleEntryTopBar formData={formData} ctx={ctx} userName={userName} can={can} />}
-        nav={showPbNav ? pbNavButtons : null}
-      >
-        <button type="button" className="btn btn-secondary" onClick={onPrev}>
-          ← Back
-        </button>
-        <button type="button" className="btn btn-secondary btn-sm" onClick={onReset} title="Home">
-          Home
-        </button>
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setListScreenOpen(true)}>
-          List
-        </button>
-        <button type="button" className="btn btn-secondary btn-sm" onClick={openPrint}>
-          Print
-        </button>
-      </SaleEntryScreenHeader>
+      {isCompactMobile ? (
+        <SaleEntryScreenHeader
+          title="Purchase bill"
+          topBar={
+            <SaleEntryTopBar
+              formData={formData}
+              ctx={ctx}
+              userName={userName}
+              can={can}
+              helpReportId="purchase-bill-entry"
+            />
+          }
+          nav={showPbNav ? pbNavButtons : null}
+        >
+          <button type="button" className="btn btn-secondary" onClick={onPrev}>
+            ← Back
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onReset} title="Home">
+            Home
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setListScreenOpen(true)}>
+            List
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={openPrint}>
+            Print
+          </button>
+        </SaleEntryScreenHeader>
+      ) : (
+        <SaleEntryTopBar
+          formData={formData}
+          ctx={ctx}
+          userName={userName}
+          can={can}
+          helpReportId="purchase-bill-entry"
+        />
+      )}
 
-      <nav className="pb-stepper pb-stepper--desktop-only" aria-label="Form progress">
-        <div className="pb-stepper__track" aria-hidden="true" />
-        <div className="pb-stepper__step pb-stepper__step--done">
-          <span className="pb-stepper__dot" aria-hidden="true">
-            ✓
-          </span>
-          <span className="pb-stepper__label">Bill details</span>
-        </div>
-        <div className="pb-stepper__step pb-stepper__step--current">
-          <span className="pb-stepper__dot" aria-hidden="true" />
-          <span className="pb-stepper__label">Items</span>
-        </div>
-        <div className="pb-stepper__step pb-stepper__step--current">
-          <span className="pb-stepper__dot" aria-hidden="true" />
-          <span className="pb-stepper__label">Expenses</span>
-        </div>
-        <div className="pb-stepper__step pb-stepper__step--future">
-          <span className="pb-stepper__dot" aria-hidden="true" />
-          <span className="pb-stepper__label">Review</span>
-        </div>
-      </nav>
-
+      <div className={isCompactMobile ? 'pb-mobile-shell' : 'pb-entry-card'}>
       <div className={isCompactMobile ? 'pb-mobile-body' : 'sale-entry-desktop__body'}>
         <section className="sale-bill-section sale-bill-section--card dc-header-card sale-entry-desktop__form pb-header-compact">
           <div className="dc-header-row dc-header-row--top pb-header-compact__row1">
@@ -2556,7 +2642,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
           <p className="sale-list-hint pb-lines-hint">
             {isCompactMobile
               ? 'Swipe left/right for all columns (Fox order). Pending PO on SO no (F1).'
-              : '← → ↑ ↓ to move between cells.'}
+              : '← → ↑ ↓ to move between cells. Item: click cell or F1 to open search window.'}
           </p>
           <div className="pb-lines-desktop">
           <div
@@ -2670,135 +2756,62 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
                       </div>
                     </td>
                     <td className="pb-col--item pb-item-code-cell">
-                      {isCompactMobile ? (
+                      <div className="pb-item-code-cell__row">
+                        {isCompactMobile ? (
                         <button
                           type="button"
                           className="form-input pb-item-code-input pb-mobile-search-trigger"
                           disabled={!canEditLines}
                           style={{ textTransform: 'uppercase' }}
                           aria-label={`Item line ${idx + 1}`}
-                          onClick={() => {
-                            setItemFinder({
-                              idx,
-                              hi: 0,
-                              query: String(L.item_code ?? '').trim(),
-                            });
-                            setItemSheetOpen(true);
-                          }}
+                          data-pb-line-item={idx}
+                          onClick={() => openItemPick(idx)}
                         >
-                          {itemFinder?.idx === idx && itemSheetOpen
-                            ? String(itemFinder.query ?? '').trim() || 'Item code or name…'
-                            : L.item_code || 'Item…'}
+                          {L.item_code || 'Item…'}
                         </button>
                       ) : (
-                        <input
-                          className="form-input pb-item-code-input"
-                          type="search"
-                          enterKeyHint="search"
-                          value={itemFinder?.idx === idx ? String(itemFinder.query ?? '') : L.item_code}
-                          disabled={!canEditLines}
-                          autoComplete="off"
-                          spellCheck={false}
-                          style={{ textTransform: 'uppercase' }}
-                          onFocus={() =>
-                            setItemFinder({ idx, hi: 0, query: String(L.item_code ?? '').trim() })
-                          }
-                          onChange={(e) => {
-                            setItemFinder({ idx, hi: 0, query: e.target.value });
-                          }}
-                          onBlur={() => {
-                            window.setTimeout(() => {
-                              setItemFinder((f) => {
-                                if (f?.idx !== idx) return f;
-                                commitItemFinderPick(idx, f.query, f.hi ?? 0);
-                                return null;
-                              });
-                            }, 220);
-                          }}
-                          onKeyDown={(e) => {
-                            if (itemFinder?.idx === idx) {
-                              if (e.key === 'ArrowDown' && itemFinderMatches.length > 0) {
+                        <>
+                          <button
+                            type="button"
+                            className="form-input pb-item-code-input pb-item-code-trigger"
+                            disabled={!canEditLines}
+                            style={{ textTransform: 'uppercase' }}
+                            aria-label={`Item line ${idx + 1}`}
+                            data-pb-line-item={idx}
+                            title={L.item_name ? `${L.item_code} — ${L.item_name}` : 'Open item search (F1)'}
+                            onClick={() => openItemPick(idx)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'F1') {
                                 e.preventDefault();
-                                setItemFinder((f) =>
-                                  f?.idx === idx
-                                    ? {
-                                        ...f,
-                                        hi: Math.min(itemFinderMatches.length - 1, (f.hi ?? 0) + 1),
-                                      }
-                                    : f
-                                );
-                                return;
-                              }
-                              if (e.key === 'ArrowUp' && itemFinderMatches.length > 0) {
-                                e.preventDefault();
-                                setItemFinder((f) =>
-                                  f?.idx === idx ? { ...f, hi: Math.max(0, (f.hi ?? 0) - 1) } : f
-                                );
+                                e.stopPropagation();
+                                openItemPick(idx);
                                 return;
                               }
                               if (e.key === 'Enter') {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                commitItemFinderPick(idx, itemFinder.query, itemFinder.hi ?? 0);
-                                return;
+                                if (normalizeItemCode(L.item_code) && itemByCode(L.item_code)) {
+                                  focusPbLineQty(idx);
+                                } else {
+                                  openItemPick(idx);
+                                }
                               }
-                            }
-                            if (
-                              e.key === 'Enter' &&
-                              itemFinder?.idx !== idx &&
-                              normalizeItemCode(L.item_code) &&
-                              itemByCode(L.item_code)
-                            ) {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              focusPbLineQty(idx);
-                            }
-                          }}
-                        />
-                      )}
-                      {itemFinder?.idx === idx && !isCompactMobile ? (
-                        String(itemFinder.query ?? '').trim() ? (
-                          <div
-                            className="account-search-results pb-item-search-list"
-                            role="listbox"
-                            aria-label="Item matches"
+                            }}
                           >
-                            <div className="account-search-header party-search-header" aria-hidden="true">
-                              <span>Code</span>
-                              <span>Name</span>
-                            </div>
-                            {itemFinderMatches.length === 0 ? (
-                              <div className="account-search-empty">{SEARCH_NO_MATCH}</div>
-                            ) : (
-                              itemFinderMatches.map((it, index) => {
-                                const pc = normalizeItemCode(it.ITEM_CODE ?? it.item_code);
-                                const rowHi = itemFinderSafeHi === index;
-                                return (
-                                  <button
-                                    key={pc}
-                                    type="button"
-                                    role="option"
-                                    aria-selected={rowHi}
-                                    className={`account-search-row party-search-row${rowHi ? ' is-highlight' : ''}${normalizeItemCode(L.item_code) === pc ? ' is-active' : ''}`}
-                                    onMouseEnter={() =>
-                                      setItemFinder((f) => (f?.idx === idx ? { ...f, hi: index } : f))
-                                    }
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => pickItemForLine(idx, pc)}
-                                  >
-                                    <span className="account-search-code">{highlightMatch(pc, itemFinder.query)}</span>
-                                    <span className="account-search-name">
-                                      {highlightMatch(it.ITEM_NAME ?? it.item_name, itemFinder.query)}
-                                    </span>
-                                  </button>
-                                );
-                              })
-                            )}
-                          </div>
-                        ) : (
-                          <p className="sale-bill-section__hint pb-item-search-hint">{SEARCH_ITEM_TYPE_HINT}</p>
-                        )
-                      ) : null}
+                            {L.item_code || 'Item…'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-xs pb-item-help-btn slide-25-purchase-bill-ignore-enter"
+                            disabled={!canEditLines}
+                            title="Item search (F1)"
+                            onClick={() => openItemPick(idx)}
+                          >
+                            F1
+                          </button>
+                        </>
+                      )}
+                      </div>
                     </td>
                     <td className="dc-td-readonly pb-td-name pb-col--name" title={L.item_name}>
                       {L.item_name || '—'}
@@ -2838,7 +2851,40 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
                         }}
                       />
                     </td>
-                    <td className="dc-td-readonly num pb-col--gwgt">{fmtWeightShow3(L.g_weight)}</td>
+                    <td className="num pb-col--gwgt">
+                      <input
+                        className="form-input dc-num pb-wgt-input pb-gwgt-input"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        value={pbLineNumDisplay(idx, 'g_weight', L.g_weight, fmtWeightShow3)}
+                        disabled={!canEditLines}
+                        onFocus={(e) => {
+                          selectAllOnFocus(e);
+                          startPbLineNumEdit(idx, 'g_weight', L.g_weight, fmtWeightDisp);
+                        }}
+                        onChange={(e) => {
+                          const text = sanitizeDecimalTyping(e.target.value, 3);
+                          setLineNumEdit({ idx, field: 'g_weight', text });
+                          recalcLine(idx, {
+                            g_weight: roundWeight3(parseNumInput(text)),
+                            g_weight_manual: true,
+                            weight_manual: false,
+                          });
+                        }}
+                        onBlur={(e) => {
+                          const raw = sanitizeDecimalTyping(e.target.value, 3);
+                          const gwVal = roundWeight3(parseNumInput(raw));
+                          setLineNumEdit((cur) =>
+                            cur?.idx === idx && cur?.field === 'g_weight' ? null : cur
+                          );
+                          recalcLine(idx, {
+                            g_weight: gwVal,
+                            g_weight_manual: true,
+                            weight_manual: false,
+                          });
+                        }}
+                      />
+                    </td>
                     <td className="pb-col--dane">
                       <input
                         className="form-input dc-num pb-wgt-input"
@@ -2859,7 +2905,18 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
                             weight_manual: false,
                           });
                         }}
-                        onBlur={() => commitPbLineNumEdit(idx, 'dane_wgt')}
+                        onBlur={(e) => {
+                          const raw = sanitizeDecimalTyping(e.target.value, 3);
+                          const daneVal = roundWeight3(parseNumInput(raw));
+                          setLineNumEdit((cur) =>
+                            cur?.idx === idx && cur?.field === 'dane_wgt' ? null : cur
+                          );
+                          recalcLine(idx, {
+                            dane_wgt: daneVal,
+                            dane_manual: true,
+                            weight_manual: false,
+                          });
+                        }}
                       />
                     </td>
                     <td className="pb-col--wgt">
@@ -3037,16 +3094,17 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
           ) : null}
         </section>
 
-        {isCompactMobile && itemFinder != null ? (
+        {itemFinder != null ? (
           <PbPartyBrokerPickPortal
             open={itemSheetOpen}
-            title="Item"
-            sheet
+            title={`Item — line ${itemFinder.idx + 1}`}
+            sheet={isCompactMobile}
+            modal={!isCompactMobile}
             anchor="top"
             showFilter
             autoFocusFilter
             searchValue={String(itemFinder?.query ?? '')}
-            searchPlaceholder="Search item code or name…"
+            searchPlaceholder="Type item code or name to search…"
             disabled={!canEditLines}
             rows={itemPickRows}
             emptyMessage={
@@ -3164,7 +3222,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
                     value={mfeeCode}
                     onChange={setMfeeCode}
                     accounts={expenseCodeOptions}
-                    disabled={fieldsDisabled}
+                    disabled={fieldsDisabled || clampCharge(mfeeAmt) === 0}
                     className="pb-mobile-acct-picker"
                   />
                   <label className="pb-mobile-field">
@@ -3185,7 +3243,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
                     value={labCode}
                     onChange={setLabCode}
                     accounts={expenseCodeOptions}
-                    disabled={fieldsDisabled}
+                    disabled={fieldsDisabled || clampCharge(labour) === 0}
                     className="pb-mobile-acct-picker"
                   />
                   <label className="pb-mobile-field">
@@ -3206,7 +3264,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
                     value={fgtCode}
                     onChange={setFgtCode}
                     accounts={expenseCodeOptions}
-                    disabled={fieldsDisabled}
+                    disabled={fieldsDisabled || clampCharge(freight) === 0}
                     className="pb-mobile-acct-picker"
                   />
                   <label className="pb-mobile-field">
@@ -3229,7 +3287,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
                       value={addCode}
                       onChange={setAddCode}
                       accounts={expenseCodeOptions}
-                      disabled={fieldsDisabled}
+                      disabled={fieldsDisabled || clampCharge(addExp) === 0}
                       className="pb-mobile-acct-picker"
                     />
                   </div>
@@ -3253,7 +3311,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
                       value={lessCode}
                       onChange={setLessCode}
                       accounts={expenseCodeOptions}
-                      disabled={fieldsDisabled}
+                      disabled={fieldsDisabled || clampCharge(lessExp) === 0}
                       className="pb-mobile-acct-picker"
                     />
                   </div>
@@ -3362,7 +3420,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
                 value={mfeeCode}
                 onChange={setMfeeCode}
                 accounts={expenseCodeOptions}
-                disabled={fieldsDisabled}
+                disabled={fieldsDisabled || clampCharge(mfeeAmt) === 0}
               />
             </div>
             <div className="pb-frame-row pb-frame-row--3">
@@ -3381,7 +3439,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
                 value={labCode}
                 onChange={setLabCode}
                 accounts={expenseCodeOptions}
-                disabled={fieldsDisabled}
+                disabled={fieldsDisabled || clampCharge(labour) === 0}
               />
             </div>
             <div className="pb-frame-row pb-frame-row--3">
@@ -3400,7 +3458,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
                 value={fgtCode}
                 onChange={setFgtCode}
                 accounts={expenseCodeOptions}
-                disabled={fieldsDisabled}
+                disabled={fieldsDisabled || clampCharge(freight) === 0}
               />
             </div>
             <div className="pb-frame-row pb-frame-row--3">
@@ -3419,7 +3477,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
                 value={addCode}
                 onChange={setAddCode}
                 accounts={expenseCodeOptions}
-                disabled={fieldsDisabled}
+                disabled={fieldsDisabled || clampCharge(addExp) === 0}
               />
             </div>
             <div className="pb-frame-row pb-frame-row--3">
@@ -3438,7 +3496,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
                 value={lessCode}
                 onChange={setLessCode}
                 accounts={expenseCodeOptions}
-                disabled={fieldsDisabled}
+                disabled={fieldsDisabled || clampCharge(lessExp) === 0}
               />
             </div>
             <div className="pb-frame-row pb-frame-row--emph">
@@ -3498,6 +3556,7 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
 
       </div>
 
+      {isCompactMobile ? (
       <footer className="pb-sticky-footer" role="contentinfo">
         <div className="pb-sticky-footer__hero">
           <button
@@ -3543,6 +3602,79 @@ export default function Slide25PurchaseBill({ apiBase, formData, userName, onPre
           ) : null}
         </div>
       </footer>
+      ) : null}
+
+      </div>
+
+      {!isCompactMobile
+        ? createPortal(
+            <footer className="pb-desktop-footer-bar pb-desktop-footer-bar--portal" role="contentinfo">
+              <div className="pb-desktop-footer-payable">
+                <span className="pb-desktop-footer-payable__label">Net payable</span>
+                <span className="pb-desktop-footer-payable__value">{fmtRs(netPayable)}</span>
+                <span className="pb-desktop-footer-payable__sub">Net amount {fmtRs(billAmt)}</span>
+              </div>
+              <div className="pb-desktop-footer-actions">
+                <div className="pb-desktop-footer-group">
+                  <button type="button" className="pb-desktop-action-btn pb-desktop-action-btn--nav" onClick={onPrev}>
+                    ← Back
+                  </button>
+                  <button type="button" className="pb-desktop-action-btn pb-desktop-action-btn--nav" onClick={onReset}>
+                    Home
+                  </button>
+                  <button
+                    type="button"
+                    className="pb-desktop-action-btn pb-desktop-action-btn--nav"
+                    onClick={() => setListScreenOpen(true)}
+                  >
+                    List
+                  </button>
+                  <button type="button" className="pb-desktop-action-btn pb-desktop-action-btn--nav" onClick={openPrint}>
+                    Print
+                  </button>
+                </div>
+                {showPbNav ? (
+                  <div className="pb-desktop-footer-group pb-desktop-footer-group--rno">
+                    <button
+                      type="button"
+                      className="pb-desktop-action-btn pb-desktop-action-btn--nav"
+                      disabled={fieldsDisabled}
+                      onClick={() => stepRNo(-1)}
+                    >
+                      ← Prev
+                    </button>
+                    <button
+                      type="button"
+                      className="pb-desktop-action-btn pb-desktop-action-btn--nav"
+                      disabled={fieldsDisabled}
+                      onClick={() => stepRNo(1)}
+                    >
+                      Next →
+                    </button>
+                  </div>
+                ) : null}
+                <div className="pb-desktop-footer-group pb-desktop-footer-group--crud">
+                  {mode === 'delete' && can.canDelete ? (
+                    <button type="button" className="pb-desktop-action-btn pb-desktop-action-btn--delete" onClick={() => void handleSave('delete')}>
+                      Delete
+                    </button>
+                  ) : null}
+                  {mode === 'new' && can.canAdd ? (
+                    <button type="button" className="pb-desktop-action-btn pb-desktop-action-btn--save" onClick={() => void handleSave('add')}>
+                      Save bill
+                    </button>
+                  ) : null}
+                  {mode === 'edit' && can.canEdit ? (
+                    <button type="button" className="pb-desktop-action-btn pb-desktop-action-btn--save" onClick={() => void handleSave('edit')}>
+                      Update
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </footer>,
+            document.body
+          )
+        : null}
 
       <MasterPartyCreateModal
         open={masterPartyOpen}

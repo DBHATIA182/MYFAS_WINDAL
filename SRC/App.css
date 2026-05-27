@@ -109,18 +109,14 @@ body {
   margin: 0;
 }
 
-/* Vite dev only — proves this bundle is WINDAL\APPTEST (see App.jsx renderHeaderBrand). */
-.windal-dev-strip {
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #14532d;
-  background: #bbf7d0;
-  border: 1px solid #22c55e;
-  padding: 0.2rem 0.45rem;
-  border-radius: 4px;
-  line-height: 1.2;
+.app-header--minimal {
+  justify-content: flex-end;
+  padding: 0.45rem 0.75rem;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+}
+
+.app-header--minimal .app-header-actions {
+  margin-left: auto;
 }
 
 .app-main {
@@ -257,6 +253,82 @@ body {
   font-weight: 600;
 }
 
+.btn-report-help--icon {
+  padding: 0;
+  width: 1.75rem;
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  justify-content: center;
+  gap: 0;
+}
+
+.btn-report-help--icon .btn-report-help__icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  font-size: 0.76rem;
+}
+
+.toolbar-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  min-width: 1.75rem;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #1e3a5f;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+  touch-action: manipulation;
+}
+
+.toolbar-icon-btn:hover {
+  background: #eef2ff;
+  border-color: #93c5fd;
+}
+
+.toolbar-icon-btn--settings {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.toolbar-icon-btn--voice {
+  background: #1e3a5f;
+  color: #fff;
+  border-color: #1e3a5f;
+}
+
+.toolbar-icon-btn--voice:hover {
+  background: #2c5282;
+  border-color: #2c5282;
+}
+
+.toolbar-icon-btn--listening,
+.voice-command-btn--listening.toolbar-icon-btn {
+  background: #c53030;
+  border-color: #c53030;
+  color: #fff;
+}
+
+.toolbar-icon-btn__svg {
+  display: block;
+}
+
+.session-info-line__actions,
+.sale-entry-top-bar__actions {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.sale-entry-top-bar__gst {
+  font-weight: 600;
+  color: #475569;
+  font-size: 0.92em;
+}
+
 .sale-entry-fy-strip.app-session-line,
 .sale-entry-top-bar.sale-entry-fy-strip {
   margin: 0 0 0.45rem;
@@ -280,6 +352,51 @@ body {
 
 .sale-entry-top-bar__user {
   color: #0f172a;
+}
+
+.sale-entry-top-bar--with-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+}
+
+.sale-entry-top-bar--with-actions .sale-entry-top-bar__line {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sale-entry-top-bar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem 0.5rem;
+  flex-shrink: 0;
+}
+
+.sale-entry-top-bar__actions .view-settings-wrap {
+  position: relative;
+}
+
+.sale-entry-top-bar__actions .btn,
+.sale-entry-top-bar__actions .voice-command-btn {
+  font-size: 0.72rem;
+  padding: 0.28rem 0.55rem;
+  min-height: 1.75rem;
+}
+
+.app--no-header .app-main {
+  padding-top: 0.35rem;
+}
+
+.app--no-header.app--desktop .sale-entry-desktop.slide {
+  height: calc(100dvh - 0.65rem);
+  max-height: calc(100dvh - 0.65rem);
 }
 
 .sale-entry-top-bar .sale-bill-page__user-power-rights {
@@ -578,6 +695,44 @@ body {
   margin-bottom: 0.55rem;
   font-size: 0.82rem;
   line-height: 1.25;
+}
+
+.session-info-line--with-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.session-info-line--with-actions .session-info-line__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.session-info-line--with-actions .session-info-line__main .company-info {
+  margin-bottom: 0;
+}
+
+.session-info-line__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem 0.5rem;
+  flex-shrink: 0;
+}
+
+.session-info-line__actions .view-settings-wrap {
+  position: relative;
+}
+
+.session-info-line__actions .btn,
+.session-info-line__actions .voice-command-btn {
+  font-size: 0.72rem;
+  padding: 0.28rem 0.55rem;
+  min-height: 1.75rem;
 }
 
 .compdet-date-hint {
@@ -4473,10 +4628,10 @@ td.sale-list-total-pad {
 
 .voice-command-btn {
   border: none;
-  border-radius: 999px;
+  border-radius: 6px;
   background: #1e3a5f;
   color: #fff;
-  padding: 0.42rem 0.8rem;
+  padding: 0;
   font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
@@ -4494,8 +4649,8 @@ td.sale-list-total-pad {
   border: 1px solid #cbd5e1;
   background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
   color: #1e3a5f;
-  border-radius: 999px;
-  padding: 0.4rem 0.78rem;
+  border-radius: 6px;
+  padding: 0;
   font-size: 0.81rem;
   font-weight: 700;
   cursor: pointer;
@@ -8857,10 +9012,16 @@ body.force-desktop-view .app--desktop {
 }
 
 /* —— Purchase bill entry (all viewports) —— */
-.app--mobile .app-main:has(.slide-25-purchase-bill) {
+.app--mobile .app-main:has(.slide-25-purchase-bill.pb-layout--mobile) {
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.app--mobile .app-main:has(> .slide-25-purchase-bill.sale-entry-desktop) {
+  overflow: hidden !important;
   align-items: stretch;
   justify-content: flex-start;
 }

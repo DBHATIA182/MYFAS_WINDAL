@@ -8,7 +8,6 @@ import { downloadExcelWorkbook, downloadExcelRows } from '../utils/excelExport';
 import { generatePDF, sharePdfWithWhatsApp, buildLedgerStatementPdfMetadata } from '../utils/pdfgenerator';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
 import { sortTrialBalanceRows } from '../utils/trialBalanceSort';
-import ReportHelpButton from '../components/ReportHelpButton';
 import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
 
 function num(v) {
@@ -1068,10 +1067,10 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
   if (screen === 'report') {
     return (
       <div className="slide slide-report slide-17">
+        <SessionInfoLine formData={formData} helpReportId="trading-ac" />
         <div className="report-toolbar">
           <h2>Trading A/C</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="trading-ac" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={() => setScreen('form')}>
               ← Back
@@ -1433,10 +1432,10 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
     const cols = ['VR_TYPE', 'VR_DATE', 'VR_NO', 'TYPE', 'R_QNTY', 'R_WEIGHT', 'DR_AMOUNT', 'S_QNTY', 'S_WEIGHT', 'CR_AMOUNT', 'BAL_QNTY', 'BAL_WEIGHT', 'CL_BALANCE'];
     return (
       <div className="slide slide-report slide-17">
+        <SessionInfoLine formData={formData} helpReportId="trading-ac" />
         <div className="report-toolbar">
           <h2>Trading Ledger</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="trading-ac" />
             
             <button type="button" className={`btn btn-secondary ${ledgerView === 'entry' ? 'is-active' : ''}`} onClick={() => setLedgerView('entry')}>
               Entry Wise
@@ -1579,10 +1578,10 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
   if (screen === 'cat-trial') {
     return (
       <div className="slide slide-report slide-17">
+        <SessionInfoLine formData={formData} helpReportId="trading-ac" />
         <div className="report-toolbar">
           <h2>Trial Balance (Category Linked)</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="trading-ac" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={() => setScreen('report')}>
               ← Back to Trading A/C
@@ -1609,10 +1608,10 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
     const detailCols = ['TYPE', 'VR_DATE', 'VR_NO', 'TRN_NO', 'CODE', 'NAME', 'CITY', 'SUP_CODE', 'SUP_NAME', 'ITEM_CODE', 'ITEM_NAME', 'QNTY', 'WEIGHT', 'RATE', 'AMOUNT', 'TAXABLE'];
     return (
       <div className="slide slide-report slide-17">
+        <SessionInfoLine formData={formData} helpReportId="trading-ac" />
         <div className="report-toolbar">
           <h2>Trading Voucher Detail</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="trading-ac" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={() => setScreen('ledger')}>
               ← Back to Ledger
@@ -1678,13 +1677,13 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
 
     if (glVoucherRows != null) {
       return (
-        <div className="slide slide-report slide-17">
-          <div className="report-toolbar">
-            <h2>Voucher entries</h2>
-            <div className="toolbar-actions">
-            <ReportHelpButton reportId="trading-ac" />
+          <div className="slide slide-report slide-17">
+            <SessionInfoLine formData={formData} helpReportId="trading-ac" />
+            <div className="report-toolbar">
+              <h2>Voucher entries</h2>
+              <div className="toolbar-actions">
             
-              <button type="button" className="btn btn-toolbar-back" onClick={() => setGlVoucherRows(null)}>
+                <button type="button" className="btn btn-toolbar-back" onClick={() => setGlVoucherRows(null)}>
                 ← Back to ledger
               </button>
               <button
@@ -1735,10 +1734,10 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
 
     return (
       <div className="slide slide-report slide-17">
+        <SessionInfoLine formData={formData} helpReportId="trading-ac" />
         <div className="report-toolbar">
           <h2>Ledger Report</h2>
           <div className="toolbar-actions">
-            <ReportHelpButton reportId="trading-ac" />
             
             <button type="button" className="btn btn-toolbar-back" onClick={backFromGlLedger}>
               ← Back to Trading A/C
@@ -1815,7 +1814,7 @@ export default function Slide17TradingAc({ apiBase, formData = {}, onPrev, onRes
   return (
     <div className="slide slide-report slide-17">
       <h2>Trading A/C</h2>
-      <SessionInfoLine formData={formData} />
+      <SessionInfoLine formData={formData} helpReportId="trading-ac" />
       {error ? <div className="form-api-error">{error}</div> : null}
 
       <form onSubmit={runReport} className="report-form report-form--trading">
