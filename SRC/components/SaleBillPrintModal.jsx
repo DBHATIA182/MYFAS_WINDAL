@@ -116,7 +116,7 @@ function cleanPrintText(raw) {
 
 function saleUnitLabelForPrint(row) {
   const raw = String(v(row, 'STATUS', 'status') || '').trim().toUpperCase();
-  if (raw === 'HKATTA' || raw === 'H') return 'THALIS';
+  if (raw === 'HKATTA' || raw === 'H') return 'Thalis';
   const mapped = saleBillStatusUnitLabel(raw);
   return mapped || raw;
 }
