@@ -1416,6 +1416,13 @@ body {
   color: #fff !important;
 }
 
+.report-table--trial .trial-grand-total .text-right,
+.report-table--trial .trial-schedule-total-row .text-right {
+  white-space: nowrap;
+  font-size: clamp(0.62rem, 2.4vw, 0.85rem);
+  letter-spacing: -0.02em;
+}
+
 /* Ageing Cur. Bal: schedule 8.10 negative, or other schedules positive → show flipped / negative in red */
 .report-table--trial td.ageing-cur-bal-alert,
 .report-table--trial td.ageing-cur-bal-alert strong {
@@ -4855,8 +4862,14 @@ td.sale-list-total-pad {
   margin-top: 0;
 }
 
+.sale-bill-print-sign-stamp-gap {
+  display: block;
+  min-height: 3.75rem;
+  margin-top: 0.35rem;
+}
+
 .sale-bill-print-signature {
-  margin-top: 0.7rem;
+  margin-top: 0.35rem;
 }
 
 .sale-bill-print-signature img {
@@ -4866,7 +4879,7 @@ td.sale-list-total-pad {
 }
 
 .sale-bill-print-auth {
-  margin-top: 0.4rem;
+  margin-top: 0.75rem;
   font-size: 0.8rem;
   color: #475569;
 }
@@ -5266,20 +5279,41 @@ td.sale-list-total-pad {
   color: #fff;
 }
 
+/* PDF/WhatsApp: keep report visible while html2pdf runs in hidden iframe */
+.windal-pdf-busy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.35);
+  pointer-events: none;
+}
+
+.windal-pdf-busy-overlay__inner {
+  padding: 0.75rem 1.25rem;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
 @media print {
-  body * {
+  body.windal-sale-bill-printing * {
     visibility: hidden;
   }
 
-  #sale-bill-print-area,
-  #sale-bill-print-area *,
-  #purchase-bill-print-area,
-  #purchase-bill-print-area * {
+  body.windal-sale-bill-printing #sale-bill-print-area,
+  body.windal-sale-bill-printing #sale-bill-print-area *,
+  body.windal-sale-bill-printing #purchase-bill-print-area,
+  body.windal-sale-bill-printing #purchase-bill-print-area * {
     visibility: visible;
   }
 
-  #sale-bill-print-area,
-  #purchase-bill-print-area {
+  body.windal-sale-bill-printing #sale-bill-print-area,
+  body.windal-sale-bill-printing #purchase-bill-print-area {
     position: absolute;
     left: 0;
     top: 0;

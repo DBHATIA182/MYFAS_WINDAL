@@ -33,6 +33,23 @@ Exclude: `node_modules`, `dist` (optional — setup rebuilds)
 
 ---
 
+## PowerShell: "running scripts is disabled"
+
+Windows often blocks `.\setup-client.ps1`. Use **one** of these:
+
+```powershell
+cd D:\windal\apptest
+.\setup-client.cmd dal-srfipulses
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup-client.ps1 -ClientKey "dal-srfipulses" -OracleConnectString "XE"
+```
+
+Or once per user: `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
+
+---
+
 ## Step 2 — Install Node.js and Cloudflare (`cloudflared`)
 
 Do this **once per client PC**. Path example: `D:\windal\apptest`.

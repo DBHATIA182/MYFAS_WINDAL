@@ -1,20 +1,49 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import axios from 'axios';
 import ReportTable from '../components/ReportTable';
 import SaleBillPrintModal from '../components/SaleBillPrintModal';
 import LedgerReportHeader from '../components/LedgerReportHeader';
+import LedgerReportContextCard from '../components/LedgerReportContextCard';
+import FasReportHeader from '../components/FasReportHeader';
+import TrialBalanceSessionCard from '../components/TrialBalanceSessionCard';
+import FlexAmount from '../components/FlexAmount';
+import { computeLedgerSummary } from '../utils/ledgerSummary';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
 import { generatePDF, sharePdfWithWhatsApp, buildLedgerStatementPdfMetadata } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
-import { sortTrialBalanceRows } from '../utils/trialBalanceSort';
+import { sortTrialBalanceRows, computeTrialTopSummary } from '../utils/trialBalanceSort';
 import SessionInfoLine from '../components/SessionInfoLine';
+import SessionToolbarChrome from '../components/SessionToolbarChrome';
 
 const VIEW = { FORM: 'form', TRIAL: 'trial', LEDGER: 'ledger', VOUCHER: 'voucher' };
+
+function formatIndianAmount(val) {
+  const num = parseFloat(val) || 0;
+  return num.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+}
+
+function computeTrialClosingTotals(rows) {
+  const s = computeTrialTopSummary(rows);
+  return { closingDr: s.closingDr, closingCr: s.closingCr };
+}
+
+function TrialBalanceShell({ className = '', header, exportBar = null, children }) {
+  return (
+    <div className={`slide slide-4 fas-tb-host${className ? ` ${className}` : ''}`}>
+      <div className="fas-flow fas-tb-flow">
+        {header}
+        {exportBar}
+        <div className="fas-flow-body fas-tb-body">{children}</div>
+      </div>
+    </div>
+  );
+}
 
 export default function Slide4({ apiBase, formData, onPrev, onReset }) {
   const [viewMode, setViewMode] = useState(VIEW.FORM);
   const [loading, setLoading] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const [trialRows, setTrialRows] = useState([]);
   const [ledgerRows, setLedgerRows] = useState([]);
@@ -73,9 +102,10 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
   }, [apiBase, compCode, compUid]);
 
   const formatScheduleParam = () => {
-    const n = parseFloat(String(schedule).replace(',', '.'));
-    if (Number.isNaN(n) || n === 0) return 0;
-    return Math.round(n * 100) / 100;
+    const raw = String(schedule ?? '').trim().replace(',', '.');
+    if (!raw) return '0';
+    if (raw === '0' || raw === '0.0' || raw === '0.00') return '0';
+    return raw;
   };
 
   const runTrialBalance = async () => {
@@ -221,15 +251,27 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
     endDate: `As of ${toDisplayDate(endDate)}`,
   };
 
+  const runPdfAction = async (fn) => {
+    if (pdfBusy) return;
+    setPdfBusy(true);
+    try {
+      await fn();
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   const downloadTrialPdf = () =>
-    generatePDF('trial-balance', trialRows, trialPdfMeta);
+    runPdfAction(() => generatePDF('trial-balance', trialRows, trialPdfMeta));
 
   const shareTrialWhatsApp = () =>
-    sharePdfWithWhatsApp(
-      'trial-balance',
-      trialRows,
-      trialPdfMeta,
-      `Trial Balance — ${compName}\nFY ${compYear}\nAs of ${toDisplayDate(endDate)}`
+    runPdfAction(() =>
+      sharePdfWithWhatsApp(
+        'trial-balance',
+        trialRows,
+        trialPdfMeta,
+        `Trial Balance — ${compName}\nFY ${compYear}\nAs of ${toDisplayDate(endDate)}`
+      )
     );
 
   const ledgerAccountCode = String(ledgerRows[0]?.CODE ?? ledgerRows[0]?.code ?? '');
@@ -245,15 +287,28 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
     accountCodeOverride: ledgerAccountCode,
   });
 
-  const downloadLedgerPdf = () => generatePDF('ledger', ledgerRows, ledgerPdfMeta);
+  const downloadLedgerPdf = () =>
+    runPdfAction(() => generatePDF('ledger', ledgerRows, ledgerPdfMeta));
 
   const shareLedgerWhatsApp = () =>
-    sharePdfWithWhatsApp(
-      'ledger',
-      ledgerRows,
-      ledgerPdfMeta,
-      `Ledger — ${compName}\n${ledgerTitle} (${ledgerAccountCode})\n${periodStartLabel} → ${periodEndLabel}`
+    runPdfAction(() =>
+      sharePdfWithWhatsApp(
+        'ledger',
+        ledgerRows,
+        ledgerPdfMeta,
+        `Ledger — ${compName}\n${ledgerTitle} (${ledgerAccountCode})\n${periodStartLabel} → ${periodEndLabel}`
+      )
     );
+
+  const trialTotals = useMemo(() => {
+    const s = computeTrialTopSummary(trialRows);
+    return { closingDr: s.closingDr, closingCr: s.closingCr };
+  }, [trialRows]);
+  const ledgerTotals = useMemo(() => computeLedgerSummary(ledgerRows), [ledgerRows]);
+  const ledgerFyLine = [compYear ? `FY ${compYear}` : '', periodStartLabel && periodEndLabel ? `${periodStartLabel} – ${periodEndLabel}` : '']
+    .filter(Boolean)
+    .join(' · ');
+  const endDateDisplay = toDisplayDate(endDate);
 
   if (viewMode === VIEW.VOUCHER) {
     return (
@@ -307,17 +362,28 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
 
   if (viewMode === VIEW.LEDGER) {
     return (
-      <div className="slide slide-report">
-        <SessionInfoLine formData={formData} helpReportId="trial-balance" helpViewKey="ledger" />
-        <div className="report-toolbar">
-          <h2>Ledger Account</h2>
-          <div className="toolbar-actions">
-            <button type="button" className="btn btn-toolbar-back" onClick={() => setViewMode(VIEW.TRIAL)}>
-              ← Back
-            </button>
+      <TrialBalanceShell
+        className="fas-tb-host--results fas-ledger-host"
+        header={
+          <FasReportHeader
+            className="fas-report-header--ledger-toolbar"
+            title="Ledger Account"
+            onBack={() => setViewMode(VIEW.TRIAL)}
+            rightSlot={
+              <SessionToolbarChrome
+                helpReportId="trial-balance"
+                helpViewKey="ledger"
+                helpCompanyName={compName}
+              />
+            }
+          />
+        }
+        exportBar={
+          <div className="fas-tb-export-bar">
             <button
               type="button"
               className="btn btn-export"
+              disabled={pdfBusy}
               onClick={() => downloadLedgerPdf().catch((e) => alert(e?.message || String(e)))}
             >
               Pdf
@@ -338,38 +404,78 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
             <button
               type="button"
               className="btn btn-whatsapp"
+              disabled={pdfBusy}
               onClick={() => shareLedgerWhatsApp().catch((e) => alert(e?.message || String(e)))}
             >
               💬 WhatsApp
             </button>
           </div>
-        </div>
-        <LedgerReportHeader
+        }
+      >
+        {pdfBusy ? (
+          <p className="fas-tb-status-hint" role="status">
+            Preparing PDF for share…
+          </p>
+        ) : null}
+
+        <LedgerReportContextCard
           compHeader={compLedgerHeader}
           companyNameFallback={compName}
           account={ledgerFirstRow}
           accountNameFallback={ledgerTitle}
           accountCodeFallback={ledgerAccountCode}
-          periodLine={`Financial year ${compYear} · ${periodStartLabel} – ${periodEndLabel}`}
-          hint="Tap a row for voucher detail; sale bill print opens where mapping is available."
+          fyLine={ledgerFyLine}
+          hint="Tap a row to view voucher detail. Sale bill print opens where mapping is available."
         />
-        <ReportTable
-          data={ledgerRows}
-          type="ledger"
-          onVoucherClick={runLedgerVoucher}
-          onLedgerSaleBillClick={openLedgerSaleBill}
-        />
-        <div className="button-group">
-          <button type="button" className="btn btn-secondary" onClick={() => setViewMode(VIEW.TRIAL)}>
-            ← Back to Trial Balance
+
+        <div className="fas-ledger-totals">
+          <div className="fas-tb-total-card fas-ledger-total-card--opening">
+            <div className="fas-tb-total-card__label">Opening</div>
+            <FlexAmount
+              className="fas-tb-total-card__value"
+              value={formatIndianAmount(ledgerTotals.opening)}
+              prefix="₹"
+            />
+          </div>
+          <div className="fas-tb-total-card fas-tb-total-card--debit">
+            <div className="fas-tb-total-card__label">Total Dr</div>
+            <FlexAmount
+              className="fas-tb-total-card__value"
+              value={formatIndianAmount(ledgerTotals.sumDr)}
+              prefix="₹"
+            />
+          </div>
+          <div className="fas-tb-total-card fas-tb-total-card--credit">
+            <div className="fas-tb-total-card__label">Total Cr</div>
+            <FlexAmount
+              className="fas-tb-total-card__value"
+              value={formatIndianAmount(ledgerTotals.sumCr)}
+              prefix="₹"
+            />
+          </div>
+        </div>
+
+        <div className="fas-ledger-table-wrap">
+          <ReportTable
+            data={ledgerRows}
+            type="ledger"
+            onVoucherClick={runLedgerVoucher}
+            onLedgerSaleBillClick={openLedgerSaleBill}
+          />
+        </div>
+
+        <div className="fas-ledger-footer">
+          <button type="button" className="fas-btn fas-btn--outline" onClick={() => setViewMode(VIEW.TRIAL)}>
+            ← Trial Balance
           </button>
-          <button type="button" className="btn btn-secondary" onClick={() => setViewMode(VIEW.FORM)}>
+          <button type="button" className="fas-btn fas-btn--outline" onClick={() => setViewMode(VIEW.FORM)}>
             ← Parameters
           </button>
-          <button type="button" className="btn btn-primary" onClick={onReset}>
+          <button type="button" className="fas-btn fas-btn--outline" onClick={onReset}>
             🏠 Home
           </button>
         </div>
+
         <SaleBillPrintModal
           open={billPrintOpen}
           onClose={() => {
@@ -382,22 +488,27 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
           billParams={billPrintParams}
           companyName={compName}
         />
-      </div>
+      </TrialBalanceShell>
     );
   }
 
   if (viewMode === VIEW.TRIAL) {
     return (
-      <div className="slide slide-report">
-        <div className="report-toolbar">
-          <h2>Trial Balance Report</h2>
-          <div className="toolbar-actions">
-            <button type="button" className="btn btn-toolbar-back" onClick={() => setViewMode(VIEW.FORM)}>
-              ← Back
-            </button>
+      <TrialBalanceShell
+        className="fas-tb-host--results"
+        header={
+          <FasReportHeader
+            title="Trial Balance Report"
+            onBack={() => setViewMode(VIEW.FORM)}
+            rightSlot={<span className="fas-report-header__meta">As of {endDateDisplay}</span>}
+          />
+        }
+        exportBar={
+          <div className="fas-tb-export-bar">
             <button
               type="button"
               className="btn btn-export"
+              disabled={pdfBusy}
               onClick={() => downloadTrialPdf().catch((e) => alert(e?.message || String(e)))}
             >
               Pdf
@@ -418,78 +529,125 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
             <button
               type="button"
               className="btn btn-whatsapp"
+              disabled={pdfBusy}
               onClick={() => shareTrialWhatsApp().catch((e) => alert(e?.message || String(e)))}
             >
               💬 WhatsApp
             </button>
           </div>
+        }
+      >
+        {pdfBusy ? (
+          <p className="fas-tb-status-hint" role="status">
+            Preparing PDF for share…
+          </p>
+        ) : null}
+
+        <TrialBalanceSessionCard formData={formData} />
+
+        <div className="fas-tb-totals fas-tb-totals--debit-first">
+          <div className="fas-tb-total-card fas-tb-total-card--debit">
+            <div className="fas-tb-total-card__label">Total Debit</div>
+            <FlexAmount
+              className="fas-tb-total-card__value"
+              value={formatIndianAmount(trialTotals.closingDr)}
+              prefix="₹"
+            />
+          </div>
+          <div className="fas-tb-total-card fas-tb-total-card--credit">
+            <div className="fas-tb-total-card__label">Total Credit</div>
+            <FlexAmount
+              className="fas-tb-total-card__value"
+              value={formatIndianAmount(trialTotals.closingCr)}
+              prefix="₹"
+            />
+          </div>
         </div>
-        <SessionInfoLine formData={formData} as="div" helpReportId="trial-balance">
-          <br />
-          As of {toDisplayDate(endDate)}
-        </SessionInfoLine>
-        <ReportTable
-          data={trialRows}
-          type="trial-balance"
-          onLedgerClick={(code, name) => runLedger(code, name)}
-        />
-        <div className="button-group">
-          <button type="button" className="btn btn-secondary" onClick={() => setViewMode(VIEW.FORM)}>
-            ← Parameters
-          </button>
-          <button type="button" className="btn btn-primary" onClick={onReset}>
-            🏠 Home
-          </button>
+
+        <div className="fas-tb-table-wrap">
+          <ReportTable
+            data={trialRows}
+            type="trial-balance"
+            onLedgerClick={(code, name) => runLedger(code, name)}
+          />
         </div>
-      </div>
+      </TrialBalanceShell>
     );
   }
 
   return (
-    <div className="slide slide-4">
-      <h2>Trial Balance — parameters</h2>
-      <div className="form-top-bar">
-        <button type="button" className="btn btn-secondary" onClick={onPrev}>
-          ← Back
-        </button>
-        <button type="button" className="btn btn-primary form-top-bar__run" onClick={runTrialBalance} disabled={loading}>
-          {loading ? 'Loading…' : 'Run'}
-        </button>
-      </div>
-      <SessionInfoLine formData={formData} helpReportId="trial-balance">
-        <br />
-        <span className="compdet-date-hint">
-          Set the as-of date (comp_e_dt) and optional schedule. Only Trial Balance runs from this screen; open a ledger
-          from a row after the report loads.
-        </span>
-      </SessionInfoLine>
-
-      <div className="form-group">
-        <label htmlFor="tb-end-date">Ending date — as-of (comp_e_dt)</label>
-        <input
-          id="tb-end-date"
-          type="date"
-          lang="en-GB"
-          className="form-input"
-          value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
+    <TrialBalanceShell
+      className="fas-tb-host--form"
+      header={
+        <FasReportHeader
+          title="Trial Balance"
+          onBack={onPrev}
+          rightSlot={
+            <button
+              type="button"
+              className="fas-report-header__run"
+              onClick={runTrialBalance}
+              disabled={loading}
+            >
+              {loading ? 'Running…' : '▶ Run'}
+            </button>
+          }
         />
-      </div>
+      }
+    >
+      <div className="fas-tb-form-shell">
+        <TrialBalanceSessionCard formData={formData} />
 
-      <div className="form-group">
-        <label htmlFor="tb-schedule">Schedule (NUMBER 5,2) — 0.00 = all schedules</label>
-        <input
-          id="tb-schedule"
-          type="number"
-          className="form-input"
-          step="0.01"
-          min="0"
-          inputMode="decimal"
-          placeholder="0.00"
-          value={schedule}
-          onChange={(e) => setSchedule(e.target.value)}
-        />
+        <div className="fas-field-group">
+          <div className="fas-field-label">Ending date — as-of (comp_e_dt)</div>
+          <div className="fas-field-input fas-tb-date-field">
+            <span className="fas-field-icon" aria-hidden="true">
+              📅
+            </span>
+            <input
+              id="tb-end-date"
+              type="date"
+              lang="en-GB"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </div>
+          {endDateDisplay ? <div className="fas-tb-field-hint">{endDateDisplay}</div> : null}
+        </div>
+
+        <div className="fas-field-group">
+          <div className="fas-field-label">Schedule number (0.00 = all schedules)</div>
+          <div className="fas-field-input">
+            <input
+              id="tb-schedule"
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              placeholder="0.00"
+              value={schedule}
+              onChange={(e) => setSchedule(e.target.value)}
+            />
+          </div>
+          <div className="fas-tb-field-hint">Enter a specific schedule number, or leave 0.00 to include all schedules.</div>
+        </div>
+
+        <div className="fas-info-tip">
+          Set the as-of date and optional schedule. Only Trial Balance runs from this screen — open a ledger from a row
+          after the report loads.
+        </div>
+
+        <div className="fas-tb-form-footer">
+          <button
+            type="button"
+            className="fas-btn fas-btn-primary fas-tb-run-bottom"
+            onClick={runTrialBalance}
+            disabled={loading}
+          >
+            {loading ? 'Running…' : '▶ Run Report'}
+          </button>
+        </div>
       </div>
-    </div>
+    </TrialBalanceShell>
   );
 }

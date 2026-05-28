@@ -8,7 +8,12 @@ import {
 } from '../utils/brokerOsDisplay';
 import { buildSaleListDisplayRows, saleListMeas, isSaleListCn } from '../utils/saleListDisplay';
 import { ageingCurBalDisplay } from '../utils/ageingDisplay';
-import { sortTrialBalanceRows } from '../utils/trialBalanceSort';
+import {
+  sortTrialBalanceRows,
+  trialBalanceRowKind,
+  trialBalanceRowLabel,
+  computeTrialTopSummary,
+} from '../utils/trialBalanceSort';
 
 const LEDGER_SALE_VR_TYPES = new Set(['SL', 'SE', 'CN']);
 
@@ -157,15 +162,23 @@ export default function ReportTable({
   // --- TRIAL BALANCE VIEW (full grid + grand total; scrolls horizontally on small screens) ---
   if (type === 'trial-balance') {
     const trialDisplayRows = sortTrialBalanceRows(data);
-    let gDr = 0;
-    let gCr = 0;
-    let gCdr = 0;
-    let gCcr = 0;
+    const summary = computeTrialTopSummary(trialDisplayRows);
+    const gDr = summary.periodDr;
+    const gCr = summary.periodCr;
+    const gCdr = summary.closingDr;
+    const gCcr = summary.closingCr;
+    const scheduleTotals = new Map();
+    const scheduleKey = (row) => String(row.SCHEDULE ?? row.schedule ?? row.SCH_NO ?? row.sch_no ?? '').trim();
     trialDisplayRows.forEach((row) => {
-      gDr += parseFloat(row.DR_AMT ?? row.dr_amt ?? 0) || 0;
-      gCr += parseFloat(row.CR_AMT ?? row.cr_amt ?? 0) || 0;
-      gCdr += parseFloat(row.CLOSING_DR ?? row.closing_dr ?? 0) || 0;
-      gCcr += parseFloat(row.CLOSING_CR ?? row.closing_cr ?? 0) || 0;
+      if (trialBalanceRowKind(row) !== 0) return;
+      const key = scheduleKey(row);
+      if (!key) return;
+      const curr = scheduleTotals.get(key) || { cdr: 0, ccr: 0, dr: 0, cr: 0 };
+      curr.cdr += parseFloat(row.CLOSING_DR ?? row.closing_dr ?? 0) || 0;
+      curr.ccr += parseFloat(row.CLOSING_CR ?? row.closing_cr ?? 0) || 0;
+      curr.dr += parseFloat(row.DR_AMT ?? row.dr_amt ?? 0) || 0;
+      curr.cr += parseFloat(row.CR_AMT ?? row.cr_amt ?? 0) || 0;
+      scheduleTotals.set(key, curr);
     });
 
     return (
@@ -192,9 +205,11 @@ export default function ReportTable({
             </tr>
           </thead>
           <tbody>
-            {trialDisplayRows.map((row, idx) => {
+            {trialDisplayRows
+              .filter((row) => trialBalanceRowKind(row) !== 2)
+              .map((row, idx) => {
               const codeVal = row.CODE ?? row.code;
-              const nameVal = row.NAME ?? row.name;
+              const nameVal = trialBalanceRowLabel(row);
               const cityVal = row.CITY ?? row.city;
               const schVal = row.SCHEDULE ?? row.schedule ?? row.SCH_NO ?? row.sch_no;
 
@@ -203,13 +218,15 @@ export default function ReportTable({
               const drAmt = parseFloat(row.DR_AMT ?? row.dr_amt ?? 0) || 0;
               const crAmt = parseFloat(row.CR_AMT ?? row.cr_amt ?? 0) || 0;
 
-              const nameUpper = String(nameVal ?? '').toUpperCase();
-              const isTotal =
-                codeVal == null ||
-                codeVal === '' ||
-                (nameVal && nameUpper.includes('TOTAL'));
-              const isGrandTotal = nameUpper.includes('GRAND TOTAL');
-              const isScheduleTotal = isTotal && !isGrandTotal;
+              const rowKind = trialBalanceRowKind(row);
+              const isGrandTotal = rowKind === 2;
+              const isScheduleTotal = rowKind === 1;
+              const isTotal = rowKind >= 1;
+              const schTotals = isScheduleTotal ? scheduleTotals.get(scheduleKey(row)) : null;
+              const showCdr = schTotals ? schTotals.cdr : cdr;
+              const showCcr = schTotals ? schTotals.ccr : ccr;
+              const showDr = schTotals ? schTotals.dr : drAmt;
+              const showCr = schTotals ? schTotals.cr : crAmt;
               const rowClassName = isGrandTotal
                 ? 'trial-grand-total'
                 : isScheduleTotal
@@ -237,10 +254,10 @@ export default function ReportTable({
                   <td className="trial-city">
                     {isScheduleTotal ? '—' : cityVal != null && cityVal !== '' ? cityVal : '—'}
                   </td>
-                  <td className={`text-right ${cdr > 0 ? 'dr-amt' : ''}`}>{cdr > 0 ? fmt(cdr) : '—'}</td>
-                  <td className={`text-right ${ccr > 0 ? 'cr-amt' : ''}`}>{ccr > 0 ? fmt(ccr) : '—'}</td>
-                  <td className={`text-right ${drAmt > 0 ? 'dr-amt' : ''}`}>{drAmt > 0 ? fmt(drAmt) : '—'}</td>
-                  <td className={`text-right ${crAmt > 0 ? 'cr-amt' : ''}`}>{crAmt > 0 ? fmt(crAmt) : '—'}</td>
+                  <td className={`text-right ${showCdr > 0 ? 'dr-amt' : ''}`}>{showCdr > 0 ? fmt(showCdr) : '—'}</td>
+                  <td className={`text-right ${showCcr > 0 ? 'cr-amt' : ''}`}>{showCcr > 0 ? fmt(showCcr) : '—'}</td>
+                  <td className={`text-right ${showDr > 0 ? 'dr-amt' : ''}`}>{showDr > 0 ? fmt(showDr) : '—'}</td>
+                  <td className={`text-right ${showCr > 0 ? 'cr-amt' : ''}`}>{showCr > 0 ? fmt(showCr) : '—'}</td>
                 </tr>
               );
             })}

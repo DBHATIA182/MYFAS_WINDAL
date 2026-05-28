@@ -6,6 +6,7 @@ import { rupeesToWords } from '../utils/rupeesInWords';
 import { generatePDF, sharePdfWithWhatsApp } from '../utils/pdfgenerator';
 import { downloadExcelWorkbook } from '../utils/excelExport';
 import { rowFieldCI, rowFieldAny } from '../utils/rowFieldCI';
+import { runWindalSaleBillPrint } from '../utils/windalBrowserPrint';
 
 function v(row, upper, lower) {
   if (!row) return '';
@@ -260,7 +261,7 @@ export default function PurchaseBillPrintModal({
 
   const handleBrowserPrint = useCallback(() => {
     if (!lines.length) return;
-    window.print();
+    runWindalSaleBillPrint();
   }, [lines.length]);
 
   if (!open || !billParams) return null;

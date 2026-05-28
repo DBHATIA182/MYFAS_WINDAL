@@ -12,3 +12,9 @@ In CMD.exe (not PowerShell), you can omit .\:
 
 
 setup-windal-tunnel.cmd login
+
+
+
+
+cd D:\WINDAL\APPTEST
+powershell -ExecutionPolicy Bypass -File .\setup-client.ps1 -ClientKey "dal-srfipulses" -OraclePrimaryUser "DAL" -OraclePrimaryPassword "DAL" -OracleSecondaryUser "DAL" -OracleSecondaryPassword "DAL" -OracleConnectString "XE"

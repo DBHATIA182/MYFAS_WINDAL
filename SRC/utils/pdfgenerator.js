@@ -1,4 +1,5 @@
 import html2pdf from 'html2pdf.js';
+import { jsPDF } from 'jspdf';
 import { formatLedgerDateDisplay } from './dateFormat';
 import { buildBrokerOsDisplayRows, brokerOsBCodeOf, brokerOsCrFirstFromSchedule } from './brokerOsDisplay';
 import { buildSaleListDisplayRows, saleListMeas, isSaleListCn } from './saleListDisplay';
@@ -13,7 +14,31 @@ import {
   saleBillTaxPercentForHeader,
 } from './rowFieldCI';
 import { ageingCurBalDisplay } from './ageingDisplay';
-import { sortTrialBalanceRows } from './trialBalanceSort';
+import {
+  sortTrialBalanceRows,
+  trialBalanceRowKind,
+  trialBalanceRowLabel,
+  computeTrialTopSummary,
+} from './trialBalanceSort';
+
+/** Keep PDF amount on one line — shrink font to fit column (avoids decimal wrapping on mobile). */
+function pdfFitAmountCell(doc, text, maxWidthMm, baseFontSize, fontStyle, minFontSize = 4.5) {
+  const raw = String(text ?? '').trim() || '—';
+  let fs = baseFontSize;
+  doc.setFont('helvetica', fontStyle);
+  while (fs > minFontSize) {
+    doc.setFontSize(fs);
+    if (doc.getTextWidth(raw) <= maxWidthMm) return { text: raw, fontSize: fs, lines: [raw] };
+    fs -= 0.25;
+  }
+  doc.setFontSize(minFontSize);
+  let fitted = raw;
+  if (doc.getTextWidth(fitted) > maxWidthMm) {
+    while (fitted.length > 1 && doc.getTextWidth(`${fitted}…`) > maxWidthMm) fitted = fitted.slice(0, -1);
+    fitted = `${fitted}…`;
+  }
+  return { text: fitted, fontSize: minFontSize, lines: [fitted] };
+}
 
 function safeFilenamePart(name) {
   return String(name || 'report').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '');
@@ -161,6 +186,55 @@ const PDF_REPORT_STYLES = `
         }
         .report-grid td.val { background: #fff; font-weight: 600; }
         .report-period { font-size: 9px; color: #334155; margin-top: 8px; padding-top: 6px; border-top: 1px solid #94a3b8; }
+        .tb-pdf-summary-row {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 10px;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        .tb-pdf-summary-box {
+          flex: 1;
+          min-width: 0;
+          border: 1.5px solid #94a3b8;
+          border-radius: 6px;
+          padding: 6px 8px;
+          background: #fff;
+        }
+        .tb-pdf-summary-box--debit { border-color: #2f855a; }
+        .tb-pdf-summary-box--credit { border-color: #c53030; }
+        .tb-pdf-summary-label {
+          font-size: 7px;
+          font-weight: 700;
+          color: #64748b;
+          letter-spacing: 0.06em;
+          margin-bottom: 3px;
+        }
+        .tb-pdf-summary-box--debit .tb-pdf-summary-amt { color: #2f855a; font-weight: 800; font-size: 9px; white-space: nowrap; }
+        .tb-pdf-summary-box--credit .tb-pdf-summary-amt { color: #c53030; font-weight: 800; font-size: 9px; white-space: nowrap; }
+        table.table-report--trial-pdf .col-sch { width: 5%; }
+        table.table-report--trial-pdf .col-name { width: 22%; word-break: break-word; font-size: 6.5px; }
+        table.table-report--trial-pdf .col-code { width: 6%; font-size: 6.5px; }
+        table.table-report--trial-pdf .col-city { width: 8%; font-size: 6px; word-break: break-word; }
+        table.table-report--trial-pdf-full td.amount,
+        table.table-report--trial-pdf-full th.amount {
+          width: 11%;
+          white-space: nowrap;
+          font-size: 5.5px;
+          letter-spacing: -0.04em;
+          padding-left: 1px;
+          padding-right: 1px;
+        }
+        table.table-report--trial-pdf-full th.amount:last-child,
+        table.table-report--trial-pdf-full td.amount:last-child {
+          width: 12%;
+        }
+        table.table-report--trial-pdf td.amount,
+        table.table-report--trial-pdf th.amount {
+          white-space: nowrap;
+          font-size: 6px;
+          letter-spacing: -0.03em;
+        }
         table.table-report {
           width: 100%;
           border-collapse: collapse;
@@ -190,12 +264,12 @@ const PDF_REPORT_STYLES = `
           padding: 4px 5px;
           vertical-align: top;
           font-size: 8.5px;
-          page-break-inside: avoid;
-          break-inside: avoid;
+          page-break-inside: auto;
+          break-inside: auto;
         }
         table.table-report tbody tr {
-          page-break-inside: avoid;
-          break-inside: avoid;
+          page-break-inside: auto;
+          break-inside: auto;
         }
         table.table-report tbody tr:nth-child(odd) { background: #ffffff; }
         table.table-report tbody tr:nth-child(even) { background: #f1f5f9; }
@@ -244,6 +318,13 @@ const PDF_REPORT_STYLES = `
           text-align: right;
           font-family: Consolas, 'Courier New', monospace;
           white-space: nowrap;
+          word-break: keep-all;
+          overflow-wrap: normal;
+        }
+        table.table-report tr.report-grand-total td.amount,
+        table.table-report tr.subtotal-row td.amount {
+          font-size: 7px;
+          letter-spacing: -0.02em;
         }
         table.table-report td.amount.bal { font-weight: 700; color: #0f766e; }
         table.table-report tr.report-grand-total td {
@@ -546,58 +627,49 @@ function buildTrialBalanceReportHtml(data, metadata) {
   const asOf = escHtml(metadata.endDate);
   const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
 
-  const grouped = {};
-  sortTrialBalanceRows(data || []).forEach((row) => {
-    const sch = row.SCHEDULE ?? row.schedule ?? 0;
-    if (!grouped[sch]) grouped[sch] = [];
-    grouped[sch].push(row);
-  });
-
-  const calculateTotals = (rows) => ({
-    dr: rows.reduce((sum, r) => sum + parseFloat(r.DR_AMT ?? r.dr_amt ?? 0), 0),
-    cr: rows.reduce((sum, r) => sum + parseFloat(r.CR_AMT ?? r.cr_amt ?? 0), 0),
-    cdr: rows.reduce((sum, r) => sum + parseFloat(r.CLOSING_DR ?? r.closing_dr ?? 0), 0),
-    ccr: rows.reduce((sum, r) => sum + parseFloat(r.CLOSING_CR ?? r.closing_cr ?? 0), 0),
-  });
-
-  let gdr = 0;
-  let gcr = 0;
-  let gcdr = 0;
-  let gccr = 0;
-  const sortedSchedules = Object.keys(grouped).sort((a, b) => parseFloat(a) - parseFloat(b));
-
   let bodyRows = '';
-  sortedSchedules.forEach((sch) => {
-    const rows = grouped[sch];
-    const sortedRows = sortTrialBalanceRows(rows);
-    const totals = calculateTotals(rows);
-    gdr += totals.dr;
-    gcr += totals.cr;
-    gcdr += totals.cdr;
-    gccr += totals.ccr;
+  const htmlSummary = computeTrialTopSummary(data);
+  const htmlGcdr = htmlSummary.closingDr;
+  const htmlGccr = htmlSummary.closingCr;
+  const htmlSchTotals = computeTbScheduleTotals(data);
+  let htmlGpdr = 0;
+  let htmlGpcr = 0;
+  (data || []).forEach((r) => {
+    if (trialBalanceRowKind(r) !== 0) return;
+    htmlGpdr += parseFloat(r.DR_AMT ?? r.dr_amt ?? 0) || 0;
+    htmlGpcr += parseFloat(r.CR_AMT ?? r.cr_amt ?? 0) || 0;
+  });
 
-    sortedRows.forEach((row) => {
-      const name = row.NAME ?? row.name ?? '';
-      bodyRows += `
-            <tr>
-              <td class="col-sch">${escHtml(row.SCHEDULE ?? row.schedule ?? '')}</td>
-              <td class="col-name">${escHtml(name)}</td>
-              <td class="col-code">${escHtml(row.CODE ?? row.code ?? '')}</td>
-              <td class="col-city">${escHtml(row.CITY ?? row.city ?? '—')}</td>
-              <td class="amount">${formatAmtPdf(row.DR_AMT ?? row.dr_amt)}</td>
-              <td class="amount">${formatAmtPdf(row.CR_AMT ?? row.cr_amt)}</td>
-              <td class="amount">${formatAmtPdf(row.CLOSING_DR ?? row.closing_dr)}</td>
-              <td class="amount">${formatAmtPdf(row.CLOSING_CR ?? row.closing_cr)}</td>
-            </tr>`;
-    });
+  sortTrialBalanceRows(data || []).forEach((row) => {
+    const kind = trialBalanceRowKind(row);
+    const nameVal = trialBalanceRowLabel(row);
+    const schVal = row.SCHEDULE ?? row.schedule ?? '';
+    const isTotal = kind >= 1;
+    const isGrand = kind === 2;
+    const isScheduleTotal = kind === 1;
+
+    const rowClass =
+      kind === 2 ? 'report-grand-total' : kind === 1 ? 'subtotal-row' : '';
+    const nameCell = kind === 2 ? `<strong>${escHtml(nameVal)}</strong>` : escHtml(nameVal);
+    const wrap = (amt) => (isTotal ? `<strong>${formatAmtPdf(amt)}</strong>` : formatAmtPdf(amt));
+
+    const cityVal = row.CITY ?? row.city ?? '';
+    const sch = isScheduleTotal ? htmlSchTotals.get(tbScheduleKey(row)) : null;
+    const htmlClosingDr = isGrand ? htmlGcdr : sch ? sch.closingDr : row.CLOSING_DR ?? row.closing_dr;
+    const htmlClosingCr = isGrand ? htmlGccr : sch ? sch.closingCr : row.CLOSING_CR ?? row.closing_cr;
+    const htmlPeriodDr = isGrand ? htmlGpdr : sch ? sch.periodDr : row.DR_AMT ?? row.dr_amt;
+    const htmlPeriodCr = isGrand ? htmlGpcr : sch ? sch.periodCr : row.CR_AMT ?? row.cr_amt;
 
     bodyRows += `
-            <tr class="subtotal-row">
-              <td colspan="4" class="col-name"><strong>Schedule ${escHtml(sch)} — Subtotal</strong></td>
-              <td class="amount"><strong>${formatAmtPdf(totals.dr)}</strong></td>
-              <td class="amount"><strong>${formatAmtPdf(totals.cr)}</strong></td>
-              <td class="amount"><strong>${formatAmtPdf(totals.cdr)}</strong></td>
-              <td class="amount"><strong>${formatAmtPdf(totals.ccr)}</strong></td>
+            <tr class="${rowClass}">
+              <td class="col-sch">${isTotal && schVal === '' ? '' : escHtml(schVal)}</td>
+              <td class="col-name">${nameCell}</td>
+              <td class="col-code">${isTotal ? '' : escHtml(row.CODE ?? row.code ?? '')}</td>
+              <td class="col-city">${isTotal ? '' : escHtml(cityVal)}</td>
+              <td class="amount">${wrap(htmlClosingDr)}</td>
+              <td class="amount">${wrap(htmlClosingCr)}</td>
+              <td class="amount">${wrap(htmlPeriodDr)}</td>
+              <td class="amount">${wrap(htmlPeriodCr)}</td>
             </tr>`;
   });
 
@@ -614,28 +686,32 @@ function buildTrialBalanceReportHtml(data, metadata) {
         <div class="report-period"><strong>Report basis:</strong> Balances as of date above &nbsp;|&nbsp; <strong>Generated:</strong> ${generated}</div>
       </div>
 
-      <table class="table-report">
+      <div class="tb-pdf-summary-row">
+        <div class="tb-pdf-summary-box tb-pdf-summary-box--debit">
+          <div class="tb-pdf-summary-label">TOTAL DEBIT</div>
+          <div class="tb-pdf-summary-amt">${formatAmtPdf(htmlGcdr)}</div>
+        </div>
+        <div class="tb-pdf-summary-box tb-pdf-summary-box--credit">
+          <div class="tb-pdf-summary-label">TOTAL CREDIT</div>
+          <div class="tb-pdf-summary-amt">${formatAmtPdf(htmlGccr)}</div>
+        </div>
+      </div>
+
+      <table class="table-report table-report--trial-pdf table-report--trial-pdf-full">
         <thead>
           <tr>
             <th>Sch</th>
-            <th>Account name</th>
+            <th>Account</th>
             <th>Code</th>
             <th>City</th>
-            <th class="amount">Dr amt</th>
-            <th class="amount">Cr amt</th>
-            <th class="amount">Closing Dr</th>
-            <th class="amount">Closing Cr</th>
+            <th class="amount">Cl.Dr.Amt</th>
+            <th class="amount">Cl.Cr.Amt</th>
+            <th class="amount">Tot.Dr.Amt</th>
+            <th class="amount">Tot.Cr.Amt</th>
           </tr>
         </thead>
         <tbody>
           ${bodyRows}
-          <tr class="report-grand-total">
-            <td colspan="4" class="lbl-total">GRAND TOTAL</td>
-            <td class="amount">${formatAmtPdf(gdr)}</td>
-            <td class="amount">${formatAmtPdf(gcr)}</td>
-            <td class="amount">${formatAmtPdf(gcdr)}</td>
-            <td class="amount">${formatAmtPdf(gccr)}</td>
-          </tr>
         </tbody>
       </table>
 
@@ -1607,9 +1683,10 @@ const SALE_BILL_PDF_STYLES = `
   .sb-pdf-bottom-left { width: 65%; }
   .sb-pdf-bottom-right { width: 35%; text-align: right; }
   .sb-pdf-sign { text-align: right; margin-top: 0; font-size: 8px; }
-  .sb-pdf-signature { margin-top: 8px; }
+  .sb-pdf-sign-stamp-gap { display: block; min-height: 30px; margin-top: 4px; }
+  .sb-pdf-signature { margin-top: 4px; }
   .sb-pdf-signature img { max-width: 130px; max-height: 65px; object-fit: contain; }
-  .sb-pdf-auth { margin-top: 4px; color: #475569; }
+  .sb-pdf-auth { margin-top: 10px; color: #475569; }
   .sb-pdf-party-name { font-weight: 700; }
 `;
 
@@ -1809,7 +1886,10 @@ function buildSaleBillReportHtml(data, metadata) {
     rowFieldAny(h, ['fssai_no']) || rowFieldAny(h, ['comp_tin', 'iec_no'])
   );
   const llpin = cleanPrintText(rowFieldAny(h, ['llpin']));
-  const cinNo = cleanPrintText(rowFieldAny(h, ['cin_no', 'G_CIN_NO', 'g_cin_no']));
+  const cinNo = cleanPrintText(rowFieldAny(h, ['cin_no', 'CIN_NO', 'G_CIN_NO', 'g_cin_no']));
+  const msmeNo = stripLeadingRegistrationJunk(
+    rowFieldAny(h, ['msme_no', 'MSME_no', 'MSME_NO', 'G_MSME_NO', 'g_msme_no'])
+  );
   const udyamRegNo = stripLeadingRegistrationJunk(rowFieldAny(h, ['udyam_no', 'G_UDYAM_NO', 'g_udyam_no', 'udyam_reg_no']));
   const emailVal = cleanPrintText(rowFieldAny(h, ['comp_email', 'G_EMAIL', 'g_email', 'email']));
   const websiteVal = cleanPrintText(rowFieldAny(h, ['website', 'web_site', 'comp_website', 'site', 'url']));
@@ -1832,14 +1912,13 @@ function buildSaleBillReportHtml(data, metadata) {
   if (gstPanLine) headingLines.push(gstPanLine);
   if (companyFssaiHeading) headingLines.push(`Fssai No.: ${companyFssaiHeading}`);
   if (llpin) headingLines.push(`LLPIN: ${llpin}`);
-  const cinUdyamLine = [cinNo ? `CIN: ${cinNo}` : '', udyamRegNo ? `Udyam No.: ${udyamRegNo}` : '']
-    .filter(Boolean)
-    .join('    |    ');
-  if (cinUdyamLine) headingLines.push(cinUdyamLine);
+  if (udyamRegNo) headingLines.push(`Udyam No.: ${udyamRegNo}`);
   const tailHeadingLines = [];
   if (emailVal) tailHeadingLines.push(`Email: ${emailVal}`);
+  if (cinNo) tailHeadingLines.push(`CIN: ${cinNo}`);
+  if (msmeNo) tailHeadingLines.push(`MSME No.: ${msmeNo}`);
   if (websiteVal) tailHeadingLines.push(`Website: ${websiteVal}`);
-  const maxHeadingLines = 6;
+  const maxHeadingLines = 8;
   const keepFromMain = Math.max(0, maxHeadingLines - tailHeadingLines.length);
   const mainHeadingLines = [...headingLines.slice(0, keepFromMain), ...tailHeadingLines].slice(0, maxHeadingLines);
   const totalsLeftQrHtml = qrHtml ? `<div class="sb-pdf-total-side sb-pdf-total-side-left">${qrHtml}</div>` : '';
@@ -2004,6 +2083,7 @@ function buildSaleBillReportHtml(data, metadata) {
         <div class="sb-pdf-bottom-right">
           <div class="sb-pdf-sign">
             <div>For ${company}</div>
+            <div class="sb-pdf-sign-stamp-gap"></div>
             ${signatureHtml}
             <div class="sb-pdf-auth">Authorised signatory</div>
           </div>
@@ -4273,11 +4353,744 @@ export function buildVoucherPrintDocumentHtml(data, metadata) {
 </html>`;
 }
 
+function removeStrayHtml2pdfNodes() {
+  try {
+    document.querySelectorAll('.html2pdf__container, .html2pdf-container').forEach((n) => n.remove());
+  } catch {
+    /* ignore */
+  }
+}
+
+function wrapReportHtmlForPdf(htmlContent) {
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1280" />
+  </head>
+  <body style="margin:0;padding:0;background:#fff;">${htmlContent}</body>
+</html>`;
+}
+
+async function withPdfGenerationGuard(work) {
+  removeStrayHtml2pdfNodes();
+  const overlay = document.createElement('div');
+  overlay.className = 'windal-pdf-busy-overlay';
+  overlay.setAttribute('role', 'status');
+  overlay.setAttribute('aria-live', 'polite');
+  overlay.innerHTML = '<div class="windal-pdf-busy-overlay__inner">Preparing PDF…</div>';
+  document.body.appendChild(overlay);
+  try {
+    return await work();
+  } finally {
+    overlay.remove();
+    removeStrayHtml2pdfNodes();
+  }
+}
+
+function assertPdfBlob(blob) {
+  if (!blob || blob.size < 4000) {
+    throw new Error('PDF could not be generated on this device. Try again or use Excel export.');
+  }
+}
+
+function createJsPdfA4Portrait() {
+  return new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+}
+
+function pdfPageLayout(doc, marginMm = 8) {
+  const pw = doc.internal.pageSize.getWidth();
+  const ph = doc.internal.pageSize.getHeight();
+  const lm = marginMm;
+  const contentW = pw - lm * 2;
+  return { pw, ph, lm, contentW };
+}
+
+function scalePdfCols(cols, contentW) {
+  const total = cols.reduce((s, c) => s + c.w, 0);
+  if (total <= 0) return cols;
+  const scale = contentW / total;
+  let used = 0;
+  cols.forEach((c, i) => {
+    if (i === cols.length - 1) {
+      c.w = Math.max(8, contentW - used);
+    } else {
+      c.w = c.w * scale;
+      used += c.w;
+    }
+  });
+  return cols;
+}
+
+function pdfColLayout(cols, lm) {
+  const xAt = [];
+  let x = lm;
+  cols.forEach((c) => {
+    xAt.push(x);
+    x += c.w;
+  });
+  return { xAt, tableW: x - lm };
+}
+
+/** Trial balance: text cols on the left; amount cols packed flush to the right edge. */
+function pdfTrialBalanceColLayout(leftDefs, amtDefs, lm, contentW) {
+  const gap = 0.5;
+  const rightEdge = lm + contentW;
+  const amtBlockW = contentW * 0.58;
+
+  const scaleGroup = (defs, budget) => {
+    const sum = defs.reduce((s, c) => s + c.w, 0);
+    const scale = budget / sum;
+    return defs.map((c) => ({ ...c, w: c.w * scale }));
+  };
+
+  const leftBudget = Math.max(36, contentW - amtBlockW - gap);
+  const leftCols = scaleGroup(leftDefs, leftBudget);
+  const amtCols = scaleGroup(amtDefs, amtBlockW);
+  const cols = [...leftCols, ...amtCols];
+
+  const xAt = [];
+  let x = lm;
+  leftCols.forEach((c) => {
+    xAt.push(x);
+    x += c.w;
+  });
+
+  const amtStartX = rightEdge - amtCols.reduce((s, c) => s + c.w, 0);
+  let xAmt = amtStartX;
+  amtCols.forEach((c) => {
+    xAt.push(xAmt);
+    xAmt += c.w;
+  });
+
+  return { cols, xAt, rightEdge };
+}
+
+/** One-line text for narrow PDF columns (city, short codes). */
+function pdfTruncateLine(doc, text, maxWidthMm, fontSize, fontStyle = 'normal') {
+  const raw = String(text ?? '').trim();
+  if (!raw) return '—';
+  doc.setFont('helvetica', fontStyle);
+  doc.setFontSize(fontSize);
+  if (doc.getTextWidth(raw) <= maxWidthMm) return raw;
+  let s = raw;
+  while (s.length > 1 && doc.getTextWidth(`${s}…`) > maxWidthMm) s = s.slice(0, -1);
+  return `${s}…`;
+}
+
+function tbScheduleKey(row) {
+  const v = row?.SCHEDULE ?? row?.schedule ?? row?.SCH_NO ?? row?.sch_no;
+  if (v == null) return '';
+  return String(v).trim();
+}
+
+function tbNum(v) {
+  if (v == null || v === '') return 0;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  const s = String(v).replace(/,/g, '').trim();
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function computeTbScheduleTotals(rows) {
+  const m = new Map();
+  (rows || []).forEach((r) => {
+    if (trialBalanceRowKind(r) !== 0) return;
+    const key = tbScheduleKey(r);
+    if (!key) return;
+    const curr = m.get(key) || { closingDr: 0, closingCr: 0, periodDr: 0, periodCr: 0 };
+    curr.closingDr += tbNum(r.CLOSING_DR ?? r.closing_dr);
+    curr.closingCr += tbNum(r.CLOSING_CR ?? r.closing_cr);
+    curr.periodDr += tbNum(r.DR_AMT ?? r.dr_amt);
+    curr.periodCr += tbNum(r.CR_AMT ?? r.cr_amt);
+    m.set(key, curr);
+  });
+  return m;
+}
+
+/** Trial balance PDF via jsPDF (reliable on iPhone; html2canvas often yields blank multi-page PDFs). */
+function buildTrialBalanceJsPdfBlob(data, metadata) {
+  const doc = createJsPdfA4Portrait();
+  const { pw, ph, lm, contentW } = pdfPageLayout(doc, 3.5);
+  const MIN_ROW_H = 4.8;
+  const LINE_H = 2.65;
+  const ROW_PAD_TOP = 1.5;
+  const ROW_GAP = 0.45;
+  const SUBTOTAL_GAP = 1.1;
+  const TB_BODY_FS = 5;
+  const TB_HEAD_FS = 5.5;
+  const TB_AMT_FS = 5;
+  const TB_AMT_MIN = 2;
+  const TB_HEAD_AMT_FS = 4.2;
+  const NAVY = [15, 30, 60];
+  const ACCENT = [0, 194, 168];
+  const INDIGO = [42, 79, 168];
+  const PANEL = [234, 238, 253];
+  const STRIPE = [244, 246, 251];
+  const SUBTOTAL = [224, 231, 255];
+  const RED = [197, 48, 48];
+  const GREEN = [47, 133, 90];
+  const BORDER = [180, 192, 214];
+
+  const cols = scalePdfCols(
+    [
+      { label: 'Sch', w: 7 },
+      { label: 'Account', w: 30 },
+      { label: 'Code', w: 8 },
+      { label: 'City', w: 10, text: true },
+      { label: 'Cl.Dr.Amt', w: 24, right: true, debit: true },
+      { label: 'Cl.Cr.Amt', w: 24, right: true, credit: true },
+      { label: 'Tot.Dr.Amt', w: 24, right: true },
+      { label: 'Tot.Cr.Amt', w: 24, right: true },
+    ],
+    contentW
+  );
+  const { xAt } = pdfColLayout(cols, lm);
+  const rightEdge = lm + contentW;
+
+  const fillBand = (y0, h, rgb) => {
+    doc.setFillColor(...rgb);
+    doc.rect(lm, y0, contentW, h, 'F');
+  };
+
+  const hline = (y0, color = BORDER) => {
+    doc.setDrawColor(...color);
+    doc.setLineWidth(0.25);
+    doc.line(lm, y0, lm + contentW, y0);
+  };
+
+  const colTextX = (colIndex) => {
+    const c = cols[colIndex];
+    if (!c.right) return xAt[colIndex] + 0.6;
+    // Keep right-most numeric column slightly inset from page edge.
+    return Math.min(xAt[colIndex] + c.w - 0.9, rightEdge - 0.9);
+  };
+
+  let y = 8;
+
+  // Title band
+  fillBand(y, 10, NAVY);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text('TRIAL BALANCE REPORT', lm + contentW / 2, y + 6.2, { align: 'center' });
+  y += 11;
+
+  // Company panel
+  fillBand(y, 12, PANEL);
+  doc.setDrawColor(...INDIGO);
+  doc.setLineWidth(0.35);
+  doc.rect(lm, y, contentW, 12, 'S');
+  doc.setTextColor(...NAVY);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text(String(metadata?.companyName || ''), lm + 2, y + 4.8, { maxWidth: contentW - 4 });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(90, 106, 138);
+  doc.text(`${metadata?.year || ''}   ${metadata?.endDate || ''}`, lm + 2, y + 9.2, { maxWidth: contentW - 4 });
+  y += 14;
+
+  const tbSummary = computeTrialTopSummary(data);
+  const gcdr = tbSummary.closingDr;
+  const gccr = tbSummary.closingCr;
+  const schTotals = computeTbScheduleTotals(data);
+  // For PDF grand row, period totals must come from detail rows (same basis as on-screen grid).
+  let gpdr = 0;
+  let gpcr = 0;
+  (data || []).forEach((r) => {
+    if (trialBalanceRowKind(r) !== 0) return;
+    gpdr += parseFloat(r.DR_AMT ?? r.dr_amt ?? 0) || 0;
+    gpcr += parseFloat(r.CR_AMT ?? r.cr_amt ?? 0) || 0;
+  });
+
+  const boxW = (contentW - 4) / 2;
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(...GREEN);
+  doc.setLineWidth(0.35);
+  doc.rect(lm, y, boxW, 8, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(5.5);
+  doc.setTextColor(120, 130, 150);
+  doc.text('TOTAL DEBIT', lm + 2, y + 2.8);
+  doc.setTextColor(...GREEN);
+  const drBoxFit = pdfFitAmountCell(doc, formatAmtPdf(gcdr), boxW - 3, 7, 'bold', 4);
+  doc.setFontSize(drBoxFit.fontSize);
+  doc.text(drBoxFit.text, lm + 2, y + 6.2, { maxWidth: boxW - 3 });
+
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(...RED);
+  doc.rect(lm + boxW + 4, y, boxW, 8, 'FD');
+  doc.setTextColor(120, 130, 150);
+  doc.setFontSize(5.5);
+  doc.text('TOTAL CREDIT', lm + boxW + 6, y + 2.8);
+  doc.setTextColor(...RED);
+  const crBoxFit = pdfFitAmountCell(doc, formatAmtPdf(gccr), boxW - 3, 7, 'bold', 4);
+  doc.setFontSize(crBoxFit.fontSize);
+  doc.text(crBoxFit.text, lm + boxW + 6, y + 6.2, { maxWidth: boxW - 3 });
+  y += 10;
+
+  const drawColHead = () => {
+    const headH = 6.2;
+    fillBand(y, headH, NAVY);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    cols.forEach((c, i) => {
+      const tx = colTextX(i);
+      const headFs = c.right ? TB_HEAD_AMT_FS : TB_HEAD_FS;
+      doc.setFontSize(headFs);
+      doc.text(c.label, tx, y + 4.2, {
+        align: c.right ? 'right' : 'left',
+        maxWidth: Math.max(2, c.w - 0.6),
+      });
+    });
+    y += headH + 0.35;
+    hline(y);
+    y += 0.5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(TB_BODY_FS);
+    doc.setTextColor(...NAVY);
+  };
+
+  drawColHead();
+
+  const pageBottom = ph - 12;
+  let rowStripe = 0;
+
+  const cellContent = (txt, col, fontSize, fontStyle, rowStyle = 'normal') => {
+    const raw = String(txt ?? '').trim();
+    if (!raw) return { lines: ['—'], fontSize };
+    if (col.right) {
+      const minFs =
+        rowStyle === 'grand' ? TB_AMT_MIN : rowStyle === 'subtotal' ? TB_AMT_MIN + 0.15 : TB_AMT_MIN + 0.25;
+      const fit = pdfFitAmountCell(doc, raw, col.w - 0.8, fontSize, fontStyle, minFs);
+      return { lines: fit.lines, fontSize: fit.fontSize };
+    }
+    if (col.text) {
+      return {
+        lines: [pdfTruncateLine(doc, raw, col.w - 1.2, fontSize, fontStyle)],
+        fontSize,
+      };
+    }
+    doc.setFontSize(fontSize);
+    doc.setFont('helvetica', fontStyle);
+    const maxLines = col.label === 'Account' ? 2 : 1;
+    const parts = doc.splitTextToSize(raw, Math.max(2, col.w - 1.2));
+    return {
+      lines: parts.slice(0, maxLines),
+      fontSize,
+    };
+  };
+
+  const measureRowHeight = (cells, textFs, amtFs, fontStyle, rowStyle = 'normal') => {
+    let maxLines = 1;
+    cells.forEach((txt, i) => {
+      const fs = cols[i].right ? amtFs : textFs;
+      const { lines } = cellContent(txt, cols[i], fs, fontStyle, rowStyle);
+      maxLines = Math.max(maxLines, lines.length);
+    });
+    return Math.max(MIN_ROW_H, ROW_PAD_TOP + maxLines * LINE_H + 1);
+  };
+
+  const amountHasValue = (txt) => {
+    const s = String(txt ?? '').trim();
+    return s && s !== '—' && s !== '-';
+  };
+
+  const newPageIfNeeded = (neededH) => {
+    if (y + neededH > pageBottom) {
+      doc.addPage();
+      y = 10;
+      drawColHead();
+      rowStripe = 0;
+    }
+  };
+
+  const writeCells = (cells, style = 'normal') => {
+    const isSubtotal = style === 'subtotal';
+    const isGrand = style === 'grand';
+    const fontSize = isGrand ? TB_HEAD_FS : TB_BODY_FS;
+    const fontStyle = style === 'normal' ? 'normal' : 'bold';
+    const amtBaseFs = isGrand ? TB_HEAD_FS : TB_AMT_FS;
+    const rowH = measureRowHeight(cells, fontSize, amtBaseFs, fontStyle, style);
+    const leadGap = isSubtotal || isGrand ? SUBTOTAL_GAP : 0;
+
+    newPageIfNeeded(leadGap + rowH + ROW_GAP);
+    if (leadGap > 0) y += leadGap;
+
+    const rowTop = y;
+
+    if (style === 'stripe') {
+      fillBand(rowTop, rowH, rowStripe % 2 === 0 ? [255, 255, 255] : STRIPE);
+      rowStripe += 1;
+    } else if (isSubtotal) {
+      fillBand(rowTop, rowH, SUBTOTAL);
+    } else if (isGrand) {
+      fillBand(rowTop, rowH, NAVY);
+    }
+
+    cells.forEach((txt, i) => {
+      const c = cols[i];
+      const cellFsBase = c.right ? amtBaseFs : fontSize;
+      const { lines, fontSize: cellFs } = cellContent(txt, c, cellFsBase, fontStyle, style);
+      const tx = colTextX(i);
+
+      if (isGrand) doc.setTextColor(255, 255, 255);
+      else if (c.credit && amountHasValue(txt)) doc.setTextColor(...RED);
+      else if (c.debit && amountHasValue(txt)) doc.setTextColor(...GREEN);
+      else if (isSubtotal) doc.setTextColor(...INDIGO);
+      else doc.setTextColor(...NAVY);
+
+      doc.setFont('helvetica', fontStyle);
+      doc.setFontSize(cellFs);
+
+      let lineY = rowTop + ROW_PAD_TOP + LINE_H - 0.5;
+      lines.forEach((line) => {
+        const drawX = c.right ? Math.min(tx, rightEdge - 0.35) : tx;
+        doc.text(line, drawX, lineY, { align: c.right ? 'right' : 'left', maxWidth: c.right ? c.w - 0.6 : undefined });
+        lineY += LINE_H;
+      });
+    });
+
+    y = rowTop + rowH + ROW_GAP;
+    if (isSubtotal || isGrand) {
+      hline(y, isGrand ? ACCENT : INDIGO);
+      y += 0.5;
+    }
+  };
+
+  sortTrialBalanceRows(data || []).forEach((row) => {
+    const kind = trialBalanceRowKind(row);
+    const nameVal = trialBalanceRowLabel(row);
+    const schVal = row.SCHEDULE ?? row.schedule ?? '';
+    const isTotal = kind >= 1;
+    const isGrand = kind === 2;
+    const isScheduleTotal = kind === 1;
+    const style = kind === 2 ? 'grand' : kind === 1 ? 'subtotal' : 'stripe';
+
+    const cityVal = row.CITY ?? row.city ?? '';
+    const rowDrAmt = parseFloat(row.DR_AMT ?? row.dr_amt ?? 0) || 0;
+    const rowCrAmt = parseFloat(row.CR_AMT ?? row.cr_amt ?? 0) || 0;
+    const rowClosingDr = parseFloat(row.CLOSING_DR ?? row.closing_dr ?? 0) || 0;
+    const rowClosingCr = parseFloat(row.CLOSING_CR ?? row.closing_cr ?? 0) || 0;
+    const sch = isScheduleTotal ? schTotals.get(tbScheduleKey(row)) : null;
+
+    // Keep grand row aligned with top cards + period totals.
+    const grandAlignedClosingDr = isGrand ? gcdr : sch ? sch.closingDr : rowClosingDr;
+    const grandAlignedClosingCr = isGrand ? gccr : sch ? sch.closingCr : rowClosingCr;
+    const grandAlignedDr = isGrand ? gpdr : sch ? sch.periodDr : rowDrAmt;
+    const grandAlignedCr = isGrand ? gpcr : sch ? sch.periodCr : rowCrAmt;
+
+    writeCells(
+      [
+        isTotal && (schVal === '' || schVal == null) ? '' : schVal,
+        nameVal,
+        isTotal ? '' : (row.CODE ?? row.code ?? ''),
+        isTotal ? '' : cityVal,
+        formatAmtPdf(grandAlignedClosingDr),
+        formatAmtPdf(grandAlignedClosingCr),
+        formatAmtPdf(grandAlignedDr),
+        formatAmtPdf(grandAlignedCr),
+      ],
+      style
+    );
+  });
+
+  // Page numbers
+  const pageCount = doc.getNumberOfPages();
+  for (let p = 1; p <= pageCount; p += 1) {
+    doc.setPage(p);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    doc.setTextColor(120, 130, 150);
+    doc.text(`Page ${p} of ${pageCount}`, pw - lm, ph - 5, { align: 'right' });
+  }
+
+  doc.setProperties({ title: 'Trial Balance', keywords: 'tb-pdf-layout-6' });
+
+  return doc.output('blob');
+}
+
+/** Ledger PDF via jsPDF (styled like trial balance; reliable on mobile). */
+function buildLedgerJsPdfBlob(data, metadata) {
+  const rows = Array.isArray(data) ? data : [];
+  const doc = createJsPdfA4Portrait();
+  const { pw, ph, lm, contentW } = pdfPageLayout(doc);
+  const MIN_ROW_H = 5.8;
+  const LINE_H = 3.1;
+  const ROW_PAD_TOP = 2;
+  const ROW_GAP = 0.6;
+  const NAVY = [15, 30, 60];
+  const ACCENT = [0, 194, 168];
+  const INDIGO = [42, 79, 168];
+  const PANEL = [234, 238, 253];
+  const STRIPE = [244, 246, 251];
+  const RED = [197, 48, 48];
+  const GREEN = [47, 133, 90];
+  const BORDER = [180, 192, 214];
+
+  const cols = scalePdfCols(
+    [
+      { label: 'Vr dt', w: 17 },
+      { label: 'Val dt', w: 17 },
+      { label: 'No', w: 11 },
+      { label: 'Vr', w: 9 },
+      { label: 'Ty', w: 8 },
+      { label: 'Detail', w: 58 },
+      { label: 'Dr', w: 22, right: true, debit: true },
+      { label: 'Cr', w: 22, right: true, credit: true },
+      { label: 'Balance', w: 24, right: true },
+    ],
+    contentW
+  );
+  const { xAt, tableW } = pdfColLayout(cols, lm);
+
+  const fillBand = (y0, h, rgb) => {
+    doc.setFillColor(...rgb);
+    doc.rect(lm, y0, contentW, h, 'F');
+  };
+
+  const hline = (y0, color = BORDER) => {
+    doc.setDrawColor(...color);
+    doc.setLineWidth(0.25);
+    doc.line(lm, y0, lm + tableW, y0);
+  };
+
+  let y = 8;
+
+  fillBand(y, 10, NAVY);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.text('LEDGER ACCOUNT', lm + contentW / 2, y + 6.5, { align: 'center' });
+  y += 12;
+
+  const panelH = 20;
+  fillBand(y, panelH, PANEL);
+  doc.setDrawColor(...INDIGO);
+  doc.setLineWidth(0.35);
+  doc.rect(lm, y, contentW, panelH, 'S');
+  doc.setTextColor(...NAVY);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text(String(metadata?.companyName || ''), lm + 2, y + 5, { maxWidth: tableW - 4 });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(90, 106, 138);
+  const addr = [metadata?.companyAdd1, metadata?.companyAdd2].filter(Boolean).join(', ');
+  if (addr) doc.text(addr, lm + 2, y + 9, { maxWidth: tableW - 4 });
+  if (metadata?.companyGst) doc.text(`GST: ${metadata.companyGst}`, lm + 2, y + 12.5, { maxWidth: tableW - 4 });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...NAVY);
+  const accLine = [metadata?.accountName, metadata?.accountCode ? `(${metadata.accountCode})` : '']
+    .filter(Boolean)
+    .join(' ');
+  doc.text(accLine, lm + 2, y + 16.5, { maxWidth: tableW - 4 });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(90, 106, 138);
+  doc.text(`${metadata?.year || ''}   ${metadata?.endDate || ''}`, lm + 2, y + 19.5, { maxWidth: tableW - 4 });
+  y += panelH + 2;
+
+  let opening = 0;
+  let sumDr = 0;
+  let sumCr = 0;
+  rows.forEach((row) => {
+    const vr = String(row.VR_TYPE ?? row.vr_type ?? '').trim().toUpperCase();
+    const dr = parseFloat(row.DR_AMT ?? row.dr_amt) || 0;
+    const cr = parseFloat(row.CR_AMT ?? row.cr_amt) || 0;
+    if (vr === 'OP') {
+      opening = parseFloat(row.CL_BALANCE ?? row.cl_balance ?? row.RUN_BAL ?? row.run_bal) || 0;
+    } else {
+      sumDr += dr;
+      sumCr += cr;
+    }
+  });
+
+  const boxW = (tableW - 8) / 3;
+  const drawSummaryBox = (bx, label, val, borderRgb, valRgb) => {
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(...borderRgb);
+    doc.setLineWidth(0.35);
+    doc.rect(bx, y, boxW, 9, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(120, 130, 150);
+    doc.text(label, bx + 2, y + 3.2);
+    doc.setTextColor(...valRgb);
+    doc.setFontSize(8.5);
+    doc.text(formatAmtPdf(val), bx + 2, y + 7, { maxWidth: boxW - 4 });
+  };
+  drawSummaryBox(lm, 'OPENING', opening, INDIGO, INDIGO);
+  drawSummaryBox(lm + boxW + 4, 'TOTAL CR', sumCr, RED, RED);
+  drawSummaryBox(lm + (boxW + 4) * 2, 'TOTAL DR', sumDr, GREEN, GREEN);
+  y += 11;
+
+  const drawColHead = () => {
+    const headH = 7;
+    fillBand(y, headH, NAVY);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    cols.forEach((c, i) => {
+      const tx = c.right ? xAt[i] + c.w - 1 : xAt[i] + 1;
+      doc.text(c.label, tx, y + 4.6, { align: c.right ? 'right' : 'left', maxWidth: c.w - 2 });
+    });
+    y += headH + 0.5;
+    hline(y);
+    y += 0.8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...NAVY);
+  };
+
+  drawColHead();
+
+  const pageBottom = ph - 12;
+  let rowStripe = 0;
+
+  const cellLines = (txt, col, fontSize, fontStyle) => {
+    doc.setFontSize(fontSize);
+    doc.setFont('helvetica', fontStyle);
+    const raw = String(txt ?? '').trim();
+    if (!raw) return ['—'];
+    return doc.splitTextToSize(raw, Math.max(2, col.w - 2));
+  };
+
+  const measureRowHeight = (cells, fontSize, fontStyle) => {
+    let maxLines = 1;
+    cells.forEach((txt, i) => {
+      const lines = cellLines(txt, cols[i], fontSize, fontStyle);
+      maxLines = Math.max(maxLines, lines.length);
+    });
+    return Math.max(MIN_ROW_H, ROW_PAD_TOP + maxLines * LINE_H + 1.2);
+  };
+
+  const amountHasValue = (txt) => {
+    const s = String(txt ?? '').trim();
+    return s && s !== '—' && s !== '-';
+  };
+
+  const newPageIfNeeded = (neededH) => {
+    if (y + neededH > pageBottom) {
+      doc.addPage();
+      y = 10;
+      drawColHead();
+      rowStripe = 0;
+    }
+  };
+
+  const writeCells = (cells, style = 'normal') => {
+    const isGrand = style === 'grand';
+    const fontSize = isGrand ? 7.5 : 6.5;
+    const fontStyle = style === 'normal' ? 'normal' : 'bold';
+    const rowH = measureRowHeight(cells, fontSize, fontStyle);
+
+    newPageIfNeeded(rowH + ROW_GAP);
+    const rowTop = y;
+
+    if (style === 'stripe') {
+      fillBand(rowTop, rowH, rowStripe % 2 === 0 ? [255, 255, 255] : STRIPE);
+      rowStripe += 1;
+    } else if (isGrand) {
+      fillBand(rowTop, rowH, NAVY);
+    }
+
+    cells.forEach((txt, i) => {
+      const c = cols[i];
+      const lines = cellLines(txt, c, fontSize, fontStyle);
+      const tx = c.right ? xAt[i] + c.w - 1 : xAt[i] + 1;
+
+      if (isGrand) doc.setTextColor(255, 255, 255);
+      else if (c.credit && amountHasValue(txt)) doc.setTextColor(...RED);
+      else if (c.debit && amountHasValue(txt)) doc.setTextColor(...GREEN);
+      else doc.setTextColor(...NAVY);
+
+      doc.setFont('helvetica', fontStyle);
+      doc.setFontSize(fontSize);
+
+      let lineY = rowTop + ROW_PAD_TOP + LINE_H - 0.5;
+      lines.forEach((line) => {
+        doc.text(line, tx, lineY, { align: c.right ? 'right' : 'left' });
+        lineY += LINE_H;
+      });
+    });
+
+    y = rowTop + rowH + ROW_GAP;
+    if (isGrand) {
+      hline(y, ACCENT);
+      y += 0.5;
+    }
+  };
+
+  let gDr = 0;
+  let gCr = 0;
+
+  rows.forEach((row) => {
+    const dr = parseFloat(row.DR_AMT ?? row.dr_amt) || 0;
+    const cr = parseFloat(row.CR_AMT ?? row.cr_amt) || 0;
+    gDr += dr;
+    gCr += cr;
+    writeCells(
+      [
+        formatLedgerDateDisplay(row.VR_DATE ?? row.vr_date),
+        formatLedgerDateDisplay(row.V_DATE ?? row.v_date) || '—',
+        String(row.VR_NO ?? row.vr_no ?? '—'),
+        String(row.VR_TYPE ?? row.vr_type ?? ''),
+        String(row.TYPE ?? row.type ?? '—'),
+        String(row.DETAIL ?? row.detail ?? ''),
+        formatAmtPdf(dr),
+        formatAmtPdf(cr),
+        formatAmtPdf(row.CL_BALANCE ?? row.cl_balance ?? row.RUN_BAL ?? row.run_bal),
+      ],
+      'stripe'
+    );
+  });
+
+  const last = rows[rows.length - 1];
+  const closing = last
+    ? parseFloat(last.CL_BALANCE ?? last.cl_balance ?? last.RUN_BAL ?? last.run_bal) || 0
+    : 0;
+
+  doc.setFont('helvetica', 'bold');
+  writeCells(
+    ['', '', '', '', '', 'GRAND TOTAL', formatAmtPdf(gDr), formatAmtPdf(gCr), formatAmtPdf(closing)],
+    'grand'
+  );
+
+  const pageCount = doc.getNumberOfPages();
+  for (let p = 1; p <= pageCount; p += 1) {
+    doc.setPage(p);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(120, 130, 150);
+    doc.text(`Page ${p} of ${pageCount}`, pw - lm, ph - 5, { align: 'right' });
+  }
+
+  return doc.output('blob');
+}
+
 async function htmlDocumentToPdfBlob(documentHtml, options) {
+  const landscape = options?.jsPDF?.orientation === 'landscape';
+  const frameW = landscape ? 1280 : 794;
+  const frameH = landscape ? 1100 : 1123;
+  const mobileCapture = shouldPreferNativeFileShare();
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
-  iframe.style.cssText =
-    'position:fixed;left:0;top:0;width:794px;height:1123px;border:0;opacity:0;pointer-events:none;z-index:-1;';
+  iframe.setAttribute('title', 'PDF render');
+  iframe.style.cssText = [
+    'position:fixed',
+    mobileCapture ? 'left:0' : 'left:-12000px',
+    'top:0',
+    `width:${frameW}px`,
+    `min-height:${frameH}px`,
+    `height:${frameH}px`,
+    'border:0',
+    mobileCapture ? 'opacity:0.01' : 'opacity:0',
+    'pointer-events:none',
+    mobileCapture ? 'z-index:11999' : 'z-index:-9999',
+  ].join(';');
   document.body.appendChild(iframe);
   const idoc = iframe.contentDocument || iframe.contentWindow?.document;
   if (!idoc) {
@@ -4299,10 +5112,20 @@ async function htmlDocumentToPdfBlob(documentHtml, options) {
     const root =
       idoc.querySelector('.cash-receipt-sheet') ||
       idoc.querySelector('.voucher-doc') ||
+      idoc.querySelector('.report-doc') ||
+      idoc.querySelector('.dc-pdf') ||
       idoc.body;
-    return await html2pdf().set(options).from(root).outputPdf('blob');
+    const contentH = Math.min(Math.max((root?.scrollHeight || frameH) + 32, frameH), 14000);
+    iframe.style.height = `${contentH}px`;
+    if (mobileCapture) {
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    const blob = await html2pdf().set(options).from(root).outputPdf('blob');
+    assertPdfBlob(blob);
+    return blob;
   } finally {
-    document.body.removeChild(iframe);
+    iframe.remove();
+    removeStrayHtml2pdfNodes();
   }
 }
 
@@ -4422,7 +5245,17 @@ function getPdfOptions(metadata, reportType, data) {
                 scrollX: 0,
                 scrollY: 0,
               }
-          : { scale: 2, useCORS: true };
+          : reportType === 'trial-balance' || reportType === 'ledger'
+            ? {
+                scale: shouldPreferNativeFileShare() ? 1 : 1.5,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff',
+                windowWidth: 1200,
+                scrollX: 0,
+                scrollY: 0,
+              }
+            : { scale: 2, useCORS: true };
 
   const base = {
     margin:
@@ -4444,6 +5277,8 @@ function getPdfOptions(metadata, reportType, data) {
     html2canvas,
     jsPDF: {
       orientation:
+        reportType === 'trial-balance' ||
+        reportType === 'ledger' ||
         reportType === 'sale-bill' ||
         reportType === 'purchase-bill' ||
         reportType === 'dispatch-challan-print' ||
@@ -4469,6 +5304,10 @@ function getPdfOptions(metadata, reportType, data) {
     base.pagebreak = { mode: ['avoid-all', 'css', 'legacy'] };
   }
 
+  if (reportType === 'trial-balance' || reportType === 'ledger') {
+    base.pagebreak = { mode: ['css', 'legacy'] };
+  }
+
   return base;
 }
 
@@ -4476,15 +5315,36 @@ function getPdfOptions(metadata, reportType, data) {
  * @returns {Promise<{ blob: Blob, filename: string }>}
  */
 export async function getPdfBlob(reportType, data, metadata) {
-  const options = getPdfOptions(metadata, reportType, data);
-  if (reportType === 'voucher-print') {
-    const docHtml = buildVoucherPrintDocumentHtml(data, metadata);
+  return withPdfGenerationGuard(async () => {
+    const options = getPdfOptions(metadata, reportType, data);
+    if (reportType === 'trial-balance') {
+      try {
+        const blob = buildTrialBalanceJsPdfBlob(data, metadata);
+        assertPdfBlob(blob);
+        return { blob, filename: options.filename };
+      } catch (err) {
+        // Safety fallback for mobile runtime issues in jsPDF path.
+        const htmlContent = buildReportHtml(reportType, data, metadata);
+        const docHtml = wrapReportHtmlForPdf(htmlContent);
+        const blob = await htmlDocumentToPdfBlob(docHtml, options);
+        return { blob, filename: options.filename };
+      }
+    }
+    if (reportType === 'ledger') {
+      const blob = buildLedgerJsPdfBlob(data, metadata);
+      assertPdfBlob(blob);
+      return { blob, filename: options.filename };
+    }
+    if (reportType === 'voucher-print') {
+      const docHtml = buildVoucherPrintDocumentHtml(data, metadata);
+      const blob = await htmlDocumentToPdfBlob(docHtml, options);
+      return { blob, filename: options.filename };
+    }
+    const htmlContent = buildReportHtml(reportType, data, metadata);
+    const docHtml = wrapReportHtmlForPdf(htmlContent);
     const blob = await htmlDocumentToPdfBlob(docHtml, options);
     return { blob, filename: options.filename };
-  }
-  const htmlContent = buildReportHtml(reportType, data, metadata);
-  const blob = await html2pdf().set(options).from(htmlContent).outputPdf('blob');
-  return { blob, filename: options.filename };
+  });
 }
 
 function downloadBlob(blob, filename) {
@@ -4583,7 +5443,18 @@ export const generatePDF = async (reportType, data, metadata) => {
  * @param {boolean} [options.skipPdfDownload] — wa.me only; PDF already saved (e.g. second of two chats)
  */
 export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText, options = {}) {
-  const { blob, filename } = await getPdfBlob(reportType, data, metadata);
+  let blob;
+  let filename;
+  try {
+    ({ blob, filename } = await getPdfBlob(reportType, data, metadata));
+  } catch (err) {
+    // Final fallback for mobile runtime errors: produce HTML PDF so share flow still works.
+    const fallbackOptions = getPdfOptions(metadata, reportType, data);
+    const htmlContent = buildReportHtml(reportType, data, metadata);
+    const docHtml = wrapReportHtmlForPdf(htmlContent);
+    blob = await htmlDocumentToPdfBlob(docHtml, fallbackOptions);
+    filename = fallbackOptions.filename;
+  }
   const file = new File([blob], filename, { type: 'application/pdf', lastModified: Date.now() });
   const reportLabel =
     reportType === 'trial-balance'
@@ -4678,6 +5549,14 @@ export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText
     } catch (err) {
       if (err && err.name === 'AbortError') return;
     }
+  }
+
+  if (shouldPreferNativeFileShare()) {
+    if (!skipPdfDownload) downloadBlob(blob, filename);
+    alert(
+      `${reportLabel} PDF saved as ${filename}.\n\nOpen WhatsApp, tap Attach (paperclip), and choose this file from Downloads or Files.`
+    );
+    return;
   }
 
   if (!skipPdfDownload) downloadBlob(blob, filename);

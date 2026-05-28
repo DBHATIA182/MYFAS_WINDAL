@@ -34,6 +34,7 @@ import Slide28VoucherEntry from './slides/Slide28VoucherEntry';
 import { exitApp, performExitWindow } from './utils/exitApp';
 import connectionConfig from '../connection.config.json';
 import './App.css';
+import './styles/fasFlowTheme.css';
 import './saleEntryDesktop.css';
 import './purchaseBillEntry.css';
 
@@ -726,6 +727,25 @@ function App() {
     </div>
   );
 
+  const flowHeaderActions = (
+    <>
+      {renderViewSettings()}
+      {voiceSupported ? (
+        <button
+          type="button"
+          className={`toolbar-icon-btn toolbar-icon-btn--voice voice-command-btn${
+            voiceListening ? ' voice-command-btn--listening toolbar-icon-btn--listening' : ''
+          }`}
+          onClick={handleVoiceCommand}
+          title={voiceListening ? 'Listening…' : 'Voice command'}
+          aria-label={voiceListening ? 'Listening for voice command' : 'Voice command'}
+        >
+          <IconVoice />
+        </button>
+      ) : null}
+    </>
+  );
+
   const renderDeployUpdateModal = () =>
     showDeployUpdateModal ? (
       <div
@@ -841,25 +861,9 @@ function App() {
     );
   }
 
-  const hideAppHeaderChrome = authenticated && currentSlide >= 3;
-  const appClassName = `app ${viewMode === 'desktop' ? 'app--desktop' : 'app--mobile'}${hideAppHeaderChrome ? ' app--no-header' : ''}`;
-
-  const entryHeaderActions = (
-    <>
-      {renderViewSettings()}
-      {voiceSupported ? (
-        <button
-          type="button"
-          className={`toolbar-icon-btn toolbar-icon-btn--voice voice-command-btn${voiceListening ? ' voice-command-btn--listening toolbar-icon-btn--listening' : ''}`}
-          onClick={handleVoiceCommand}
-          title={voiceListening ? 'Listening…' : 'Voice command'}
-          aria-label={voiceListening ? 'Listening for voice command' : 'Voice command'}
-        >
-          <IconVoice />
-        </button>
-      ) : null}
-    </>
-  );
+  const hideAppHeaderChrome = authenticated && currentSlide >= 1;
+  const useFasFlowFullScreen = !authenticated || (authenticated && currentSlide >= 1 && currentSlide <= 4);
+  const appClassName = `app ${viewMode === 'desktop' ? 'app--desktop' : 'app--mobile'}${hideAppHeaderChrome ? ' app--no-header' : ''}${useFasFlowFullScreen ? ' app--fas-flow' : ''}`;
 
   if (!clientGuardChecked) {
     return (
@@ -901,9 +905,14 @@ function App() {
     return (
       <>
       <div className={appClassName}>
-        {renderMinimalHeaderActions()}
         <main className="app-main">
-          <LoginSlide apiBase={API_BASE} onSuccess={handleLoginSuccess} onExit={exitApp} />
+          <LoginSlide
+            apiBase={API_BASE}
+            onSuccess={handleLoginSuccess}
+            onExit={exitApp}
+            appName={APP_DISPLAY_NAME}
+            settingsSlot={renderViewSettings()}
+          />
         </main>
       </div>
       {renderDeployUpdateModal()}
@@ -935,29 +944,31 @@ function App() {
     <div className={appClassName}>
       {!hideAppHeaderChrome ? (
       <header className="app-header app-header--minimal">
-        <div className="app-header-actions">
-          {renderViewSettings()}
-          {voiceSupported ? (
-            <button
-              type="button"
-              className={`toolbar-icon-btn toolbar-icon-btn--voice voice-command-btn${voiceListening ? ' voice-command-btn--listening toolbar-icon-btn--listening' : ''}`}
-              onClick={handleVoiceCommand}
-              title={voiceListening ? 'Listening…' : 'Voice command'}
-              aria-label={voiceListening ? 'Listening for voice command' : 'Voice command'}
-            >
-              <IconVoice />
-            </button>
-          ) : null}
-        </div>
+        <div className="app-header-actions">{flowHeaderActions}</div>
       </header>
       ) : null}
 
-      <AppSessionContext.Provider value={{ formData, userName: loginUserName, headerActions: entryHeaderActions }}>
+      <AppSessionContext.Provider value={{ formData, userName: loginUserName, headerActions: flowHeaderActions }}>
       <main className="app-main">
         {currentSlide === 1 && (
-          <Slide1 companies={companies} onNext={handleSlide1Next} onExit={handleExitApp} />
+          <Slide1
+            companies={companies}
+            onNext={handleSlide1Next}
+            onExit={handleExitApp}
+            appName={APP_DISPLAY_NAME}
+            flowHeaderActions={flowHeaderActions}
+          />
         )}
-        {currentSlide === 2 && <Slide2 years={years} formData={formData} onPrev={handlePrev} onNext={handleSlide2Next} />}
+        {currentSlide === 2 && (
+          <Slide2
+            years={years}
+            formData={formData}
+            onPrev={handlePrev}
+            onNext={handleSlide2Next}
+            flowHeaderActions={flowHeaderActions}
+            appName={APP_DISPLAY_NAME}
+          />
+        )}
         {currentSlide === 3 && <Slide3 formData={formData} onPrev={handlePrev} onNext={handleSlide3Next} />}
         {currentSlide === 4 && <Slide4 apiBase={API_BASE} formData={formData} onPrev={handlePrev} onReset={handleReset} />}
         {currentSlide === 5 && <Slide5 apiBase={API_BASE} formData={formData} onPrev={handlePrev} onReset={handleReset} />}

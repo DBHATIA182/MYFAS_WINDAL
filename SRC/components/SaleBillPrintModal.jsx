@@ -664,7 +664,10 @@ export default function SaleBillPrintModal({
     rowFieldAny(h, ['fssai_no']) || rowFieldAny(h, ['comp_tin', 'iec_no'])
   );
   const compLlpin = cleanPrintText(rowFieldAny(h, ['llpin']));
-  const compCin = cleanPrintText(rowFieldAny(h, ['cin_no', 'CIN_NO', 'G_CIN_NO']));
+  const compCin = cleanPrintText(rowFieldAny(h, ['cin_no', 'CIN_NO', 'G_CIN_NO', 'g_cin_no']));
+  const compMsme = stripLeadingRegistrationJunk(
+    rowFieldAny(h, ['msme_no', 'MSME_no', 'MSME_NO', 'G_MSME_NO', 'g_msme_no'])
+  );
   /** compdet.udyam_no (+ enriched G_UDYAM_NO): strip stray “-” prefix sometimes stored in Fox-era data */
   const compUdyam = stripLeadingRegistrationJunk(rowFieldAny(h, ['udyam_no', 'G_UDYAM_NO', 'g_udyam_no', 'udyam_reg_no']));
   const email = cleanPrintText(rowFieldAny(h, ['comp_email', 'G_EMAIL', 'g_email', 'email']));
@@ -684,17 +687,13 @@ export default function SaleBillPrintModal({
   if (gstPanLine) headingLines.push(gstPanLine);
   if (companyFssai) headingLines.push(`Fssai No.: ${companyFssai}`);
   if (compLlpin) headingLines.push(`LLPIN: ${compLlpin}`);
-  const cinUdyamLine = [
-    compCin ? `CIN: ${compCin}` : '',
-    compUdyam ? `Udyam No.: ${compUdyam}` : '',
-  ]
-    .filter(Boolean)
-    .join('    |    ');
-  if (cinUdyamLine) headingLines.push(cinUdyamLine);
+  if (compUdyam) headingLines.push(`Udyam No.: ${compUdyam}`);
   const tailHeadingLines = [];
   if (email) tailHeadingLines.push(`Email: ${email}`);
+  if (compCin) tailHeadingLines.push(`CIN: ${compCin}`);
+  if (compMsme) tailHeadingLines.push(`MSME No.: ${compMsme}`);
   if (website) tailHeadingLines.push(`Website: ${website}`);
-  const maxHeadingLines = 6;
+  const maxHeadingLines = 8;
   const keepFromMain = Math.max(0, maxHeadingLines - tailHeadingLines.length);
   const mainHeadingLines = [...headingLines.slice(0, keepFromMain), ...tailHeadingLines].slice(0, maxHeadingLines);
   const bankAcNo = rowFieldAny(h, ['G_BANK_AC_NO', 'g_bank_ac_no', 'bank_ac_no', 'BANK_AC_NO']);
@@ -1293,6 +1292,7 @@ export default function SaleBillPrintModal({
                 )}
                 <div className="sale-bill-print-sign">
                   <div>For {compDisplayName}</div>
+                  <div className="sale-bill-print-sign-stamp-gap" aria-hidden="true" />
                   {signatureImgSrc ? (
                     <div className="sale-bill-print-signature">
                       <img src={signatureImgSrc} alt="Authorised signature" />

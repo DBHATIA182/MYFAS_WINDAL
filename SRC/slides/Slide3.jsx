@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import SessionInfoLine from '../components/SessionInfoLine';
+import SessionToolbarChrome from '../components/SessionToolbarChrome';
+import FasFlowLayout from '../components/FasFlowLayout';
+import { useAppSession } from '../components/AppSessionContext';
+import { toDisplayDate, toInputDateString } from '../utils/dateFormat';
 
 /** Grouped report / module menu (order matches business workflow). */
 const REPORT_MENU = [
@@ -183,9 +186,23 @@ function ReportBucket({ category, expanded, onToggle, children }) {
 }
 
 export default function Slide3({ onPrev, onNext, formData }) {
+  const session = useAppSession();
   const [reportType, setReportType] = useState('trial-balance');
   const [expandedBuckets, setExpandedBuckets] = useState(() => new Set());
   const reportMenuRef = useRef(null);
+
+  const contextCompany = String(formData?.comp_name ?? formData?.COMP_NAME ?? '').trim();
+  const compYear = String(formData?.comp_year ?? formData?.COMP_YEAR ?? '').trim();
+  const sLabel = toDisplayDate(toInputDateString(formData?.comp_s_dt ?? formData?.COMP_S_DT));
+  const eLabel = toDisplayDate(toInputDateString(formData?.comp_e_dt ?? formData?.COMP_E_DT));
+  const user = String(session.userName || '').trim();
+  const contextSubline = useMemo(() => {
+    const parts = [];
+    if (compYear) parts.push(`FY ${compYear}`);
+    if (sLabel && eLabel) parts.push(`${sLabel} – ${eLabel}`);
+    if (user) parts.push(user);
+    return parts.join(' · ');
+  }, [compYear, sLabel, eLabel, user]);
 
   const ensureBucketOpen = useCallback((reportId) => {
     const catId = categoryForReport(reportId);
@@ -276,78 +293,74 @@ export default function Slide3({ onPrev, onNext, formData }) {
 
   const hasExpandedSection = expandedBuckets.size > 0;
 
-  const selectedMeta = useMemo(() => {
-    for (const cat of REPORT_MENU) {
-      const item = cat.items.find((i) => i.id === reportType);
-      if (item) return { category: cat.title, item: item.title };
-    }
-    return null;
-  }, [reportType]);
-
   return (
-    <div className="slide slide-3">
-      <SessionInfoLine
-        formData={formData}
-        helpReportId="reports-menu"
-        helpShowFullGuidePdf
-        helpLabel="Menu help"
-      />
-
-      <header className="slide-3-menu-header">
-        <h2 className="slide-3-menu-header__title">Reports &amp; Modules</h2>
-        <p className="slide-3-menu-header__hint">Open a module, then click a report to run it (Next is optional)</p>
-        {selectedMeta ? (
-          <p className="slide-3-menu-header__selection">
-            <span className="slide-3-menu-header__selection-label">Selected</span>
-            {selectedMeta.item}
-            <span className="slide-3-menu-header__selection-cat">· {selectedMeta.category}</span>
-          </p>
-        ) : null}
-        <div className="slide-3-menu-help">
-          {hasExpandedSection ? (
-            <button type="button" className="slide-3-menu-toolbar__btn" onClick={collapseAll}>
-              Collapse section
-            </button>
-          ) : null}
-        </div>
-      </header>
-
-      <div
-        ref={reportMenuRef}
-        className="report-options report-options--bucketed"
-        onKeyDown={handleMenuKeyDown}
-        aria-label="Reports and modules menu"
+    <div className="slide slide-3 fas-flow-host">
+      <FasFlowLayout
+        mode="context"
+        step={4}
+        contextCompany={contextCompany || '—'}
+        contextSubline={contextSubline}
+        headerActions={
+          <SessionToolbarChrome
+            helpReportId="reports-menu"
+            helpShowFullGuidePdf
+            helpLabel="Menu help"
+            helpCompanyName={contextCompany}
+          />
+        }
       >
-        {REPORT_MENU.map((category) => (
-          <ReportBucket
-            key={category.id}
-            category={category}
-            expanded={expandedBuckets.has(category.id)}
-            onToggle={toggleBucket}
-          >
-            {category.items.map((item) => (
-              <ReportOption
-                key={item.id}
-                id={item.id}
-                selected={reportType === item.id}
-                title={item.title}
-                description={item.description}
-                entry={Boolean(category.entry)}
-                onSelect={openReport}
-              />
-            ))}
-          </ReportBucket>
-        ))}
-      </div>
+        <div className="fas-flow-menu-shell">
+          <div className="fas-flow-menu-head">
+            <div>
+              <div className="fas-flow-title" style={{ fontSize: 19 }}>
+                Reports &amp; Modules
+              </div>
+              <div className="fas-flow-subtitle">Open a module, then tap a report to open it.</div>
+            </div>
 
-      <div className="button-group">
-        <button type="button" onClick={onPrev} className="btn btn-secondary">
-          ← Back
-        </button>
-        <button type="button" onClick={() => onNext({ reportType })} className="btn btn-primary">
-          Next →
-        </button>
-      </div>
+            <div className="fas-flow-menu-toolbar">
+              <button type="button" className="fas-flow-menu-back btn btn-secondary" onClick={onPrev}>
+                ← Back
+              </button>
+              {hasExpandedSection ? (
+                <button type="button" className="slide-3-menu-toolbar__btn" onClick={collapseAll}>
+                  Collapse section
+                </button>
+              ) : (
+                <span className="fas-flow-menu-toolbar__spacer" aria-hidden="true" />
+              )}
+            </div>
+          </div>
+
+          <div
+            ref={reportMenuRef}
+            className="report-options report-options--bucketed fas-flow-menu-list"
+            onKeyDown={handleMenuKeyDown}
+            aria-label="Reports and modules menu"
+          >
+            {REPORT_MENU.map((category) => (
+              <ReportBucket
+                key={category.id}
+                category={category}
+                expanded={expandedBuckets.has(category.id)}
+                onToggle={toggleBucket}
+              >
+                {category.items.map((item) => (
+                  <ReportOption
+                    key={item.id}
+                    id={item.id}
+                    selected={reportType === item.id}
+                    title={item.title}
+                    description={item.description}
+                    entry={Boolean(category.entry)}
+                    onSelect={openReport}
+                  />
+                ))}
+              </ReportBucket>
+            ))}
+          </div>
+        </div>
+      </FasFlowLayout>
     </div>
   );
 }

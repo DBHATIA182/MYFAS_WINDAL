@@ -1,5 +1,6 @@
-import React, { useState, useLayoutEffect } from 'react';
+import React, { useMemo, useState, useLayoutEffect } from 'react';
 import { formatLedgerDateDisplay } from '../utils/dateFormat';
+import FasFlowLayout from '../components/FasFlowLayout';
 
 function parseDateBoundary(value, endOfDay) {
   if (value == null || value === '') return null;
@@ -32,8 +33,14 @@ function defaultYearUid(yearRows) {
   return uid0 != null && uid0 !== '' ? String(uid0) : '';
 }
 
-export default function Slide2({ years, formData, onPrev, onNext }) {
+export default function Slide2({ years, formData, onPrev, onNext, flowHeaderActions = null, appName = 'FAS Accounting' }) {
   const [selectedUid, setSelectedUid] = useState('');
+
+  const brand = useMemo(() => {
+    const words = String(appName || '').trim().split(/\s+/).filter(Boolean);
+    const short = words[0] || 'FAS';
+    return { short, letter: short.slice(0, 1).toUpperCase(), sub: 'ACCOUNTING SUITE' };
+  }, [appName]);
 
   useLayoutEffect(() => {
     if (!years?.length) {
@@ -44,50 +51,105 @@ export default function Slide2({ years, formData, onPrev, onNext }) {
     if (uid) setSelectedUid(uid);
   }, [years]);
 
-  const handleNext = () => {
-    // FIX: Force both to String to ensure the match works regardless of type
-    const yearObj = years.find(y => String(y.COMP_UID) === String(selectedUid));
+  const yearObj = useMemo(
+    () => years.find((y) => String(y.COMP_UID) === String(selectedUid)),
+    [years, selectedUid]
+  );
 
-    if (yearObj) {
-      // We pass the data up to App.jsx
-      onNext(yearObj); 
-    } else {
-      alert("Please select a financial year first.");
+  const handleNext = () => {
+    if (!yearObj) {
+      alert('Please select a financial year first.');
+      return;
     }
+    onNext(yearObj);
   };
 
-  return (
-    <div className="slide">
-      <h2>Step 2: Select Financial Year</h2>
-      {/* Support both UPPER and lower case for the company name display */}
-      <p>Company: <strong>{formData.comp_name || formData.COMP_NAME}</strong></p>
-      
-      <div className="form-group">
-        <label>Select Financial Year:</label>
-        <select 
-          className="form-select"
-          value={selectedUid} 
-          onChange={(e) => setSelectedUid(e.target.value)}
-        >
-          <option value="">-- Select Year --</option>
-          {years.map((y) => (
-            <option key={y.COMP_UID} value={y.COMP_UID}>
-              {y.COMP_YEAR} 
-              {/* Force dd/mm/yyyy regardless of browser/OS locale */}
-              {y.COMP_S_DT
-                ? ` (${formatLedgerDateDisplay(y.COMP_S_DT)} to ${formatLedgerDateDisplay(y.COMP_E_DT)})`
-                : ''}
-            </option>
-          ))}
-        </select>
-      </div>
+  const compName = formData.comp_name ?? formData.COMP_NAME ?? '';
+  const sDisp = yearObj ? formatLedgerDateDisplay(yearObj.COMP_S_DT ?? yearObj.comp_s_dt) : '';
+  const eDisp = yearObj ? formatLedgerDateDisplay(yearObj.COMP_E_DT ?? yearObj.comp_e_dt) : '';
 
-      <div className="button-group">
-        <button className="btn btn-secondary" onClick={onPrev}>← Back</button>
-        <button className="btn btn-primary" onClick={handleNext} disabled={!selectedUid}>
-          Next →
-        </button>
-      </div>
+  let isCurrentYear = false;
+  if (yearObj) {
+    const start = parseDateBoundary(yearObj.COMP_S_DT ?? yearObj.comp_s_dt, false);
+    const end = parseDateBoundary(yearObj.COMP_E_DT ?? yearObj.comp_e_dt, true);
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    isCurrentYear = Boolean(start && end && today >= start && today <= end);
+  }
+
+  return (
+    <div className="slide slide-fas-flow">
+      <FasFlowLayout
+        mode="brand"
+        step={3}
+        logoLetter={brand.letter}
+        productName={brand.short}
+        productSub={brand.sub}
+        headerActions={flowHeaderActions}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1, minHeight: 0 }}>
+          <div>
+            <div className="fas-flow-title">Financial Year</div>
+            {compName ? (
+              <div className="fas-info-pill" style={{ marginTop: 8 }}>
+                <span style={{ color: 'var(--fas-indigo)' }} aria-hidden="true">
+                  🏢
+                </span>
+                {compName}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="fas-field-group">
+            <div className="fas-field-label">Select financial year</div>
+            <div className="fas-field-input" style={{ paddingRight: 8 }}>
+              <span className="fas-field-icon" aria-hidden="true">
+                📅
+              </span>
+              <select value={selectedUid} onChange={(e) => setSelectedUid(e.target.value)}>
+                <option value="">-- Select Year --</option>
+                {years.map((y) => (
+                  <option key={y.COMP_UID} value={y.COMP_UID}>
+                    {y.COMP_YEAR}
+                    {y.COMP_S_DT
+                      ? ` (${formatLedgerDateDisplay(y.COMP_S_DT)} to ${formatLedgerDateDisplay(y.COMP_E_DT)})`
+                      : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {yearObj ? (
+            <div className="fas-year-summary">
+              <div className="fas-year-summary-label">Year summary</div>
+              <div className="fas-year-row">
+                <span>Start date</span>
+                <strong>{sDisp}</strong>
+              </div>
+              <div className="fas-year-divider" />
+              <div className="fas-year-row">
+                <span>End date</span>
+                <strong>{eDisp}</strong>
+              </div>
+              <div className="fas-year-divider" />
+              <div className="fas-year-row">
+                <span>Status</span>
+                <em>{isCurrentYear ? '● Current year' : '○ Other year'}</em>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="fas-btn-row">
+            <button type="button" className="fas-btn fas-btn-ghost" onClick={onPrev}>
+              ← Back
+            </button>
+            <button type="button" className="fas-btn fas-btn-primary" onClick={handleNext} disabled={!selectedUid}>
+              Next →
+            </button>
+          </div>
+        </div>
+      </FasFlowLayout>
     </div>
   );
 }

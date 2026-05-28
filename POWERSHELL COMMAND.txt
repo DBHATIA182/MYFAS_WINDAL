@@ -1,58 +1,68 @@
 Windal APPTEST — client setup commands
 ========================================
 
-1) Open Admin PowerShell and go to app folder
-cd <APP_ROOT>
+IMPORTANT — "running scripts is disabled"
+-----------------------------------------
+Do NOT run:  .\setup-client.ps1
+Use ONE of these instead:
 
-2) Run setup-client.ps1 (change only values in <>)
-.\setup-client.ps1 -ClientKey "<clientkey>" -OraclePrimaryUser "DAL" -OraclePrimaryPassword "DAL" -OracleSecondaryUser "DAL" -OracleSecondaryPassword "DAL" -OracleConnectString "XE" -OfflinePackageRoot "<offline-package-root>"
+  A) CMD wrapper (easiest in PowerShell — note the .\ ):
+     cd D:\WINDAL\APPTEST
+     .\setup-client.cmd dal-srfipulses
 
-3) Cloudflare login and tunnel creation (one-time per machine/account)
-cloudflared.exe tunnel login
-cloudflared.exe tunnel create <clientkey>
+  B) Bypass for .ps1 directly:
+     powershell -ExecutionPolicy Bypass -File .\setup-client.ps1 -ClientKey "dal-srfipulses" -OraclePrimaryUser "DAL" -OraclePrimaryPassword "DAL" -OracleSecondaryUser "DAL" -OracleSecondaryPassword "DAL" -OracleConnectString "XE"
 
-4) Map DNS hostnames to tunnel (overwrite if record already exists)
-cloudflared.exe tunnel route dns -f <clientkey> <clientkey>.fasaccountingsoftware.in
-cloudflared.exe tunnel route dns -f <clientkey> <clientkey>-api.fasaccountingsoftware.in
+  C) Allow scripts for your user only (once, then .\setup-client.ps1 works):
+     Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 
-5) Update config.yml (set tunnel UUID and credentials JSON path from step 3)
-tunnel: <new-tunnel-uuid>
-credentials-file: C:\Users\<WindowsUser>\.cloudflared\<new-tunnel-uuid>.json
-ingress:
-  - hostname: <clientkey>.fasaccountingsoftware.in
-    service: http://localhost:5173
-  - hostname: <clientkey>-api.fasaccountingsoftware.in
-    service: http://localhost:5001
-  - service: http_status:404
 
-6) Start runtime (keep all 3 terminals open)
-Terminal A (API):
-cd <APP_ROOT>
-npm.cmd run server
+1) Open Administrator PowerShell and go to app folder
+-----------------------------------------------------
+cd D:\WINDAL\APPTEST
 
-Terminal B (Frontend):
-cd <APP_ROOT>
-npm.cmd run dev -- --host 0.0.0.0 --port 5173
 
-Terminal C (Tunnel):
-cd <APP_ROOT>
-cloudflared.exe tunnel --config ".\config.yml" run
+2) Client setup (Node, cloudflared, npm, Oracle config, optional task)
+----------------------------------------------------------------------
+.\setup-client.cmd dal-srfipulses
 
-7) Test URLs
-Local PC: http://localhost:5173
-iPhone / outside network: https://<clientkey>.fasaccountingsoftware.in
+Or full PowerShell line:
+powershell -ExecutionPolicy Bypass -File .\setup-client.ps1 -ClientKey "dal-srfipulses" -OraclePrimaryUser "DAL" -OraclePrimaryPassword "DAL" -OracleSecondaryUser "DAL" -OracleSecondaryPassword "DAL" -OracleConnectString "XE"
 
-8) Quick troubleshoot
-- If "npm.ps1 blocked": use npm.cmd (already used above)
-- If tunnel says credentials-file missing: update config.yml to existing JSON in C:\Users\<WindowsUser>\.cloudflared\
-- If host blocked in browser: restart frontend and check vite.config.js allowedHosts
 
-9) Auto-start on Windows login (Task Scheduler)
-Run this in PowerShell (prefer Run as Administrator):
-schtasks /Create /SC ONLOGON /TN "FAS_WINDAL_APPTEST_AutoStart" /TR "powershell.exe -ExecutionPolicy Bypass -File \"<APP_ROOT>\start-apptest-services.ps1\"" /F
+3) Tunnel + DNS routes + config.yml (replaces manual cloudflared steps)
+-----------------------------------------------------------------------
+.\setup-windal-tunnel.cmd login
+.\setup-windal-tunnel.cmd dal-srfipulses
 
-Verify task:
-schtasks /Query /TN "FAS_WINDAL_APPTEST_AutoStart" /V /FO LIST
+See TUNNEL_SETUP_STEPS.txt for details. Windal uses port 5174 (not 5173).
 
-If schtasks shows "Access is denied", use current-user startup registry fallback:
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "FAS_WINDAL_APPTEST_AutoStart" /t REG_SZ /d "powershell.exe -ExecutionPolicy Bypass -File \"<APP_ROOT>\start-apptest-services.ps1\"" /f
+
+4) Start runtime (keep all 3 running, or use one command)
+---------------------------------------------------------
+.\start-windal-stack.cmd
+
+Or three terminals:
+  npm.cmd run server
+  npm.cmd run dev -- --host 0.0.0.0 --port 5174
+  .\start-windal-tunnel.cmd
+
+
+5) Test URLs
+------------
+Local:  http://localhost:5174
+Public: https://dal-srfipulses.fasaccountingsoftware.in
+
+
+6) Quick troubleshoot
+---------------------
+- setup-client.ps1 blocked → use .\setup-client.cmd or -ExecutionPolicy Bypass
+- setup-windal-tunnel.cmd not found → use .\setup-windal-tunnel.cmd (.\ required in PowerShell)
+- npm.ps1 blocked → use npm.cmd
+- cloudflared wrong path → use .\start-windal-tunnel.cmd (uses Program Files x86)
+
+
+7) Auto-start on Windows login (Task Scheduler)
+-----------------------------------------------
+Run as Administrator:
+schtasks /Create /SC ONLOGON /TN "FAS_WINDAL_APPTEST_AutoStart" /TR "powershell.exe -ExecutionPolicy Bypass -File \"D:\WINDAL\APPTEST\start-apptest-services.ps1\"" /F
