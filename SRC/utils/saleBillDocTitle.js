@@ -44,6 +44,6 @@ export function saleBillStatusUnitLabel(statusRaw) {
   const c = String(statusRaw ?? '').trim().toUpperCase().charAt(0);
   if (c === 'B') return 'Bags';
   if (c === 'K') return 'Katta';
-  if (c === 'H') return 'HKATTA';
+  if (c === 'H') return 'THALIS';
   return '';
 }

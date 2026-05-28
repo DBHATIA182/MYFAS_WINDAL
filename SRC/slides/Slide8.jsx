@@ -442,35 +442,7 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
 
         <div className="report-info">
           <p>
-            <strong>List</strong> {pdfMeta.listTypeLabel}
-            {' · '}
-            <strong>Dates</strong> {toDisplayDate(startDate)} – {toDisplayDate(endDate)}
-            {' · '}
-            <strong>Bills</strong> {pdfMeta.billRangeLabel}
-            {' · '}
-            <strong>Party</strong> {pdfMeta.partyLabel}
-            {' · '}
-            <strong>Broker</strong> {pdfMeta.brokerLabel}
-            {' · '}
-            <strong>Item</strong> {pdfMeta.itemLabel}
-            {' · '}
-            <strong>Plant</strong> {pdfMeta.plantLabel}
-            {' · '}
-            <strong>Marka</strong> {pdfMeta.markaLabel}
-            {' · '}
-            <strong>B type</strong> {pdfMeta.bTypeLabel}
-          </p>
-          <p>
-            <SessionLineText formData={formData} />
-            <br />
-            Click a row to open print when type maps to <strong>SL</strong>, <strong>SE</strong>, <strong>CN</strong>, <strong>CH</strong>, or{' '}
-            <strong>RC</strong> (numeric TYPE 1–3, 6, 8–9). Current view:{' '}
-            <strong>{saleSortLabel}</strong>
-            {saleSortMode === 'date'
-              ? ' with day totals, item-wise summary, and grand total.'
-              : saleSortMode === 'party' || saleSortMode === 'broker'
-                ? ' with bill-wise totals and grand total.'
-                : ' with grand total at the end.'}
+            <strong>Period</strong> {toDisplayDate(startDate)} – {toDisplayDate(endDate)}
           </p>
         </div>
 

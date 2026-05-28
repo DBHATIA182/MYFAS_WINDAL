@@ -1020,11 +1020,7 @@ export default function ReportTable({
     return (
       <div className="table-responsive table-responsive--sale-list" ref={saleListGridScrollRef}>
         {onSaleBillClick ? (
-          <p className="sale-list-hint">
-            Use the <strong>horizontal scrollbar</strong> in this grid (or Shift+mouse wheel) to see all columns.             A <strong>Bill total</strong> appears only when that bill has more than one line; single-line bills get a
-            spacer row with the same horizontal rule. Every bill ends with a full-width line under it. Day totals always
-            show. Click a detail row to open the full sale bill.
-          </p>
+          null
         ) : null}
         <div className="sale-list-scroll-sync sale-list-scroll-sync--top" ref={saleListTopScrollRef}>
           <div className="sale-list-scroll-sync-inner" ref={saleListTopInnerRef} />

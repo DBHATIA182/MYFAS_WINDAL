@@ -1677,7 +1677,8 @@ const SALE_BILL_PDF_STYLES = `
   .sb-pdf-bank { margin-bottom: 6px; font-size: 7.5px; line-height: 1.35; color: #334155; }
   .sb-pdf-transport { font-size: 7.5px; line-height: 1.35; color: #334155; margin-bottom: 8px; }
   .sb-pdf-transport span { margin-right: 10px; }
-  .sb-pdf-terms { margin-bottom: 8px; font-size: 7.5px; line-height: 1.35; color: #334155; }
+  .sb-pdf-terms { margin-bottom: 8px; font-size: 6.4px; line-height: 1.22; color: #334155; }
+  .sb-pdf-terms > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sb-pdf-bottom { display: table; width: 100%; margin-top: 6px; }
   .sb-pdf-bottom-left, .sb-pdf-bottom-right { display: table-cell; vertical-align: top; }
   .sb-pdf-bottom-left { width: 65%; }
