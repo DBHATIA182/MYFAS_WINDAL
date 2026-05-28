@@ -4845,8 +4845,8 @@ td.sale-list-total-pad {
 
 .sale-bill-print-terms {
   margin-bottom: 0.8rem;
-  font-size: 0.58rem;
-  line-height: 1.16;
+  font-size: 0.5rem;
+  line-height: 1.08;
   color: #334155;
 }
 
@@ -4854,6 +4854,10 @@ td.sale-list-total-pad {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sale-bill-print-terms .sale-bill-print-col-h {
+  font-size: 0.56rem;
 }
 
 .sale-bill-print-bottom-row {
@@ -5510,7 +5514,7 @@ td.sale-list-total-pad {
   .sale-bill-print-bank,
   .sale-bill-print-transport,
   .sale-bill-print-terms {
-    font-size: 0.62rem;
+    font-size: 0.54rem !important;
   }
 }
 

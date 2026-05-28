@@ -114,6 +114,13 @@ function cleanPrintText(raw) {
   return s;
 }
 
+function saleUnitLabelForPrint(row) {
+  const raw = String(v(row, 'STATUS', 'status') || '').trim().toUpperCase();
+  if (raw === 'HKATTA' || raw === 'H') return 'THALIS';
+  const mapped = saleBillStatusUnitLabel(raw);
+  return mapped || raw;
+}
+
 function normalizeWhatsappDigits(raw) {
   if (raw == null || raw === '') return '';
   let d = String(raw).replace(/\D/g, '');
@@ -1042,7 +1049,7 @@ export default function SaleBillPrintModal({
                       <td>{v(row, 'ITEM_NAME', 'item_name')}</td>
                       {printPacking ? <td>{String(v(row, 'PACKING', 'packing') || '').slice(0, 3)}</td> : null}
                       <td>{String(v(row, 'HSN_CODE', 'hsn_code') || '').slice(0, 8)}</td>
-                      <td>{saleBillStatusUnitLabel(v(row, 'STATUS', 'status'))}</td>
+                      <td>{saleUnitLabelForPrint(row)}</td>
                       <td className="num">{fmtQty(row.QNTY ?? row.qnty)}</td>
                       {printGWeight ? <td className="num">{fmtQty(row.G_WEIGHT ?? row.g_weight)}</td> : null}
                       {printGWeight ? <td className="num">{fmtQty(row.D_WEIGHT ?? row.d_weight)}</td> : null}

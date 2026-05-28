@@ -69,6 +69,43 @@ function fmtQty(val) {
   return x.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
 }
 
+function normCell(v) {
+  return String(v ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+}
+
+function isStockSummaryHeaderLikeRow(r) {
+  const mc = normCell(r?.MAIN_CAT ?? r?.main_cat);
+  const cat = normCell(r?.CAT_CODE ?? r?.cat_code);
+  const item = normCell(r?.ITEM_CODE ?? r?.item_code);
+  const name = normCell(r?.ITEM_NAME ?? r?.item_name);
+  const plant = normCell(r?.PLANT_CODE ?? r?.plant_code);
+  const rf = normCell(r?.R_F ?? r?.r_f);
+  return (
+    mc === 'MC' &&
+    cat === 'CAT' &&
+    item === 'ITEM' &&
+    name === 'NAME' &&
+    plant === 'PLANT' &&
+    (rf === 'R/F' || rf === 'RF')
+  );
+}
+
+function isStockLedgerHeaderLikeRow(r) {
+  const vrDate = normCell(r?.VR_DATE ?? r?.vr_date);
+  const vrNo = normCell(r?.VR_NO ?? r?.vr_no);
+  const typ = normCell(r?.TYPE ?? r?.type);
+  const bType = normCell(r?.B_TYPE ?? r?.b_type);
+  return (
+    (vrDate === 'VR DATE' || vrDate === 'V R DATE') &&
+    (vrNo === 'VR NO' || vrNo === 'V R NO') &&
+    typ === 'TYPE' &&
+    (bType === 'B TYPE' || bType === 'B-TYPE')
+  );
+}
+
 export default function Slide9({ apiBase, formData, onPrev, onReset }) {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -160,7 +197,10 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
     [compName, startDate, endDate, itemLabel, plantCode, catCode, rf]
   );
 
-  const summaryPdfData = useMemo(() => ({ rows }), [rows]);
+  const cleanSummaryRows = useMemo(() => rows.filter((r) => !isStockSummaryHeaderLikeRow(r)), [rows]);
+  const cleanLedgerRows = useMemo(() => ledgerRows.filter((r) => !isStockLedgerHeaderLikeRow(r)), [ledgerRows]);
+
+  const summaryPdfData = useMemo(() => ({ rows: cleanSummaryRows }), [cleanSummaryRows]);
   const summaryTotals = useMemo(() => {
     let purWt = 0;
     let prodWt = 0;
@@ -171,7 +211,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
     let cnoteWt = 0;
     let clWt = 0;
     let opBal = 0;
-    for (const r of rows) {
+    for (const r of cleanSummaryRows) {
       opBal += num(r, 'OP_BALANCE', 'op_balance');
       purWt += num(r, 'PUR_WT', 'pur_wt');
       prodWt += num(r, 'PROD_WT', 'prod_wt');
@@ -183,7 +223,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
       clWt += num(r, 'CL_WT', 'cl_wt');
     }
     return { opBal, purWt, prodWt, jbWt, jiWt, millingWt, saleWt, cnoteWt, clWt };
-  }, [rows]);
+  }, [cleanSummaryRows]);
 
   const ledgerTotals = useMemo(() => {
     let purWt = 0;
@@ -194,7 +234,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
     let saleWt = 0;
     let cnoteWt = 0;
     let clBal = 0;
-    for (const r of ledgerRows) {
+    for (const r of cleanLedgerRows) {
       purWt += num(r, 'PUR_WT', 'pur_wt');
       prodWt += num(r, 'PROD_WT', 'prod_wt');
       jbWt += num(r, 'JB_WT', 'jb_wt');
@@ -205,7 +245,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
       clBal = num(r, 'CL_BAL', 'cl_bal');
     }
     return { purWt, prodWt, jbWt, jiWt, millingWt, saleWt, cnoteWt, clBal };
-  }, [ledgerRows]);
+  }, [cleanLedgerRows]);
 
   const itemWiseDisplayRows = useMemo(() => {
     const out = [];
@@ -216,7 +256,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
       out.push({ kind: 'item-total', itemCode: curItem, ...acc });
       acc = null;
     };
-    for (const r of rows) {
+    for (const r of cleanSummaryRows) {
       const code = String(r.ITEM_CODE ?? r.item_code ?? '').trim();
       if (code !== curItem) {
         flush();
@@ -246,7 +286,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
     }
     flush();
     return out;
-  }, [rows]);
+  }, [cleanSummaryRows]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -562,7 +602,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
               className="btn btn-excel"
               onClick={() => {
                 try {
-                  downloadExcelRows(rows, 'StockSum', `${compName}_StockSum`);
+                  downloadExcelRows(cleanSummaryRows, 'StockSum', `${compName}_StockSum`);
                 } catch (e) {
                   alert(String(e?.message || e));
                 }
@@ -680,7 +720,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
                   </tr>
                 )
               )}
-              {rows.length > 0 ? (
+              {cleanSummaryRows.length > 0 ? (
                 <tr className="stock-sum-grand">
                   <td colSpan={6}>
                     <strong>Grand total</strong>
@@ -716,7 +756,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
               ) : null}
             </tbody>
           </table>
-          {rows.length === 0 ? <p className="stock-sum-empty">No rows returned.</p> : null}
+          {cleanSummaryRows.length === 0 ? <p className="stock-sum-empty">No rows returned.</p> : null}
         </div>
 
         <div className="button-group">
@@ -798,7 +838,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {ledgerRows.map((lr, idx) => (
+                    {cleanLedgerRows.map((lr, idx) => (
                       <tr
                         key={`${idx}-${lr.VR_NO ?? lr.vr_no ?? ''}`}
                         className="stock-sum-row-clickable stock-sum-ledger-row-click"
@@ -826,7 +866,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
                         <td className="text-right">{fmtWt(num(lr, 'CL_BAL', 'cl_bal'))}</td>
                       </tr>
                     ))}
-                    {ledgerRows.length > 0 ? (
+                    {cleanLedgerRows.length > 0 ? (
                       <tr className="stock-sum-grand">
                         <td colSpan={4}>
                           <strong>Grand total</strong>
@@ -857,7 +897,7 @@ export default function Slide9({ apiBase, formData, onPrev, onReset }) {
                         </td>
                       </tr>
                     ) : null}
-                    {ledgerRows.length === 0 ? (
+                    {cleanLedgerRows.length === 0 ? (
                       <tr>
                         <td colSpan={12}>No stock ledger rows found.</td>
                       </tr>
