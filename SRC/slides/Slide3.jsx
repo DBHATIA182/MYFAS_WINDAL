@@ -47,28 +47,19 @@ const REPORT_MENU = [
     id: 'sales-module',
     index: 4,
     title: 'Sales Module',
-    subtitle: 'Printing, lists & GST returns',
+    subtitle: 'Entry, printing, lists & GST returns',
     items: [
+      { id: 'sales-order-entry', title: 'Sales Order', description: 'Add, edit, or delete sales orders (SORDER type SO)' },
+      { id: 'dispatch-challan-entry', title: 'Dispatch Challan', description: 'Dispatch challans (ISSUE type S); pending SO on lines' },
+      { id: 'sale-bill-entry', title: 'Sale Bill', description: 'Sale bills; posts SALE, LEDGER, STOCK, and BILLS' },
       { id: 'sale-bill-printing', title: 'Sale Bill Printing', description: 'Find bills and open printable sale bill' },
       { id: 'sale-list', title: 'Sale Bill List', description: 'Sale bill list with TYPE, dates, party, broker, item, and filters' },
       { id: 'gstr1', title: 'GSTR-1 (Sheet-wise)', description: 'GSTR-1 on screen, PDF, and Excel (B2B, B2CL, HSN, DOCS, etc.)' },
     ],
   },
   {
-    id: 'sales-entry',
-    index: 5,
-    title: 'Sales Entry Module',
-    subtitle: 'Order → challan → bill',
-    entry: true,
-    items: [
-      { id: 'sales-order-entry', title: 'Sales Order', description: 'Add, edit, or delete sales orders (SORDER type SO)' },
-      { id: 'dispatch-challan-entry', title: 'Dispatch Challan', description: 'Dispatch challans (ISSUE type S); pending SO on lines' },
-      { id: 'sale-bill-entry', title: 'Sale Bill', description: 'Sale bills; posts SALE, LEDGER, STOCK, and BILLS' },
-    ],
-  },
-  {
     id: 'purchase-module',
-    index: 6,
+    index: 5,
     title: 'Purchase Module',
     subtitle: 'Purchase documents',
     items: [
@@ -80,7 +71,7 @@ const REPORT_MENU = [
   },
   {
     id: 'voucher-module',
-    index: 7,
+    index: 6,
     title: 'Voucher Module',
     subtitle: 'Cash, bank & journal',
     entry: true,
@@ -95,7 +86,7 @@ const REPORT_MENU = [
   },
   {
     id: 'master-module',
-    index: 8,
+    index: 7,
     title: 'Master Module',
     subtitle: 'Account & item maintenance',
     entry: true,
