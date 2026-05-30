@@ -19,6 +19,7 @@ import {
   trialBalanceRowKind,
   trialBalanceRowLabel,
   computeTrialTopSummary,
+  findTrialGrandRow,
 } from './trialBalanceSort';
 
 /** Keep PDF amount on one line — shrink font to fit column (avoids decimal wrapping on mobile). */
@@ -368,6 +369,38 @@ const PDF_REPORT_STYLES = `
           page-break-inside: avoid;
           break-inside: avoid;
         }
+        table.production-print-lines.table-report { table-layout: fixed; width: 100%; }
+        table.production-print-lines .prod-col-sno { width: 5%; }
+        table.production-print-lines .prod-col-code { width: 11%; }
+        table.production-print-lines .prod-col-name { width: 26%; }
+        table.production-print-lines .prod-col-pct { width: 9%; }
+        table.production-print-lines .prod-col-qty { width: 11%; }
+        table.production-print-lines .prod-col-st { width: 7%; }
+        table.production-print-lines .prod-col-wgt { width: 15%; }
+        table.production-print-lines .prod-col-short { width: 16%; }
+        table.production-print-lines tr.production-print-total-row td {
+          background: #f1f5f9 !important;
+          color: #0f172a !important;
+          font-weight: 700;
+          font-size: 9px;
+          border-top: 2px solid #1e3a5f;
+          padding: 6px 5px;
+        }
+        table.production-print-lines tr.production-print-total-row--prod td {
+          border-top: 1px solid #94a3b8;
+        }
+        table.production-print-lines .production-print-total-lbl {
+          text-align: left;
+        }
+        table.production-print-lines .production-print-total-st {
+          text-align: center;
+        }
+        .production-print-pdf-doc { width: 100%; max-width: 210mm; margin: 0 auto; }
+        .production-print-voucher { width: 100%; }
+        .production-print-header h1 { margin: 0 0 4px; font-size: 14px; color: #1e3a5f; }
+        .production-print-header h2 { margin: 0 0 6px; font-size: 12px; font-weight: 700; }
+        .production-print-voucher-id { margin: 0 0 10px; font-size: 10px; }
+        table.production-print-meta .lbl { font-weight: 700; text-align: left; white-space: nowrap; }
         table.table-report .col-sch { white-space: nowrap; width: 6%; }
         table.table-report .col-code { white-space: nowrap; width: 8%; }
         table.table-report .col-name { word-wrap: break-word; min-width: 120px; }
@@ -720,6 +753,148 @@ function buildTrialBalanceReportHtml(data, metadata) {
         <br />
         Computer-generated report — no signature required.
       </div>
+    </div>
+  `;
+}
+
+/** Trial balance summary — annexure totals only */
+function buildTrialBalanceSummaryReportHtml(data, metadata) {
+  const company = escHtml(metadata.companyName);
+  const year = escHtml(metadata.year);
+  const asOf = escHtml(metadata.endDate);
+  const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
+  let bodyRows = '';
+  sortTrialBalanceRows(data || [])
+    .filter((row) => trialBalanceRowKind(row) === 1 || trialBalanceRowKind(row) === 2)
+    .forEach((row) => {
+      const kind = trialBalanceRowKind(row);
+      const isGrand = kind === 2;
+      const nameVal = trialBalanceRowLabel(row);
+      const schVal = row.SCHEDULE ?? row.schedule ?? '';
+      const wrap = (amt) => (isGrand ? `<strong>${formatAmtPdf(amt)}</strong>` : formatAmtPdf(amt));
+      bodyRows += `
+            <tr class="${isGrand ? 'report-grand-total' : 'subtotal-row'}">
+              <td class="col-sch">${escHtml(schVal)}</td>
+              <td class="col-name">${isGrand ? `<strong>${escHtml(nameVal)}</strong>` : escHtml(nameVal)}</td>
+              <td class="amount">${wrap(row.CLOSING_DR ?? row.closing_dr)}</td>
+              <td class="amount">${wrap(row.CLOSING_CR ?? row.closing_cr)}</td>
+              <td class="amount">${wrap(row.DR_AMT ?? row.dr_amt)}</td>
+              <td class="amount">${wrap(row.CR_AMT ?? row.cr_amt)}</td>
+            </tr>`;
+    });
+
+  return `
+    <div class="report-doc">
+      <style>${PDF_REPORT_STYLES}</style>
+      <div class="report-topbar">
+        <div class="kicker">ACCOUNTING REPORT</div>
+        <h1>TRIAL BALANCE SUMMARY</h1>
+        <div class="company">${company}</div>
+        <table class="report-grid">
+          <tr><td class="lbl">Financial year</td><td class="val">${year}</td><td class="lbl">As-of date</td><td class="val">${asOf}</td></tr>
+        </table>
+        <div class="report-period"><strong>Generated:</strong> ${generated}</div>
+      </div>
+      <table class="table-report table-report--trial-pdf">
+        <thead>
+          <tr>
+            <th>Annexure</th>
+            <th>Schedule name</th>
+            <th class="amount">Cl.Dr.Amt</th>
+            <th class="amount">Cl.Cr.Amt</th>
+            <th class="amount">Tot.Dr.Amt</th>
+            <th class="amount">Tot.Cr.Amt</th>
+          </tr>
+        </thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+/** Trial balance date wise — opening / transactions / closing */
+function buildTrialDateWiseReportHtml(data, metadata) {
+  const company = escHtml(metadata.companyName);
+  const year = escHtml(metadata.year);
+  const period = escHtml(metadata.endDate || metadata.periodLabel);
+  const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
+  const num = (row, u, l) => parseFloat(row[u] ?? row[l] ?? 0) || 0;
+  let bodyRows = '';
+
+  sortTrialBalanceRows(data || [])
+    .filter((row) => trialBalanceRowKind(row) !== 2)
+    .forEach((row) => {
+      const kind = trialBalanceRowKind(row);
+      const isTotal = kind >= 1;
+      const nameVal = trialBalanceRowLabel(row);
+      const wrap = (v) => (isTotal ? `<strong>${formatAmtPdf(v)}</strong>` : formatAmtPdf(v));
+      bodyRows += `
+            <tr class="${kind === 1 ? 'subtotal-row' : ''}">
+              <td>${isTotal ? '' : escHtml(row.CODE ?? row.code ?? '')}</td>
+              <td class="col-name">${isTotal ? `<strong>${escHtml(nameVal)}</strong>` : escHtml(nameVal)}</td>
+              <td>${isTotal ? '' : escHtml(row.CITY ?? row.city ?? '')}</td>
+              <td>${isTotal ? '' : escHtml(row.PAN ?? row.pan ?? '')}</td>
+              <td class="amount">${wrap(num(row, 'OP_DR', 'op_dr'))}</td>
+              <td class="amount">${wrap(num(row, 'OP_CR', 'op_cr'))}</td>
+              <td class="amount">${wrap(num(row, 'TRN_DR', 'trn_dr'))}</td>
+              <td class="amount">${wrap(num(row, 'TRN_CR', 'trn_cr'))}</td>
+              <td class="amount">${wrap(num(row, 'CL_DR', 'cl_dr'))}</td>
+              <td class="amount">${wrap(num(row, 'CL_CR', 'cl_cr'))}</td>
+            </tr>`;
+    });
+
+  const grand = findTrialGrandRow(data);
+  if (grand) {
+    bodyRows += `
+            <tr class="report-grand-total">
+              <td colspan="4"><strong>GRAND TOTAL</strong></td>
+              <td class="amount"><strong>${formatAmtPdf(num(grand, 'OP_DR', 'op_dr'))}</strong></td>
+              <td class="amount"><strong>${formatAmtPdf(num(grand, 'OP_CR', 'op_cr'))}</strong></td>
+              <td class="amount"><strong>${formatAmtPdf(num(grand, 'TRN_DR', 'trn_dr'))}</strong></td>
+              <td class="amount"><strong>${formatAmtPdf(num(grand, 'TRN_CR', 'trn_cr'))}</strong></td>
+              <td class="amount"><strong>${formatAmtPdf(num(grand, 'CL_DR', 'cl_dr'))}</strong></td>
+              <td class="amount"><strong>${formatAmtPdf(num(grand, 'CL_CR', 'cl_cr'))}</strong></td>
+            </tr>`;
+  }
+
+  return `
+    <div class="report-doc report-doc--trial-date-wise">
+      <style>${PDF_REPORT_STYLES}
+        .table-report--trial-date-wise { font-size: 7px; }
+        .table-report--trial-date-wise th { font-size: 6.5px; padding: 3px 2px; }
+        .table-report--trial-date-wise td { padding: 2px 2px; }
+      </style>
+      <div class="report-topbar">
+        <div class="kicker">ACCOUNTING REPORT</div>
+        <h1>TRIAL BALANCE DATE WISE</h1>
+        <div class="company">${company}</div>
+        <table class="report-grid">
+          <tr><td class="lbl">Financial year</td><td class="val">${year}</td><td class="lbl">Period</td><td class="val">${period}</td></tr>
+        </table>
+        <div class="report-period"><strong>Generated:</strong> ${generated}</div>
+      </div>
+      <table class="table-report table-report--trial-date-wise">
+        <thead>
+          <tr>
+            <th rowspan="2">Code</th>
+            <th rowspan="2">Name</th>
+            <th rowspan="2">City</th>
+            <th rowspan="2">Pan</th>
+            <th colspan="2" class="amount">Opening Balance</th>
+            <th colspan="2" class="amount">Transactions</th>
+            <th colspan="2" class="amount">Closing Balance</th>
+          </tr>
+          <tr>
+            <th class="amount">Debit</th>
+            <th class="amount">Credit</th>
+            <th class="amount">Debit</th>
+            <th class="amount">Credit</th>
+            <th class="amount">Debit</th>
+            <th class="amount">Credit</th>
+          </tr>
+        </thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
     </div>
   `;
 }
@@ -3224,6 +3399,391 @@ function buildSalesOrderPrintReportHtml(data, metadata) {
   `;
 }
 
+/** Production records list (PROD line detail). */
+function buildProductionListReportHtml(data, metadata) {
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  const company = escHtml(metadata.companyName || '');
+  const sdt = escHtml(metadata.startDate || '');
+  const edt = escHtml(metadata.endDate || '');
+  const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
+
+  const voucherKey = (r) => `${String(r.S_DATE ?? '')}|${String(r.S_NO ?? '')}`;
+  let body = '';
+  let tmW = 0;
+  let tmQ = 0;
+  let tpQ = 0;
+  let tpW = 0;
+  let tpS = 0;
+
+  let i = 0;
+  while (i < rows.length) {
+    const key = voucherKey(rows[i]);
+    const group = [];
+    while (i < rows.length && voucherKey(rows[i]) === key) {
+      group.push(rows[i]);
+      i++;
+    }
+    const first = group[0];
+    const vmW = Number(first?.MILLING) || 0;
+    const vmQ = Number(first?.M_QNTY) || 0;
+    let vpQ = 0;
+    let vpW = 0;
+    let vpS = 0;
+    for (const r of group) {
+      const pq = Number(r.QNTY) || 0;
+      const pw = Number(r.WEIGHT) || 0;
+      const ps = Number(r.SHORT) || 0;
+      vpQ += pq;
+      vpW += pw;
+      vpS += ps;
+      body += `<tr>
+      <td>${escHtml(String(r.S_DATE ?? ''))}</td>
+      <td>${escHtml(String(r.S_NO ?? ''))}</td>
+      <td>${escHtml(String(r.ITEM ?? ''))}</td>
+      <td>${escHtml(String(r.MILL_ITEM_NAME ?? ''))}</td>
+      <td class="amount">${formatStockPdf(Number(r.MILLING) || 0, 3)}</td>
+      <td class="amount">${formatStockPdf(Number(r.M_QNTY) || 0, 3)}</td>
+      <td>${escHtml(String(r.M_STATUS ?? ''))}</td>
+      <td>${escHtml(String(r.TRN_NO ?? ''))}</td>
+      <td>${escHtml(String(r.ITEM_CODE ?? ''))}</td>
+      <td>${escHtml(String(r.LINE_ITEM_NAME ?? ''))}</td>
+      <td class="amount">${formatStockPdf(Number(r.PROD_PER) || 0, 3)}</td>
+      <td class="amount">${formatStockPdf(pq, 3)}</td>
+      <td>${escHtml(String(r.STATUS ?? ''))}</td>
+      <td class="amount">${formatStockPdf(pw, 3)}</td>
+      <td class="amount">${formatStockPdf(ps, 3)}</td>
+      <td>${escHtml(String(r.PLANT_CODE ?? ''))}</td>
+    </tr>`;
+    }
+    tmW += vmW;
+    tmQ += vmQ;
+    tpQ += vpQ;
+    tpW += vpW;
+    tpS += vpS;
+    body += `<tr class="prod-list-pdf-hr"><td colspan="16"><hr/></td></tr>`;
+    body += `<tr class="report-voucher-total">
+      <td>${escHtml(String(first?.S_DATE ?? ''))}</td>
+      <td>${escHtml(String(first?.S_NO ?? ''))}</td>
+      <td colspan="2"><strong>Total</strong></td>
+      <td class="amount">${formatStockPdf(vmW, 3)}</td>
+      <td class="amount">${formatStockPdf(vmQ, 3)}</td>
+      <td colspan="5"></td>
+      <td class="amount">${formatStockPdf(vpQ, 3)}</td>
+      <td></td>
+      <td class="amount">${formatStockPdf(vpW, 3)}</td>
+      <td class="amount">${formatStockPdf(vpS, 3)}</td>
+      <td></td>
+    </tr>`;
+    body += `<tr class="prod-list-pdf-hr"><td colspan="16"><hr/></td></tr>`;
+  }
+
+  const grand = `<tr class="prod-list-pdf-hr"><td colspan="16"><hr/></td></tr>
+  <tr class="report-grand-total">
+    <td colspan="2" class="lbl-total">Grand total</td>
+    <td colspan="2"></td>
+    <td class="amount">${formatStockPdf(tmW, 3)}</td>
+    <td class="amount">${formatStockPdf(tmQ, 3)}</td>
+    <td colspan="5"></td>
+    <td class="amount">${formatStockPdf(tpQ, 3)}</td>
+    <td></td>
+    <td class="amount">${formatStockPdf(tpW, 3)}</td>
+    <td class="amount">${formatStockPdf(tpS, 3)}</td>
+    <td></td>
+  </tr>`;
+
+  return `
+    <div class="pdf-report-wrap">
+      <div class="pdf-report-header">
+        <h1>${company}</h1>
+        <h2>Production records list</h2>
+        <p>Period: ${sdt} to ${edt}</p>
+        <p class="pdf-meta">Generated: ${generated}</p>
+      </div>
+      <table class="table-report production-list-pdf">
+        <thead>
+          <tr>
+            <th>Date</th><th>SrNo</th><th>M.Item</th><th>M.Item name</th>
+            <th class="amount">M.Weight</th><th class="amount">M.Qty</th><th>B/K/H</th>
+            <th>Sno</th><th>Item</th><th>Item name</th><th class="amount">Prod%</th>
+            <th class="amount">P.Qty</th><th>B/K/H</th><th class="amount">P.Weight</th>
+            <th class="amount">P.Short</th><th>Plant</th>
+          </tr>
+        </thead>
+        <tbody>${body || '<tr><td colspan="16">(No rows)</td></tr>'}${rows.length ? grand : ''}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+/** Production voucher print (single PROD document). */
+function buildProductionPrintReportHtml(data, metadata) {
+  const header = data?.header || {};
+  const lines = Array.isArray(data?.lines) ? data.lines : [];
+  const company = escHtml(metadata.companyName || '');
+  const sDate = escHtml(metadata.sDate || toDisplayDateFromYmd(header.s_date) || '');
+  const sNo = escHtml(String(header.s_no ?? metadata.sNo ?? ''));
+  const millName = escHtml(String(header.item_name || header.mill_item_name || ''));
+  const millCode = escHtml(String(header.item || ''));
+  const plant = escHtml(String(header.plant_code || ''));
+  const mW = Number(header.milling) || 0;
+  const mQ = Number(header.m_qnty) || 0;
+  const mSt = escHtml(String(header.m_status || ''));
+
+  let tpQ = 0;
+  let tpW = 0;
+  let tpS = 0;
+  let body = '';
+  lines.forEach((L, i) => {
+    const pq = Number(L.qnty) || 0;
+    const pw = Number(L.weight) || 0;
+    const ps = Number(L.short) || 0;
+    tpQ += pq;
+    tpW += pw;
+    tpS += ps;
+    body += `<tr>
+      <td>${i + 1}</td>
+      <td>${escHtml(String(L.item_code ?? ''))}</td>
+      <td>${escHtml(String(L.item_name ?? ''))}</td>
+      <td class="amount">${formatStockPdf(Number(L.prod_per) || 0, 3)}</td>
+      <td class="amount">${formatStockPdf(pq, 3)}</td>
+      <td>${escHtml(String(L.status ?? ''))}</td>
+      <td class="amount">${formatStockPdf(pw, 3)}</td>
+      <td class="amount">${formatStockPdf(ps, 3)}</td>
+    </tr>`;
+  });
+
+  return `
+    <div class="pdf-report-wrap production-print-voucher">
+      <div class="production-print-topbar">
+        <div class="production-print-co-name">${company}</div>
+        <div class="production-print-doc-title">Production entry</div>
+        <div class="production-print-voucher-id"><strong>Date:</strong> ${sDate} &nbsp;&nbsp; <strong>Sr.No.:</strong> ${sNo}</div>
+      </div>
+      <table class="table-report production-print-meta" cellspacing="0" cellpadding="0">
+        <colgroup>
+          <col class="prod-meta-col-lbl" />
+          <col class="prod-meta-col-val" />
+        </colgroup>
+        <tbody>
+          <tr>
+            <th class="prod-meta-lbl" scope="row">Milling item</th>
+            <td class="prod-meta-val">${millCode}${millName ? ` — ${millName}` : ''}</td>
+          </tr>
+          <tr>
+            <th class="prod-meta-lbl" scope="row">Milling weight</th>
+            <td class="prod-meta-val amount">${formatStockPdf(mW, 3)}</td>
+          </tr>
+          <tr>
+            <th class="prod-meta-lbl" scope="row">Milling qty</th>
+            <td class="prod-meta-val amount">${formatStockPdf(mQ, 3)}</td>
+          </tr>
+          <tr>
+            <th class="prod-meta-lbl" scope="row">B/K/H</th>
+            <td class="prod-meta-val">${mSt}</td>
+          </tr>
+          <tr>
+            <th class="prod-meta-lbl" scope="row">Plant</th>
+            <td class="prod-meta-val">${plant}</td>
+          </tr>
+        </tbody>
+      </table>
+      <table class="table-report production-print-lines" cellspacing="0" cellpadding="0">
+        <colgroup>
+          <col class="prod-col-sno" />
+          <col class="prod-col-code" />
+          <col class="prod-col-name" />
+          <col class="prod-col-pct" />
+          <col class="prod-col-qty" />
+          <col class="prod-col-st" />
+          <col class="prod-col-wgt" />
+          <col class="prod-col-short" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Sno</th><th>Item code</th><th>Item name</th><th class="amount">Prod%</th>
+            <th class="amount">Qty</th><th>B/K/H</th><th class="amount">Weight</th><th class="amount">Short</th>
+          </tr>
+        </thead>
+        <tbody>${body || '<tr><td colspan="8">(No lines)</td></tr>'}</tbody>
+        <tfoot>
+          <tr class="production-print-total-row">
+            <td colspan="3" class="production-print-total-lbl">Milling total</td>
+            <td class="amount"></td>
+            <td class="amount">${formatStockPdf(mQ, 3)}</td>
+            <td class="production-print-total-st">${mSt}</td>
+            <td class="amount">${formatStockPdf(mW, 3)}</td>
+            <td class="amount"></td>
+          </tr>
+          <tr class="production-print-total-row production-print-total-row--prod">
+            <td colspan="3" class="production-print-total-lbl">Production total</td>
+            <td class="amount"></td>
+            <td class="amount">${formatStockPdf(tpQ, 3)}</td>
+            <td></td>
+            <td class="amount">${formatStockPdf(tpW, 3)}</td>
+            <td class="amount">${formatStockPdf(tpS, 3)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  `;
+}
+
+/** Dedicated styles for production print PDF / preview (borders + header colours). */
+const PRODUCTION_PRINT_PDF_STYLES = `
+  html, body {
+    margin: 0;
+    padding: 10px;
+    background: #fff;
+    color: #0f172a;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .report-doc, .production-print-pdf-doc {
+    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    font-size: 10px;
+    line-height: 1.35;
+    width: 794px;
+    min-width: 794px;
+    max-width: 794px;
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+  .production-print-voucher {
+    width: 794px;
+    min-width: 794px;
+    box-sizing: border-box;
+  }
+  .production-print-topbar {
+    text-align: center;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    border: 2px solid #1e3a5f;
+    background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+  }
+  .production-print-co-name {
+    font-size: 14px;
+    font-weight: 800;
+    color: #1e3a5f;
+    margin-bottom: 4px;
+  }
+  .production-print-doc-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #334155;
+    margin-bottom: 6px;
+    letter-spacing: 0.04em;
+  }
+  .production-print-voucher-id {
+    font-size: 10px;
+    color: #475569;
+  }
+  table.table-report {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    border: 2px solid #1e293b;
+    margin: 0 0 10px;
+  }
+  table.production-print-meta {
+    margin-bottom: 12px;
+  }
+  table.production-print-meta .prod-meta-col-lbl { width: 28%; }
+  table.production-print-meta .prod-meta-col-val { width: 72%; }
+  table.production-print-meta th.prod-meta-lbl {
+    background: #cbd5e1 !important;
+    color: #1e293b !important;
+    font-weight: 700;
+    text-align: left;
+    padding: 6px 8px;
+    border: 1px solid #64748b;
+    font-size: 9px;
+    white-space: normal;
+    vertical-align: top;
+    width: 28%;
+  }
+  table.production-print-meta td.prod-meta-val {
+    background: #fff !important;
+    padding: 6px 8px;
+    border: 1px solid #64748b;
+    font-size: 9px;
+    word-break: break-word;
+    vertical-align: top;
+    width: 72%;
+  }
+  table.production-print-lines thead th {
+    background: #1e293b !important;
+    color: #fff !important;
+    font-weight: 700;
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 6px 4px;
+    border: 1px solid #0f172a;
+    text-align: left;
+  }
+  table.production-print-lines thead th.amount { text-align: right; }
+  table.production-print-lines tbody td {
+    border: 1px solid #64748b;
+    padding: 4px 5px;
+    font-size: 9px;
+    vertical-align: top;
+    word-break: break-word;
+  }
+  table.production-print-lines tbody tr:nth-child(odd) td { background: #fff !important; }
+  table.production-print-lines tbody tr:nth-child(even) td { background: #f8fafc !important; }
+  table.production-print-lines .prod-col-sno { width: 5%; }
+  table.production-print-lines .prod-col-code { width: 10%; }
+  table.production-print-lines .prod-col-name { width: 26%; }
+  table.production-print-lines .prod-col-pct { width: 9%; }
+  table.production-print-lines .prod-col-qty { width: 11%; }
+  table.production-print-lines .prod-col-st { width: 7%; }
+  table.production-print-lines .prod-col-wgt { width: 16%; }
+  table.production-print-lines .prod-col-short { width: 16%; }
+  table.production-print-lines tr.production-print-total-row td {
+    background: #e2e8f0 !important;
+    color: #0f172a !important;
+    font-weight: 700;
+    font-size: 9px;
+    border-top: 2px solid #1e3a5f;
+    padding: 5px 4px;
+  }
+  table.production-print-lines tr.production-print-total-row--prod td {
+    border-top: 1px solid #94a3b8;
+  }
+  table.production-print-lines .production-print-total-lbl { text-align: left; }
+  table.production-print-lines .production-print-total-st { text-align: center; }
+  .amount { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  @media print {
+    html, body { padding: 0; }
+  }
+`;
+
+/** Full HTML document for production print / PDF (includes styled tables). */
+export function buildProductionPrintDocumentHtml(data, metadata) {
+  const body = buildProductionPrintReportHtml(data, metadata);
+  const title = `Production ${String(metadata?.sNo ?? data?.header?.s_no ?? '').trim()}`;
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=794" />
+    <title>${escHtml(title)}</title>
+    <style>${PRODUCTION_PRINT_PDF_STYLES}</style>
+  </head>
+  <body class="report-doc production-print-pdf-doc" style="margin:0;padding:10px;background:#fff;width:794px;min-width:794px;box-sizing:border-box;">${body}</body>
+</html>`;
+}
+
+function toDisplayDateFromYmd(v) {
+  if (!v) return '';
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const [y, m, d] = s.slice(0, 10).split('-');
+    return `${d}-${m}-${y}`;
+  }
+  return s;
+}
+
 /** Dispatch challan list (ISSUE type S line detail). */
 function buildDispatchChallanListReportHtml(data, metadata) {
   const rows = Array.isArray(data?.rows) ? data.rows : [];
@@ -5072,6 +5632,191 @@ function buildLedgerJsPdfBlob(data, metadata) {
   return doc.output('blob');
 }
 
+/** Production entry print PDF via jsPDF (reliable borders/colours on mobile). */
+function buildProductionJsPdfBlob(data, metadata) {
+  const header = data?.header || {};
+  const lines = Array.isArray(data?.lines) ? data.lines : [];
+  const doc = createJsPdfA4Portrait();
+  const { pw, ph, lm, contentW } = pdfPageLayout(doc, 10);
+  const NAVY = [30, 58, 95];
+  const HEAD = [30, 41, 59];
+  const LABEL = [203, 213, 225];
+  const BORDER = [100, 116, 139];
+  const STRIPE = [248, 250, 252];
+  const TOTAL = [226, 232, 240];
+
+  const fillRect = (x, y0, w, h, rgb) => {
+    doc.setFillColor(...rgb);
+    doc.rect(x, y0, w, h, 'F');
+  };
+
+  const strokeRect = (x, y0, w, h, rgb = BORDER, lw = 0.25) => {
+    doc.setDrawColor(...rgb);
+    doc.setLineWidth(lw);
+    doc.rect(x, y0, w, h, 'S');
+  };
+
+  let y = 10;
+
+  fillRect(lm, y, contentW, 14, [248, 250, 252]);
+  strokeRect(lm, y, contentW, 14, NAVY, 0.5);
+  doc.setTextColor(...NAVY);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text(String(metadata?.companyName || ''), lm + contentW / 2, y + 5.5, { align: 'center', maxWidth: contentW - 4 });
+  doc.setFontSize(10);
+  doc.text('Production entry', lm + contentW / 2, y + 10.5, { align: 'center' });
+  y += 16;
+
+  const sDate = String(metadata?.sDate || toDisplayDateFromYmd(header.s_date) || '');
+  const sNo = String(header.s_no ?? metadata?.sNo ?? '');
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Date: ${sDate}     Sr.No.: ${sNo}`, lm + 2, y + 3);
+  y += 6;
+
+  const millCode = String(header.item || '').trim();
+  const millName = String(header.item_name || header.mill_item_name || '').trim();
+  const millItem = [millCode, millName].filter(Boolean).join(' — ');
+  const mW = Number(header.milling) || 0;
+  const mQ = Number(header.m_qnty) || 0;
+  const mSt = String(header.m_status || '');
+  const plant = String(header.plant_code || '');
+
+  const metaRows = [
+    ['Milling item', millItem || '—'],
+    ['Milling weight', formatStockPdf(mW, 3)],
+    ['Milling qty', formatStockPdf(mQ, 3)],
+    ['B/K/H', mSt || '—'],
+    ['Plant', plant || '—'],
+  ];
+  const lblW = contentW * 0.28;
+  const valW = contentW - lblW;
+  const metaRowH = 6.2;
+  metaRows.forEach(([lbl, val], idx) => {
+    fillRect(lm, y, lblW, metaRowH, LABEL);
+    fillRect(lm + lblW, y, valW, metaRowH, [255, 255, 255]);
+    strokeRect(lm, y, contentW, metaRowH, BORDER, 0.2);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(30, 41, 59);
+    doc.text(lbl, lm + 2, y + 4.2, { maxWidth: lblW - 4 });
+    doc.setFont('helvetica', 'normal');
+    doc.text(String(val), lm + lblW + 2, y + 4.2, { maxWidth: valW - 4 });
+    y += metaRowH;
+    if (idx === 0) y += 0.5;
+  });
+  y += 4;
+
+  const cols = scalePdfCols(
+    [
+      { label: 'Sno', w: 8, right: false },
+      { label: 'Item code', w: 18, right: false },
+      { label: 'Item name', w: 42, right: false },
+      { label: 'Prod%', w: 14, right: true },
+      { label: 'Qty', w: 14, right: true },
+      { label: 'B/K/H', w: 10, right: false, center: true },
+      { label: 'Weight', w: 18, right: true },
+      { label: 'Short', w: 18, right: true },
+    ],
+    contentW
+  );
+  const { xAt, tableW } = pdfColLayout(cols, lm);
+  const headH = 7;
+
+  const drawLineHead = () => {
+    fillRect(lm, y, tableW, headH, HEAD);
+    strokeRect(lm, y, tableW, headH, HEAD, 0.2);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    cols.forEach((c, i) => {
+      const tx = c.right ? xAt[i] + c.w - 1.5 : c.center ? xAt[i] + c.w / 2 : xAt[i] + 1.5;
+      doc.text(c.label, tx, y + 4.8, { align: c.right ? 'right' : c.center ? 'center' : 'left', maxWidth: c.w - 2 });
+    });
+    y += headH;
+  };
+
+  drawLineHead();
+
+  let tpQ = 0;
+  let tpW = 0;
+  let tpS = 0;
+  const rowH = 6.5;
+  const pageBottom = ph - 12;
+
+  lines.forEach((L, i) => {
+    const pq = Number(L.qnty) || 0;
+    const pw = Number(L.weight) || 0;
+    const ps = Number(L.short) || 0;
+    tpQ += pq;
+    tpW += pw;
+    tpS += ps;
+    if (y + rowH > pageBottom) {
+      doc.addPage();
+      y = 10;
+      drawLineHead();
+    }
+    const bg = i % 2 === 0 ? [255, 255, 255] : STRIPE;
+    fillRect(lm, y, tableW, rowH, bg);
+    strokeRect(lm, y, tableW, rowH, BORDER, 0.15);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(15, 23, 42);
+    const cells = [
+      String(i + 1),
+      String(L.item_code ?? ''),
+      String(L.item_name ?? ''),
+      formatStockPdf(Number(L.prod_per) || 0, 3),
+      formatStockPdf(pq, 3),
+      String(L.status ?? ''),
+      formatStockPdf(pw, 3),
+      formatStockPdf(ps, 3),
+    ];
+    cells.forEach((txt, ci) => {
+      const c = cols[ci];
+      const tx = c.right ? xAt[ci] + c.w - 1.5 : c.center ? xAt[ci] + c.w / 2 : xAt[ci] + 1.5;
+      doc.text(String(txt), tx, y + 4.5, { align: c.right ? 'right' : c.center ? 'center' : 'left', maxWidth: c.w - 2 });
+    });
+    y += rowH;
+  });
+
+  if (!lines.length) {
+    fillRect(lm, y, tableW, rowH, [255, 255, 255]);
+    strokeRect(lm, y, tableW, rowH, BORDER, 0.15);
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text('(No lines)', lm + tableW / 2, y + 4.5, { align: 'center' });
+    y += rowH;
+  }
+
+  const drawTotalRow = (label, qty, st, wgt, short, isFirst) => {
+    if (y + rowH > pageBottom) {
+      doc.addPage();
+      y = 10;
+      drawLineHead();
+    }
+    fillRect(lm, y, tableW, rowH, TOTAL);
+    strokeRect(lm, y, tableW, rowH, NAVY, isFirst ? 0.4 : 0.2);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(label, xAt[0] + 1.5, y + 4.5, { maxWidth: xAt[3] - xAt[0] - 2 });
+    if (qty) doc.text(qty, xAt[4] + cols[4].w - 1.5, y + 4.5, { align: 'right' });
+    if (st) doc.text(st, xAt[5] + cols[5].w / 2, y + 4.5, { align: 'center' });
+    if (wgt) doc.text(wgt, xAt[6] + cols[6].w - 1.5, y + 4.5, { align: 'right' });
+    if (short) doc.text(short, xAt[7] + cols[7].w - 1.5, y + 4.5, { align: 'right' });
+    y += rowH;
+  };
+
+  drawTotalRow('Milling total', formatStockPdf(mQ, 3), mSt, formatStockPdf(mW, 3), '', true);
+  drawTotalRow('Production total', formatStockPdf(tpQ, 3), '', formatStockPdf(tpW, 3), formatStockPdf(tpS, 3), false);
+
+  return doc.output('blob');
+}
+
 async function htmlDocumentToPdfBlob(documentHtml, options) {
   const landscape = options?.jsPDF?.orientation === 'landscape';
   const frameW = landscape ? 1280 : 794;
@@ -5113,6 +5858,7 @@ async function htmlDocumentToPdfBlob(documentHtml, options) {
     const root =
       idoc.querySelector('.cash-receipt-sheet') ||
       idoc.querySelector('.voucher-doc') ||
+      idoc.querySelector('.production-print-pdf-doc') ||
       idoc.querySelector('.report-doc') ||
       idoc.querySelector('.dc-pdf') ||
       idoc.body;
@@ -5151,6 +5897,8 @@ export function buildReportHtml(reportType, data, metadata) {
   if (reportType === 'balance-sheet') return buildBalanceSheetReportHtml(data, metadata);
   if (reportType === 'trading-account') return buildTradingAccountReportHtml(data, metadata);
   if (reportType === 'profit-loss') return buildProfitLossReportHtml(data, metadata);
+  if (reportType === 'production-list') return buildProductionListReportHtml(data, metadata);
+  if (reportType === 'production-print') return buildProductionPrintReportHtml(data, metadata);
   if (reportType === 'dispatch-challan-list') return buildDispatchChallanListReportHtml(data, metadata);
   if (reportType === 'grn-list') return buildGrnListReportHtml(data, metadata);
   if (reportType === 'dispatch-challan-print') return buildDispatchChallanPrintReportHtml(data, metadata);
@@ -5171,6 +5919,9 @@ export function buildReportHtml(reportType, data, metadata) {
   }
   if (reportType === 'voucher-list') return buildVoucherListReportHtml(data, metadata);
   if (reportType === 'voucher-print') return buildVoucherPrintReportHtml(data, metadata);
+  if (reportType === 'trial-balance-summary') return buildTrialBalanceSummaryReportHtml(data, metadata);
+  if (reportType === 'trial-date-wise') return buildTrialDateWiseReportHtml(data, metadata);
+  if (reportType === 'trial-balance') return buildTrialBalanceReportHtml(data, metadata);
   return buildTrialBalanceReportHtml(data, metadata);
 }
 
@@ -5226,12 +5977,16 @@ function getPdfOptions(metadata, reportType, data) {
             useCORS: true,
             logging: false,
           }
-        : reportType === 'dispatch-challan-print' || reportType === 'grn-print'
+        : reportType === 'dispatch-challan-print' ||
+            reportType === 'grn-print' ||
+            reportType === 'production-print'
           ? {
               scale: 2,
               useCORS: true,
               logging: false,
+              backgroundColor: '#ffffff',
               windowWidth: 794,
+              width: 794,
               scrollX: 0,
               scrollY: 0,
             }
@@ -5246,13 +6001,16 @@ function getPdfOptions(metadata, reportType, data) {
                 scrollX: 0,
                 scrollY: 0,
               }
-          : reportType === 'trial-balance' || reportType === 'ledger'
+          : reportType === 'trial-balance' ||
+              reportType === 'trial-balance-summary' ||
+              reportType === 'trial-date-wise' ||
+              reportType === 'ledger'
             ? {
                 scale: shouldPreferNativeFileShare() ? 1 : 1.5,
                 useCORS: true,
                 logging: false,
                 backgroundColor: '#ffffff',
-                windowWidth: 1200,
+                windowWidth: reportType === 'trial-date-wise' ? 1400 : 1200,
                 scrollX: 0,
                 scrollY: 0,
               }
@@ -5264,6 +6022,7 @@ function getPdfOptions(metadata, reportType, data) {
       reportType === 'purchase-bill' ||
       reportType === 'dispatch-challan-print' ||
       reportType === 'grn-print' ||
+      reportType === 'production-print' ||
       reportType === 'sales-order-print' ||
       reportType === 'purchase-order-print' ||
       reportType === 'voucher-print'
@@ -5279,10 +6038,13 @@ function getPdfOptions(metadata, reportType, data) {
     jsPDF: {
       orientation:
         reportType === 'trial-balance' ||
+        reportType === 'trial-balance-summary' ||
+        reportType === 'trial-date-wise' ||
         reportType === 'ledger' ||
         reportType === 'sale-bill' ||
         reportType === 'purchase-bill' ||
         reportType === 'dispatch-challan-print' ||
+        reportType === 'production-print' ||
         reportType === 'sales-order-print' ||
         reportType === 'purchase-order-print' ||
         reportType === 'voucher-print'
@@ -5305,7 +6067,12 @@ function getPdfOptions(metadata, reportType, data) {
     base.pagebreak = { mode: ['avoid-all', 'css', 'legacy'] };
   }
 
-  if (reportType === 'trial-balance' || reportType === 'ledger') {
+  if (
+    reportType === 'trial-balance' ||
+    reportType === 'trial-balance-summary' ||
+    reportType === 'trial-date-wise' ||
+    reportType === 'ledger'
+  ) {
     base.pagebreak = { mode: ['css', 'legacy'] };
   }
 
@@ -5340,6 +6107,17 @@ export async function getPdfBlob(reportType, data, metadata) {
       const docHtml = buildVoucherPrintDocumentHtml(data, metadata);
       const blob = await htmlDocumentToPdfBlob(docHtml, options);
       return { blob, filename: options.filename };
+    }
+    if (reportType === 'production-print') {
+      try {
+        const blob = buildProductionJsPdfBlob(data, metadata);
+        assertPdfBlob(blob);
+        return { blob, filename: options.filename };
+      } catch (err) {
+        const docHtml = buildProductionPrintDocumentHtml(data, metadata);
+        const blob = await htmlDocumentToPdfBlob(docHtml, options);
+        return { blob, filename: options.filename };
+      }
     }
     const htmlContent = buildReportHtml(reportType, data, metadata);
     const docHtml = wrapReportHtmlForPdf(htmlContent);
@@ -5488,10 +6266,14 @@ export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText
                           ? 'GSTR-1'
                           : reportType === 'hsn-sales'
                             ? 'HSN Sales'
-                            : reportType === 'dispatch-challan-list'
-                              ? 'Dispatch challan list'
-                              : reportType === 'dispatch-challan-print'
-                                ? 'Dispatch challan'
+                            : reportType === 'production-list'
+                              ? 'Production list'
+                              : reportType === 'production-print'
+                                ? 'Production entry'
+                                : reportType === 'dispatch-challan-list'
+                                  ? 'Dispatch challan list'
+                                  : reportType === 'dispatch-challan-print'
+                                    ? 'Dispatch challan'
                         : 'Ledger';
   const text =
     shareText || `${metadata.companyName}\n${reportLabel}\n${metadata.endDate || ''}`;

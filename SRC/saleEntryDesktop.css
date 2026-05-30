@@ -32,7 +32,8 @@
 .app--desktop .slide-29-grn.sale-entry-desktop,
 .app--desktop .slide-25-purchase-bill.sale-entry-desktop,
 .app--desktop .slide-28-voucher-entry.sale-entry-desktop,
-.app--desktop .slide-28-voucher-list.sale-entry-desktop {
+.app--desktop .slide-28-voucher-list.sale-entry-desktop,
+.app--desktop .slide-32-production.sale-entry-desktop {
   padding-bottom: 0.45rem;
 }
 

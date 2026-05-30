@@ -37,7 +37,15 @@ function computeDesktopModalStyle() {
 export function computePbPickPanelStyle({ showFilter = false, anchor = 'bottom', sheet = false } = {}) {
   const vv = readVisibleViewport();
   const pad = sheet ? 0 : 10;
-  const heightFrac = showFilter ? 0.52 : anchor === 'top' ? 0.5 : sheet ? 0.62 : 0.48;
+  const heightFrac = showFilter
+    ? anchor === 'top' && sheet
+      ? 0.88
+      : 0.52
+    : anchor === 'top'
+      ? 0.5
+      : sheet
+        ? 0.62
+        : 0.48;
   const maxH = Math.max(sheet ? 240 : 160, Math.min(sheet ? 560 : 400, Math.floor(vv.height * heightFrac)));
   const base = {
     position: 'fixed',
@@ -82,6 +90,7 @@ export default function PbPartyBrokerPickPortal({
   autoFocusFilter = false,
   onFilterKeyDown,
   modal = false,
+  uppercase = false,
 }) {
   const filterRef = useRef(null);
   const rafRef = useRef(0);
@@ -157,7 +166,7 @@ export default function PbPartyBrokerPickPortal({
             <input
               ref={filterRef}
               type="search"
-              className="form-input"
+              className={`form-input${uppercase ? ' pb-pick-portal__filter--upper' : ''}`}
               placeholder={searchPlaceholder}
               autoComplete="off"
               autoCorrect="off"
@@ -165,7 +174,10 @@ export default function PbPartyBrokerPickPortal({
               enterKeyHint="search"
               value={searchValue}
               disabled={disabled}
-              onChange={(e) => onSearchChange(e.target.value)}
+              style={uppercase ? { textTransform: 'uppercase' } : undefined}
+              onChange={(e) =>
+                onSearchChange(uppercase ? e.target.value.toUpperCase() : e.target.value)
+              }
               onKeyDown={onFilterKeyDown}
             />
           </div>

@@ -13,6 +13,16 @@ const REPORT_MENU = [
     subtitle: 'Trial, P&L, Balance Sheet',
     items: [
       { id: 'trial-balance', title: 'Trial Balance Report', description: 'View account balances as of a specific date' },
+      {
+        id: 'trial-balance-summary',
+        title: 'Trial Balance Summary',
+        description: 'Annexure-wise totals; drill to schedule detail and ledger',
+      },
+      {
+        id: 'trial-date-wise',
+        title: 'Trial Balance Date Wise',
+        description: 'Opening, transactions, and closing by date range',
+      },
       { id: 'trading-ac', title: 'Trading A/C', description: 'Trading account with schedule, shortage, and closing stock options' },
       { id: 'pl-profit-loss', title: 'Profit & Loss Account', description: 'Gross from Trading A/C plus schedule ≥ 16 ledger balances (VFP PLACT)' },
       { id: 'balance-sheet', title: 'Balance Sheet', description: 'Liabilities vs Assets with profit/loss and closing stock adjustments' },
@@ -85,8 +95,22 @@ const REPORT_MENU = [
     ],
   },
   {
-    id: 'master-module',
+    id: 'production-module',
     index: 7,
+    title: 'Production Records',
+    subtitle: 'Production entry & stock (TYPE PR)',
+    entry: true,
+    items: [
+      {
+        id: 'production-entry',
+        title: 'Production Entry',
+        description: 'Milling and production lines; posts PROD and STOCK (TYPE PR)',
+      },
+    ],
+  },
+  {
+    id: 'master-module',
+    index: 8,
     title: 'Master Module',
     subtitle: 'Account & item maintenance',
     entry: true,

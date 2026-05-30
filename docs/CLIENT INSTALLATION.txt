@@ -1,0 +1,5 @@
+1.copy oracle_bridge and apptest folder to \windal
+2.cd D:\WINDAL\apptest
+3.powershell
+4. cd D:\windal\apptest
+5.powershell -ExecutionPolicy Bypass -File .\setup-client.ps1 `

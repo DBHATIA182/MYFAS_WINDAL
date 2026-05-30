@@ -22,10 +22,32 @@ export function filterCodeNameCityRows(rows, query, max = 50) {
 export function filterItemCodeNameRows(rows, query, max = 50) {
   const q = String(query ?? '').trim().toLowerCase();
   if (!q) return [];
+  const seen = new Set();
+  const out = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const code = String(row.ITEM_CODE ?? row.item_code ?? '').trim();
+    if (!code) continue;
+    const key = code.toUpperCase();
+    if (seen.has(key)) continue;
+    const codeL = code.toLowerCase();
+    const name = String(row.ITEM_NAME ?? row.item_name ?? '').toLowerCase();
+    if (!codeL.includes(q) && !name.includes(q)) continue;
+    seen.add(key);
+    out.push(row);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+export const SEARCH_PLANT_TYPE_HINT = 'Type plant code or name to search.';
+
+export function filterPlantCodeNameRows(rows, query, max = 50) {
+  const q = String(query ?? '').trim().toLowerCase();
+  if (!q) return [];
   return (Array.isArray(rows) ? rows : [])
     .filter((row) => {
-      const code = String(row.ITEM_CODE ?? row.item_code ?? '').toLowerCase();
-      const name = String(row.ITEM_NAME ?? row.item_name ?? '').toLowerCase();
+      const code = String(row.PLANT_CODE ?? row.plant_code ?? '').toLowerCase();
+      const name = String(row.PLANT_NAME ?? row.plant_name ?? '').toLowerCase();
       return code.includes(q) || name.includes(q);
     })
     .slice(0, max);

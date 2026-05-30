@@ -669,6 +669,24 @@ async function runQuery(sql, binds = {}, schema = null, executeExtra = {}) {
   }
 }
 
+function isTransientOracleConnError(err) {
+  const m = String(err?.message || '');
+  return /ORA-03113|ORA-03114|NJS-500|connection was closed|end-of-file on communication channel/i.test(m);
+}
+
+/** One automatic retry for dropped Oracle sessions (Prev/Print/Load). */
+async function runQueryRetry(sql, binds = {}, schema = null, executeExtra = {}, retriesLeft = 1) {
+  try {
+    return await runQuery(sql, binds, schema, executeExtra);
+  } catch (err) {
+    if (retriesLeft > 0 && isTransientOracleConnError(err)) {
+      await new Promise((r) => setTimeout(r, 350));
+      return runQueryRetry(sql, binds, schema, executeExtra, retriesLeft - 1);
+    }
+    throw err;
+  }
+}
+
 // Consolidated Trading closing stock override (avoids schema-specific CLSTOCK write issues).
 // Key format: "<comp_code>|<comp_uid>"
 const tradingConsolidateOverride = new Map();
@@ -1351,6 +1369,250 @@ async function fetchItemMasterUserF5String(user_name, comp_uid) {
 
 function itemMasterPermissionsFromF5(f5) {
   return rightsPermissionsFromString(f5, 'legacy_no_f5', 'f5');
+}
+
+/** Production entry: DAL.USERS / USERS F5 — pos 1–4 = open, add, edit, delete (Fox Production Records). */
+async function fetchProductionUserF5String(user_name, comp_uid) {
+  return fetchItemMasterUserF5String(user_name, comp_uid);
+}
+
+function productionPermissionsFromF5(f5) {
+  return rightsPermissionsFromString(f5, 'legacy_no_f5', 'f5');
+}
+
+function prodStatusBags(status, qnty) {
+  const st = String(status ?? 'B').trim().toUpperCase().slice(0, 1) || 'B';
+  const q = Number(qnty) || 0;
+  return {
+    bags: st === 'B' ? q : 0,
+    katta: st === 'K' ? q : 0,
+    hkatta: st === 'H' ? q : 0,
+    st,
+  };
+}
+
+const prodTableColsCache = new Map();
+
+async function fetchOracleTableColumns(conn, tableName) {
+  const r = await conn.execute(
+    `SELECT UPPER(COLUMN_NAME) AS CN FROM USER_TAB_COLUMNS WHERE TABLE_NAME = :tn`,
+    { tn: String(tableName || '').trim().toUpperCase() },
+    { outFormat: oracledb.OUT_FORMAT_OBJECT }
+  );
+  return new Set((r.rows || []).map((x) => String(x.CN ?? x.cn ?? '').trim()).filter(Boolean));
+}
+
+async function getProdTableColumns(conn, comp_uid) {
+  const key = String(comp_uid || '_').trim();
+  if (prodTableColsCache.has(key)) return prodTableColsCache.get(key);
+  const cols = await fetchOracleTableColumns(conn, 'PROD');
+  const stockCols = await fetchOracleTableColumns(conn, 'STOCK');
+  const meta = {
+    prod: cols,
+    stock: stockCols,
+    hasProdPer: cols.has('PROD_PER'),
+    hasShort: cols.has('SHORT'),
+    stockHasProdPer: stockCols.has('PROD_PER'),
+  };
+  prodTableColsCache.set(key, meta);
+  return meta;
+}
+
+function prodPerSelectExpr(tableAlias, meta) {
+  const a = tableAlias ? `${tableAlias}.` : '';
+  return meta?.hasProdPer ? `${a}PROD_PER` : `0 AS PROD_PER`;
+}
+
+function shortSelectExpr(tableAlias, meta) {
+  const a = tableAlias ? `${tableAlias}.` : '';
+  return meta?.hasShort ? `${a}SHORT` : `0 AS SHORT`;
+}
+
+async function getProdTableMetaForUid(comp_uid) {
+  const key = String(comp_uid || '_').trim();
+  if (prodTableColsCache.has(key)) return prodTableColsCache.get(key);
+  const connCfg = {
+    user: comp_uid,
+    password: comp_uid,
+    connectString: activeDbConfig.connectString,
+  };
+  const conn = await getDbConnection(connCfg);
+  try {
+    const meta = await getProdTableColumns(conn, comp_uid);
+    return meta;
+  } finally {
+    try {
+      await conn.close();
+    } catch (_) {}
+  }
+}
+
+function buildProdInsertSql(meta) {
+  const cols = [
+    'COMP_CODE',
+    'COMP_YEAR',
+    'S_DATE',
+    'S_NO',
+    'ITEM',
+    'MILLING',
+    'M_QNTY',
+    'M_STATUS',
+    'PLANT_CODE',
+    'TRN_NO',
+    'ITEM_CODE',
+  ];
+  if (meta?.hasProdPer) cols.push('PROD_PER');
+  cols.push('QNTY', 'STATUS', 'WEIGHT');
+  if (meta?.hasShort) cols.push('SHORT');
+  cols.push('USER_NAME');
+  const valParts = cols.map((c) => {
+    if (c === 'S_DATE') return `TO_DATE(:s_date, 'DD-MM-YYYY')`;
+    return `:${c.toLowerCase()}`;
+  });
+  return `INSERT INTO PROD (${cols.join(', ')}) VALUES (${valParts.join(', ')})`;
+}
+
+function prodLineBind(meta, base) {
+  const b = { ...base };
+  if (!meta?.hasProdPer) delete b.prod_per;
+  if (!meta?.hasShort) delete b.short;
+  return b;
+}
+
+async function deleteProductionVoucher(conn, { comp_code, s_date, s_no }) {
+  const binds = { comp_code, s_date, s_no: String(s_no).trim() };
+  await conn.execute(
+    `DELETE FROM PROD
+     WHERE COMP_CODE = :comp_code
+       AND TRUNC(S_DATE) = TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))
+       AND TRIM(TO_CHAR(S_NO)) = TRIM(TO_CHAR(:s_no))`,
+    binds,
+    { autoCommit: false }
+  );
+  await conn.execute(
+    `DELETE FROM STOCK
+     WHERE COMP_CODE = :comp_code
+       AND TRIM(TYPE) = 'PR'
+       AND TRUNC(VR_DATE) = TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))
+       AND TRIM(TO_CHAR(VR_NO)) = TRIM(TO_CHAR(:s_no))`,
+    binds,
+    { autoCommit: false }
+  );
+}
+
+async function insertProductionStockRows(conn, binds) {
+  const {
+    comp_code,
+    comp_year,
+    s_date,
+    s_no,
+    plant_code,
+    user_name,
+    millingItem,
+    milling,
+    m_qnty,
+    m_status,
+    lines,
+  } = binds;
+
+  const millCode = String(millingItem || '').trim();
+  if (millCode) {
+    const mBags = prodStatusBags(m_status, m_qnty);
+    const millingSql = `
+    INSERT INTO STOCK (
+      COMP_CODE, COMP_YEAR, TYPE, VR_DATE, VR_NO, ITEM_CODE,
+      I_WEIGHT, STK_DATE, I_QNTY, PLANT_CODE, I_BAGS, I_KATTA, I_HKATTA, USER_NAME
+    ) VALUES (
+      :comp_code, :comp_year, 'PR', TO_DATE(:s_date, 'DD-MM-YYYY'), :s_no, :item_code,
+      :i_weight, TO_DATE(:s_date, 'DD-MM-YYYY'), :i_qnty, :plant_code, :i_bags, :i_katta, :i_hkatta, :user_name
+    )`;
+    await conn.execute(
+      millingSql,
+      {
+        comp_code,
+        comp_year,
+        s_date,
+        s_no: String(s_no).trim(),
+        item_code: millCode,
+        i_weight: Number(milling) || 0,
+        i_qnty: Number(m_qnty) || 0,
+        plant_code: String(plant_code || ' ').trim() || ' ',
+        i_bags: mBags.bags,
+        i_katta: mBags.katta,
+        i_hkatta: mBags.hkatta,
+        user_name,
+      },
+      { autoCommit: false }
+    );
+  }
+
+  const stockMeta = binds.stockMeta || { stockHasProdPer: true };
+  const lineSql = stockMeta.stockHasProdPer
+    ? `
+    INSERT INTO STOCK (
+      COMP_CODE, COMP_YEAR, TYPE, VR_DATE, VR_NO, ITEM_CODE,
+      PROD_PER, R_WEIGHT, STK_DATE, R_QNTY, PLANT_CODE, R_BAGS, R_KATTA, R_HKATTA, USER_NAME
+    ) VALUES (
+      :comp_code, :comp_year, 'PR', TO_DATE(:s_date, 'DD-MM-YYYY'), :s_no, :item_code,
+      :prod_per, :r_weight, TO_DATE(:s_date, 'DD-MM-YYYY'), :r_qnty, :plant_code,
+      :r_bags, :r_katta, :r_hkatta, :user_name
+    )`
+    : `
+    INSERT INTO STOCK (
+      COMP_CODE, COMP_YEAR, TYPE, VR_DATE, VR_NO, ITEM_CODE,
+      R_WEIGHT, STK_DATE, R_QNTY, PLANT_CODE, R_BAGS, R_KATTA, R_HKATTA, USER_NAME
+    ) VALUES (
+      :comp_code, :comp_year, 'PR', TO_DATE(:s_date, 'DD-MM-YYYY'), :s_no, :item_code,
+      :r_weight, TO_DATE(:s_date, 'DD-MM-YYYY'), :r_qnty, :plant_code,
+      :r_bags, :r_katta, :r_hkatta, :user_name
+    )`;
+  const shortSql = `
+    INSERT INTO STOCK (
+      COMP_CODE, COMP_YEAR, TYPE, VR_DATE, VR_NO, ITEM_CODE,
+      SHORT, STK_DATE, PLANT_CODE, USER_NAME
+    ) VALUES (
+      :comp_code, :comp_year, 'PR', TO_DATE(:s_date, 'DD-MM-YYYY'), :s_no, :item_code,
+      :short, TO_DATE(:s_date, 'DD-MM-YYYY'), :plant_code, :user_name
+    )`;
+
+  for (const line of lines || []) {
+    const ic = String(line.item_code || '').trim();
+    if (!ic) continue;
+    const pb = prodStatusBags(line.status, line.qnty);
+    const lineBind = {
+      comp_code,
+      comp_year,
+      s_date,
+      s_no: String(s_no).trim(),
+      item_code: ic,
+      r_weight: Number(line.weight) || 0,
+      r_qnty: Number(line.qnty) || 0,
+      plant_code: String(plant_code || ' ').trim() || ' ',
+      r_bags: pb.bags,
+      r_katta: pb.katta,
+      r_hkatta: pb.hkatta,
+      user_name,
+    };
+    if (stockMeta.stockHasProdPer) lineBind.prod_per = Number(line.prod_per) || 0;
+    await conn.execute(lineSql, lineBind, { autoCommit: false });
+    const sh = Number(line.short) || 0;
+    if (Math.abs(sh) > 0.000001) {
+      await conn.execute(
+        shortSql,
+        {
+          comp_code,
+          comp_year,
+          s_date,
+          s_no: String(s_no).trim(),
+          item_code: ic,
+          short: sh,
+          plant_code: String(plant_code || ' ').trim() || ' ',
+          user_name,
+        },
+        { autoCommit: false }
+      );
+    }
+  }
 }
 
 /** Cash/Bank/Journal voucher entry: DAL.USERS / USERS F3 — pos 1–4 = open, add, edit, delete. */
@@ -3510,6 +3772,60 @@ app.get('/api/trial-balance-by-codes', async (req, res) => {
     res.json(rows || []);
   } catch (err) {
     console.error('❌ Trial Balance by codes SQL Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3B. Trial Balance Date Wise (opening / period / closing with PAN)
+app.get('/api/trial-date-wise', async (req, res) => {
+  try {
+    const { comp_code, s_date, e_date, schedule, comp_uid } = req.query;
+    if (!comp_code || !s_date || !e_date) {
+      return res.status(400).json({ error: 'comp_code, s_date, and e_date are required' });
+    }
+    const schedValRaw = String(schedule ?? '').trim().replace(',', '.');
+    const schedValNum = Number(schedValRaw);
+    const hasScheduleFilter = Number.isFinite(schedValNum) && schedValNum > 0;
+
+    let sql = `SELECT 
+                 b.schedule, 
+                 MAX(c.name) AS sch_name, 
+                 a.code, 
+                 CASE 
+                   WHEN a.code IS NULL AND b.schedule IS NOT NULL THEN 'TOTAL ' || NVL(MAX(c.name), 'SCHEDULE') || ' ' || TO_CHAR(b.schedule)
+                   WHEN a.code IS NULL AND b.schedule IS NULL THEN '*** GRAND TOTAL ***'
+                   ELSE MAX(b.name) 
+                 END AS name,
+                 MAX(b.city) AS city,
+                 MAX(b.pan) AS pan,
+                 CASE WHEN SUM(CASE WHEN a.vr_date < TO_DATE(:s_date, 'DD-MM-YYYY') THEN NVL(a.dr_amt,0) - NVL(a.cr_amt,0) ELSE 0 END) > 0
+                   THEN SUM(CASE WHEN a.vr_date < TO_DATE(:s_date, 'DD-MM-YYYY') THEN NVL(a.dr_amt,0) - NVL(a.cr_amt,0) ELSE 0 END) ELSE 0 END AS op_dr,
+                 CASE WHEN SUM(CASE WHEN a.vr_date < TO_DATE(:s_date, 'DD-MM-YYYY') THEN NVL(a.dr_amt,0) - NVL(a.cr_amt,0) ELSE 0 END) < 0
+                   THEN ABS(SUM(CASE WHEN a.vr_date < TO_DATE(:s_date, 'DD-MM-YYYY') THEN NVL(a.dr_amt,0) - NVL(a.cr_amt,0) ELSE 0 END)) ELSE 0 END AS op_cr,
+                 SUM(CASE WHEN a.vr_date >= TO_DATE(:s_date, 'DD-MM-YYYY') AND a.vr_date <= TO_DATE(:e_date, 'DD-MM-YYYY') THEN NVL(a.dr_amt,0) ELSE 0 END) AS trn_dr,
+                 SUM(CASE WHEN a.vr_date >= TO_DATE(:s_date, 'DD-MM-YYYY') AND a.vr_date <= TO_DATE(:e_date, 'DD-MM-YYYY') THEN NVL(a.cr_amt,0) ELSE 0 END) AS trn_cr,
+                 CASE WHEN SUM(CASE WHEN a.vr_date <= TO_DATE(:e_date, 'DD-MM-YYYY') THEN NVL(a.dr_amt,0) - NVL(a.cr_amt,0) ELSE 0 END) > 0
+                   THEN SUM(CASE WHEN a.vr_date <= TO_DATE(:e_date, 'DD-MM-YYYY') THEN NVL(a.dr_amt,0) - NVL(a.cr_amt,0) ELSE 0 END) ELSE 0 END AS cl_dr,
+                 CASE WHEN SUM(CASE WHEN a.vr_date <= TO_DATE(:e_date, 'DD-MM-YYYY') THEN NVL(a.dr_amt,0) - NVL(a.cr_amt,0) ELSE 0 END) < 0
+                   THEN ABS(SUM(CASE WHEN a.vr_date <= TO_DATE(:e_date, 'DD-MM-YYYY') THEN NVL(a.dr_amt,0) - NVL(a.cr_amt,0) ELSE 0 END)) ELSE 0 END AS cl_cr
+               FROM ledger a, master b, schedule c 
+               WHERE a.comp_code = :comp_code 
+               AND a.comp_code = b.comp_code AND a.code = b.code
+               AND b.comp_code = c.comp_code AND b.schedule = c.no`;
+
+    const bindParams = { comp_code, s_date, e_date };
+    if (hasScheduleFilter) {
+      sql += ` AND b.schedule = :schedule`;
+      bindParams.schedule = schedValNum;
+    }
+
+    sql += ` GROUP BY ROLLUP(b.schedule, a.code) 
+             ORDER BY b.schedule NULLS LAST, GROUPING(a.code), MAX(b.name) NULLS LAST`;
+
+    const rows = await runQuery(sql, bindParams, comp_uid);
+    res.json(rows);
+  } catch (err) {
+    console.error('❌ Trial Date Wise SQL Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -9736,6 +10052,7 @@ app.get('/api/stock-sum-ledger-prod', async (req, res) => {
     if (!comp_code || !vr_date || !vno) {
       return res.status(400).json({ error: 'comp_code, vr_date, and vr_no are required' });
     }
+    const pmeta = await getProdTableMetaForUid(comp_uid);
     const sql = `
       SELECT
         A.S_DATE,
@@ -9749,10 +10066,10 @@ app.get('/api/stock-sum-ledger-prod', async (req, res) => {
         A.MILLING AS M_WEIGHT,
         A.ITEM_CODE,
         C.ITEM_NAME AS ITEM_NAME_CODE,
-        A.PROD_PER,
+        ${prodPerSelectExpr('A', pmeta)},
         A.QNTY AS PROD_QNTY,
         A.WEIGHT AS PROD_WEIGHT,
-        A.SHORT
+        ${shortSelectExpr('A', pmeta)}
       FROM PROD A, ITEMMAST B, ITEMMAST C
       WHERE A.COMP_CODE = :comp_code
         AND TRUNC(A.S_DATE) = TRUNC(TO_DATE(:vr_date, 'DD-MM-YYYY'))
@@ -9777,6 +10094,501 @@ app.get('/api/stock-sum-ledger-prod', async (req, res) => {
     res.json(rows || []);
   } catch (err) {
     console.error('❌ Stock sum ledger PROD error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Production entry — plants & items */
+app.get('/api/production-lookups', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const plantSql = `SELECT PLANT_CODE, PLANT_NAME FROM PLANT WHERE COMP_CODE = :comp_code ORDER BY PLANT_NAME, PLANT_CODE`;
+    const itemSql = `
+      SELECT ITEM_CODE, ITEM_NAME, NVL(UNIT_WGT, 0) AS UNIT_WGT
+      FROM ITEMMAST
+      WHERE COMP_CODE = :comp_code
+      ORDER BY ITEM_NAME, ITEM_CODE`;
+    const [plants, items] = await Promise.all([
+      runQuery(plantSql, { comp_code }, comp_uid),
+      runQuery(itemSql, { comp_code }, comp_uid),
+    ]);
+    res.json({ plants: plants || [], items: items || [] });
+  } catch (err) {
+    console.error('❌ production-lookups:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Production entry — user rights (F5) */
+app.get('/api/production-user-permissions', async (req, res) => {
+  try {
+    const { user_name, comp_uid } = req.query;
+    const { f5, source } = await fetchProductionUserF5String(String(user_name || ''), comp_uid);
+    res.json({ f5, source, ...productionPermissionsFromF5(f5) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Next production serial for date */
+app.get('/api/production-next-s-no', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date } = req.query;
+    if (!comp_code || !s_date) {
+      return res.status(400).json({ error: 'comp_code and s_date are required' });
+    }
+    const rows = await runQuery(
+      `SELECT NVL(MAX(TO_NUMBER(TRIM(TO_CHAR(S_NO)))), 0) + 1 AS S_NO
+       FROM PROD
+       WHERE COMP_CODE = :comp_code
+         AND TRUNC(S_DATE) = TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))`,
+      { comp_code, s_date },
+      comp_uid
+    );
+    const sNo = rows?.[0]?.S_NO ?? rows?.[0]?.s_no ?? 1;
+    res.json({ s_no: Number(sNo) || 1 });
+  } catch (err) {
+    console.error('❌ production-next-s-no:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Load one production voucher */
+app.get('/api/production-entry', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, s_no } = req.query;
+    if (!comp_code || !s_date || s_no == null) {
+      return res.status(400).json({ error: 'comp_code, s_date, and s_no are required' });
+    }
+    const pmeta = await getProdTableMetaForUid(comp_uid);
+    const rows = await runQueryRetry(
+      `SELECT
+         A.S_DATE, A.S_NO, A.ITEM, A.MILLING, A.M_QNTY, A.M_STATUS, A.PLANT_CODE,
+         A.TRN_NO, A.ITEM_CODE, ${prodPerSelectExpr('A', pmeta)}, A.QNTY, A.STATUS, A.WEIGHT, ${shortSelectExpr('A', pmeta)},
+         B.ITEM_NAME AS MILL_ITEM_NAME,
+         C.ITEM_NAME AS LINE_ITEM_NAME
+       FROM PROD A
+       LEFT JOIN ITEMMAST B ON A.COMP_CODE = B.COMP_CODE AND A.ITEM = B.ITEM_CODE
+       LEFT JOIN ITEMMAST C ON A.COMP_CODE = C.COMP_CODE AND A.ITEM_CODE = C.ITEM_CODE
+       WHERE A.COMP_CODE = :comp_code
+         AND TRUNC(A.S_DATE) = TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))
+         AND TRIM(TO_CHAR(A.S_NO)) = TRIM(TO_CHAR(:s_no))
+       ORDER BY A.TRN_NO`,
+      { comp_code, s_date, s_no: String(s_no).trim() },
+      comp_uid
+    );
+    if (!rows?.length) return res.json({ header: null, lines: [] });
+    const h0 = rows[0];
+    res.json({
+      header: {
+        s_date: h0.S_DATE ?? h0.s_date,
+        s_no: h0.S_NO ?? h0.s_no,
+        item: h0.ITEM ?? h0.item,
+        item_name: h0.MILL_ITEM_NAME ?? h0.mill_item_name ?? '',
+        milling: h0.MILLING ?? h0.milling,
+        m_qnty: h0.M_QNTY ?? h0.m_qnty,
+        m_status: h0.M_STATUS ?? h0.m_status,
+        plant_code: h0.PLANT_CODE ?? h0.plant_code,
+      },
+      lines: rows.map((r) => ({
+        trn_no: r.TRN_NO ?? r.trn_no,
+        item_code: r.ITEM_CODE ?? r.item_code,
+        item_name: r.LINE_ITEM_NAME ?? r.line_item_name ?? '',
+        prod_per: r.PROD_PER ?? r.prod_per,
+        qnty: r.QNTY ?? r.qnty,
+        status: r.STATUS ?? r.status,
+        weight: r.WEIGHT ?? r.weight,
+        short: r.SHORT ?? r.short,
+      })),
+    });
+  } catch (err) {
+    console.error('❌ production-entry load:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Production list */
+app.get('/api/production-list', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date_from, s_date_to } = req.query;
+    if (!comp_code) return res.status(400).json({ error: 'comp_code is required' });
+    const pmeta = await getProdTableMetaForUid(comp_uid);
+    let sql = `
+      SELECT
+        A.S_DATE, A.S_NO, A.ITEM, A.MILLING, A.M_QNTY, A.M_STATUS, A.PLANT_CODE,
+        A.TRN_NO, A.ITEM_CODE, ${prodPerSelectExpr('A', pmeta)}, A.QNTY, A.STATUS, A.WEIGHT, ${shortSelectExpr('A', pmeta)},
+        B.ITEM_NAME AS MILL_ITEM_NAME,
+        C.ITEM_NAME AS LINE_ITEM_NAME
+      FROM PROD A
+      LEFT JOIN ITEMMAST B ON A.COMP_CODE = B.COMP_CODE AND A.ITEM = B.ITEM_CODE
+      LEFT JOIN ITEMMAST C ON A.COMP_CODE = C.COMP_CODE AND A.ITEM_CODE = C.ITEM_CODE
+      WHERE A.COMP_CODE = :comp_code`;
+    const binds = { comp_code };
+    if (s_date_from) {
+      sql += ` AND TRUNC(A.S_DATE) >= TRUNC(TO_DATE(:s_date_from, 'DD-MM-YYYY'))`;
+      binds.s_date_from = s_date_from;
+    }
+    if (s_date_to) {
+      sql += ` AND TRUNC(A.S_DATE) <= TRUNC(TO_DATE(:s_date_to, 'DD-MM-YYYY'))`;
+      binds.s_date_to = s_date_to;
+    }
+    sql += ` ORDER BY A.S_DATE, A.S_NO, A.TRN_NO`;
+    const rows = await runQuery(sql, binds, comp_uid);
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ production-list:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Latest production voucher (max date, then max s_no) — default entry date for Prev/Next */
+app.get('/api/production-anchor', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    if (!comp_code) return res.status(400).json({ error: 'comp_code required' });
+    const sql = `
+      SELECT S_DATE, S_NO FROM (
+        SELECT TRUNC(S_DATE) AS S_DATE, MAX(TO_NUMBER(TRIM(TO_CHAR(S_NO)))) AS S_NO
+        FROM PROD
+        WHERE COMP_CODE = :comp_code
+        GROUP BY TRUNC(S_DATE)
+        ORDER BY TRUNC(S_DATE) DESC, MAX(TO_NUMBER(TRIM(TO_CHAR(S_NO)))) DESC
+      ) WHERE ROWNUM = 1`;
+    const rows = await runQuery(sql, { comp_code }, comp_uid);
+    if (!rows?.length) return res.json({ s_date: null, s_no: null });
+    res.json({
+      s_date: rows[0].S_DATE ?? rows[0].s_date,
+      s_no: rows[0].S_NO ?? rows[0].s_no,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Adjacent production voucher across all dates (dir: prev | next | first | last) */
+app.get('/api/production-nav', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, s_no, dir } = req.query;
+    if (!comp_code) {
+      return res.status(400).json({ error: 'comp_code required' });
+    }
+    const d = String(dir || 'next').toLowerCase();
+
+    const voucherKeys = `
+      SELECT TRUNC(S_DATE) AS S_DATE,
+             MAX(TO_CHAR(S_NO)) AS S_NO,
+             TO_NUMBER(TRIM(TO_CHAR(MAX(S_NO)))) AS S_NO_NUM
+      FROM PROD
+      WHERE COMP_CODE = :comp_code
+      GROUP BY TRUNC(S_DATE), TO_NUMBER(TRIM(TO_CHAR(S_NO)))`;
+
+    const pickOne = async (innerSql, binds) => {
+      const rows = await runQuery(
+        `SELECT S_DATE, S_NO FROM (${innerSql}) WHERE ROWNUM = 1`,
+        binds,
+        comp_uid
+      );
+      if (!rows?.length) return { s_date: null, s_no: null };
+      const r = rows[0];
+      const sn = r.S_NO ?? r.s_no;
+      return {
+        s_date: r.S_DATE ?? r.s_date,
+        s_no: sn != null && String(sn).trim() !== '' ? sn : null,
+      };
+    };
+
+    if (d === 'first') {
+      return res.json(
+        await pickOne(
+          `SELECT S_DATE, S_NO FROM (${voucherKeys}) ORDER BY S_DATE ASC, S_NO_NUM ASC`,
+          { comp_code }
+        )
+      );
+    }
+    if (d === 'last') {
+      return res.json(
+        await pickOne(
+          `SELECT S_DATE, S_NO FROM (${voucherKeys}) ORDER BY S_DATE DESC, S_NO_NUM DESC`,
+          { comp_code }
+        )
+      );
+    }
+
+    const isPrev = d === 'prev';
+    const sNoStr = String(s_no ?? '').trim().replace(/\D/g, '');
+    const sNoNum = sNoStr ? Number(sNoStr) : NaN;
+    const hasCursor = !!String(s_date || '').trim() && Number.isFinite(sNoNum) && sNoNum > 0;
+
+    if (!hasCursor) {
+      if (!String(s_date || '').trim()) {
+        return res.json(
+          isPrev
+            ? await pickOne(
+                `SELECT S_DATE, S_NO FROM (${voucherKeys}) ORDER BY S_DATE DESC, S_NO_NUM DESC`,
+                { comp_code }
+              )
+            : await pickOne(
+                `SELECT S_DATE, S_NO FROM (${voucherKeys}) ORDER BY S_DATE ASC, S_NO_NUM ASC`,
+                { comp_code }
+              )
+        );
+      }
+      if (isPrev) {
+        return res.json(
+          await pickOne(
+            `SELECT S_DATE, S_NO FROM (${voucherKeys}) V
+             WHERE V.S_DATE <= TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))
+             ORDER BY V.S_DATE DESC, V.S_NO_NUM DESC`,
+            { comp_code, s_date }
+          )
+        );
+      }
+      return res.json(
+        await pickOne(
+          `SELECT S_DATE, S_NO FROM (${voucherKeys}) V
+           WHERE V.S_DATE >= TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))
+           ORDER BY V.S_DATE ASC, V.S_NO_NUM ASC`,
+          { comp_code, s_date }
+        )
+      );
+    }
+
+    if (isPrev) {
+      return res.json(
+        await pickOne(
+          `SELECT S_DATE, S_NO FROM (${voucherKeys}) V
+           WHERE V.S_DATE < TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))
+              OR (V.S_DATE = TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND V.S_NO_NUM < :s_no_num)
+           ORDER BY V.S_DATE DESC, V.S_NO_NUM DESC`,
+          { comp_code, s_date, s_no_num: sNoNum }
+        )
+      );
+    }
+    return res.json(
+      await pickOne(
+        `SELECT S_DATE, S_NO FROM (${voucherKeys}) V
+         WHERE V.S_DATE > TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))
+            OR (V.S_DATE = TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND V.S_NO_NUM > :s_no_num)
+         ORDER BY V.S_DATE ASC, V.S_NO_NUM ASC`,
+        { comp_code, s_date, s_no_num: sNoNum }
+      )
+    );
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Save / delete production voucher (PROD + STOCK type PR) */
+app.post('/api/production-save', async (req, res) => {
+  let conn;
+  try {
+    const body = req.body || {};
+    const comp_code = String(body.comp_code || '').trim();
+    const comp_uid = String(body.comp_uid || '').trim();
+    const user_name = String(body.user_name || '').trim().toUpperCase();
+    const mode = String(body.mode || 'add').trim().toLowerCase();
+    const header = body.header && typeof body.header === 'object' ? body.header : {};
+    const linesIn = Array.isArray(body.lines) ? body.lines : [];
+
+    if (!comp_code || !comp_uid || !user_name) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, user_name required' });
+    }
+
+    const { f5 } = await fetchProductionUserF5String(user_name, comp_uid);
+    const perms = productionPermissionsFromF5(f5);
+    if (!perms.canOpen) return res.status(403).json({ error: 'Access Denied' });
+    if (mode === 'add' && !perms.canAdd) return res.status(403).json({ error: 'You Can Not Add' });
+    if (mode === 'edit' && !perms.canEdit) return res.status(403).json({ error: 'You Can Not Edit' });
+    if (mode === 'delete' && !perms.canDelete) return res.status(403).json({ error: 'You Can Not Delete' });
+
+    const s_date = String(header.s_date || body.s_date || '').trim();
+    if (!s_date) return res.status(400).json({ error: 's_date (DD-MM-YYYY) required' });
+
+    const comp_year_sel = parseCompYearOpt(body.comp_year);
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid, comp_year_sel);
+    if (!compdet) return res.status(400).json({ error: 'compdet not found' });
+    const comp_year = Number(compdet?.COMP_YEAR ?? compdet?.comp_year ?? comp_year_sel ?? 0) || 0;
+
+    const connCfg = { user: comp_uid, password: comp_uid, connectString: activeDbConfig.connectString };
+    conn = await getDbConnection(connCfg);
+
+    let s_no_use = header.s_no != null ? String(header.s_no).trim() : '';
+    if (mode === 'delete') {
+      if (!s_no_use) return res.status(400).json({ error: 's_no required for delete' });
+      await deleteProductionVoucher(conn, { comp_code, s_date, s_no: s_no_use });
+      await conn.commit();
+      return res.json({ ok: true, mode: 'delete' });
+    }
+
+    const plant_code_req = String(header.plant_code || '').trim();
+    if (!plant_code_req) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Plant code is required' });
+    }
+
+    const millingItem = String(header.item || '').trim();
+    const prodLines = linesIn
+      .map((l, i) => ({
+        trn_no: Number(l.trn_no) || i + 1,
+        item_code: String(l.item_code || '').trim(),
+        prod_per: Number(l.prod_per) || 0,
+        qnty: Number(l.qnty) || 0,
+        status: String(l.status || 'B').trim().toUpperCase().slice(0, 1) || 'B',
+        weight: Number(l.weight) || 0,
+        short: Number(l.short) || 0,
+      }))
+      .filter((l) => l.item_code);
+    const hasMilling = !!millingItem;
+    const hasProduction = prodLines.length > 0;
+    if (!hasMilling && !hasProduction) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: 'Enter milling item and/or at least one production line with item code',
+      });
+    }
+
+    if (mode === 'add') {
+      if (!s_no_use) {
+        const maxRows = await conn.execute(
+          `SELECT NVL(MAX(TO_NUMBER(TRIM(TO_CHAR(S_NO)))), 0) + 1 AS NB
+           FROM PROD WHERE COMP_CODE = :cc AND TRUNC(S_DATE) = TRUNC(TO_DATE(:sd, 'DD-MM-YYYY'))`,
+          { cc: comp_code, sd: s_date },
+          { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+        s_no_use = String(maxRows.rows?.[0]?.NB ?? maxRows.rows?.[0]?.nb ?? 1);
+      }
+    } else if (!s_no_use) {
+      await conn.rollback();
+      return res.status(400).json({ error: 's_no required for edit' });
+    }
+
+    await deleteProductionVoucher(conn, { comp_code, s_date, s_no: s_no_use });
+
+    const tableMeta = await getProdTableColumns(conn, comp_uid);
+    const prodSql = buildProdInsertSql(tableMeta);
+
+    const plant_code = plant_code_req;
+    const milling = Number(header.milling) || 0;
+    const m_qnty = Number(header.m_qnty) || 0;
+    const m_status = String(header.m_status || 'B').trim().toUpperCase().slice(0, 1) || 'B';
+    const headerItem = millingItem || ' ';
+
+    if (hasProduction) {
+      for (const line of prodLines) {
+        await conn.execute(
+          prodSql,
+          prodLineBind(tableMeta, {
+            comp_code,
+            comp_year,
+            s_date,
+            s_no: s_no_use,
+            item: headerItem,
+            milling,
+            m_qnty,
+            m_status,
+            plant_code,
+            trn_no: line.trn_no,
+            item_code: line.item_code,
+            prod_per: line.prod_per,
+            qnty: line.qnty,
+            status: line.status,
+            weight: line.weight,
+            short: line.short,
+            user_name,
+          }),
+          { autoCommit: false }
+        );
+      }
+    } else {
+      await conn.execute(
+        prodSql,
+        prodLineBind(tableMeta, {
+          comp_code,
+          comp_year,
+          s_date,
+          s_no: s_no_use,
+          item: millingItem,
+          milling,
+          m_qnty,
+          m_status,
+          plant_code,
+          trn_no: 1,
+          item_code: ' ',
+          prod_per: 0,
+          qnty: 0,
+          status: 'B',
+          weight: 0,
+          short: 0,
+          user_name,
+        }),
+        { autoCommit: false }
+      );
+    }
+
+    await insertProductionStockRows(conn, {
+      comp_code,
+      comp_year,
+      s_date,
+      s_no: s_no_use,
+      plant_code,
+      user_name,
+      millingItem,
+      milling,
+      m_qnty,
+      m_status,
+      lines: prodLines,
+      stockMeta: tableMeta,
+    });
+
+    await conn.commit();
+    res.json({ ok: true, s_no: s_no_use, s_date, mode });
+  } catch (err) {
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (_) {}
+    }
+    console.error('❌ production-save:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) {
+      try {
+        await conn.close();
+      } catch (_) {}
+    }
+  }
+});
+
+/** Production posting — STOCK rows (TYPE PR) for voucher */
+app.get('/api/production-stock-posting', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, s_no } = req.query;
+    if (!comp_code || !s_date || s_no == null) {
+      return res.status(400).json({ error: 'comp_code, s_date, and s_no are required' });
+    }
+    const sql = `
+      SELECT
+        TYPE, VR_DATE, VR_NO, ITEM_CODE,
+        R_QNTY, R_WEIGHT, R_BAGS, R_KATTA, R_HKATTA,
+        I_QNTY, I_WEIGHT, I_BAGS, I_KATTA, I_HKATTA,
+        SHORT
+      FROM STOCK
+      WHERE COMP_CODE = :comp_code
+        AND TRIM(TYPE) = 'PR'
+        AND TRUNC(VR_DATE) = TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))
+        AND TRIM(TO_CHAR(VR_NO)) = TRIM(TO_CHAR(:s_no))
+      ORDER BY ITEM_CODE, R_WEIGHT, I_WEIGHT`;
+    const rows = await runQuery(
+      sql,
+      { comp_code, s_date, s_no: String(s_no).trim() },
+      comp_uid
+    );
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ production-stock-posting:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

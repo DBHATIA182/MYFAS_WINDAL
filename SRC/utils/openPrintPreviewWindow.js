@@ -33,22 +33,84 @@ export function openPrintPreviewWindow(htmlDocument, { title = 'Print preview' }
   return w;
 }
 
+function frameHasExternalSrc(frame) {
+  if (!frame) return false;
+  const src = String(frame.getAttribute('src') || frame.src || '').trim();
+  return src.length > 0 && src !== 'about:blank';
+}
+
 /**
- * Print an HTML document without blanking the app shell.
- * Uses a hidden iframe so parent @media print { body * { visibility:hidden } } is not applied.
+ * Mobile-safe print: new window with full HTML (blob preview iframes often print blank on iOS).
  */
-export function printHtmlDocument(htmlDocument, { existingFrame = null } = {}) {
+export function openHtmlPrintWindow(htmlDocument, { title = 'Print' } = {}) {
   if (!htmlDocument) {
     alert('Nothing to print yet.');
     return false;
   }
 
-  const frame = existingFrame || document.createElement('iframe');
-  const owned = !existingFrame;
+  let doc = htmlDocument;
+  if (title) {
+    const safeTitle = String(title).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    if (/<title>[^<]*<\/title>/i.test(doc)) {
+      doc = doc.replace(/<title>[^<]*<\/title>/i, `<title>${safeTitle}</title>`);
+    } else if (/<head[^>]*>/i.test(doc)) {
+      doc = doc.replace(/<head[^>]*>/i, (m) => `${m}<title>${safeTitle}</title>`);
+    }
+  }
+
+  const w = window.open('', '_blank');
+  if (!w) {
+    const tab = openPrintPreviewWindow(doc, { title });
+    if (tab) {
+      alert('Use the browser menu (⋮) → Print, or allow pop-ups and try again.');
+    }
+    return false;
+  }
+
+  w.document.open();
+  w.document.write(doc);
+  w.document.close();
+
+  const runPrint = () => {
+    try {
+      w.focus();
+      w.print();
+    } catch (err) {
+      alert(String(err?.message || err || 'Print failed'));
+    }
+  };
+
+  setTimeout(runPrint, 450);
+  return true;
+}
+
+/**
+ * Print an HTML document without blanking the app shell.
+ * Uses a hidden iframe so parent @media print { body * { visibility:hidden } } is not applied.
+ */
+export function printHtmlDocument(htmlDocument, { existingFrame = null, preferNewWindow = false } = {}) {
+  if (!htmlDocument) {
+    alert('Nothing to print yet.');
+    return false;
+  }
+
+  if (preferNewWindow || (existingFrame && frameHasExternalSrc(existingFrame))) {
+    return openHtmlPrintWindow(htmlDocument);
+  }
+
+  const canReuse =
+    existingFrame &&
+    !frameHasExternalSrc(existingFrame) &&
+    String(existingFrame.srcdoc || '') === String(htmlDocument);
+
+  const frame = canReuse ? existingFrame : document.createElement('iframe');
+  const owned = frame !== existingFrame;
   if (owned) {
     frame.setAttribute('aria-hidden', 'true');
     frame.title = 'Print frame';
     frame.className = 'dc-print-silent-frame';
+    frame.style.cssText =
+      'position:fixed;left:-10000px;top:0;width:794px;height:1100px;border:0;opacity:0;pointer-events:none;';
     document.body.appendChild(frame);
   }
 
@@ -59,7 +121,12 @@ export function printHtmlDocument(htmlDocument, { existingFrame = null } = {}) {
       win.focus();
       win.print();
     } catch (err) {
-      alert(String(err?.message || err || 'Print failed'));
+      if (owned) {
+        try {
+          frame.remove();
+        } catch (_) {}
+      }
+      return openHtmlPrintWindow(htmlDocument);
     } finally {
       if (owned) {
         setTimeout(() => {
@@ -68,14 +135,14 @@ export function printHtmlDocument(htmlDocument, { existingFrame = null } = {}) {
           } catch {
             /* ignore */
           }
-        }, 2000);
+        }, 3000);
       }
     }
   };
 
-  if (existingFrame && frame.srcdoc === htmlDocument) {
-    const doc = frame.contentDocument;
-    if (doc?.readyState === 'complete') {
+  if (canReuse) {
+    const idoc = frame.contentDocument;
+    if (idoc?.readyState === 'complete') {
       runPrint();
       return true;
     }
@@ -84,6 +151,7 @@ export function printHtmlDocument(htmlDocument, { existingFrame = null } = {}) {
   }
 
   frame.onload = runPrint;
+  frame.removeAttribute('src');
   frame.srcdoc = htmlDocument;
   return true;
 }

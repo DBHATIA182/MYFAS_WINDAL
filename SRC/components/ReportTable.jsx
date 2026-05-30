@@ -13,6 +13,7 @@ import {
   trialBalanceRowKind,
   trialBalanceRowLabel,
   computeTrialTopSummary,
+  findTrialGrandRow,
 } from '../utils/trialBalanceSort';
 
 const LEDGER_SALE_VR_TYPES = new Set(['SL', 'SE', 'CN']);
@@ -51,6 +52,7 @@ export default function ReportTable({
   data,
   type,
   onLedgerClick,
+  onAnnexureClick,
   onSaleBillClick,
   onVoucherClick,
   onLedgerSaleBillClick,
@@ -287,6 +289,254 @@ export default function ReportTable({
                 <strong>{fmtAlways(gCr)}</strong>
               </td>
             </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  // --- TRIAL BALANCE SUMMARY (annexure / schedule totals only) ---
+  if (type === 'trial-balance-summary') {
+    const summaryRows = sortTrialBalanceRows(data).filter((row) => trialBalanceRowKind(row) === 1);
+    const grand = findTrialGrandRow(data);
+    const gDr = grand ? parseFloat(grand.DR_AMT ?? grand.dr_amt ?? 0) || 0 : 0;
+    const gCr = grand ? parseFloat(grand.CR_AMT ?? grand.cr_amt ?? 0) || 0 : 0;
+    const gCdr = grand ? parseFloat(grand.CLOSING_DR ?? grand.closing_dr ?? 0) || 0 : 0;
+    const gCcr = grand ? parseFloat(grand.CLOSING_CR ?? grand.closing_cr ?? 0) || 0 : 0;
+
+    return (
+      <div className="table-responsive table-responsive--trial">
+        <table className="report-table report-table--trial report-table--trial-summary">
+          <thead>
+            <tr>
+              <th scope="col">Annexure</th>
+              <th scope="col">Schedule name</th>
+              <th className="text-right" scope="col">
+                Clos. Dr
+              </th>
+              <th className="text-right" scope="col">
+                Clos. Cr
+              </th>
+              <th className="text-right" scope="col">
+                Dr amt
+              </th>
+              <th className="text-right" scope="col">
+                Cr amt
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {summaryRows.map((row, idx) => {
+              const schVal = row.SCHEDULE ?? row.schedule ?? '';
+              const nameVal = trialBalanceRowLabel(row);
+              const cdr = parseFloat(row.CLOSING_DR ?? row.closing_dr ?? 0) || 0;
+              const ccr = parseFloat(row.CLOSING_CR ?? row.closing_cr ?? 0) || 0;
+              const drAmt = parseFloat(row.DR_AMT ?? row.dr_amt ?? 0) || 0;
+              const crAmt = parseFloat(row.CR_AMT ?? row.cr_amt ?? 0) || 0;
+              return (
+                <tr
+                  key={idx}
+                  className="trial-schedule-total-row clickable-row"
+                  onClick={() => onAnnexureClick && onAnnexureClick(schVal, nameVal)}
+                >
+                  <td className="trial-sch">{schVal !== '' && schVal != null ? schVal : '—'}</td>
+                  <td className="trial-name">
+                    <span className="name-text">{nameVal}</span>
+                  </td>
+                  <td className={`text-right ${cdr > 0 ? 'dr-amt' : ''}`}>{cdr > 0 ? fmt(cdr) : '—'}</td>
+                  <td className={`text-right ${ccr > 0 ? 'cr-amt' : ''}`}>{ccr > 0 ? fmt(ccr) : '—'}</td>
+                  <td className={`text-right ${drAmt > 0 ? 'dr-amt' : ''}`}>{drAmt > 0 ? fmt(drAmt) : '—'}</td>
+                  <td className={`text-right ${crAmt > 0 ? 'cr-amt' : ''}`}>{crAmt > 0 ? fmt(crAmt) : '—'}</td>
+                </tr>
+              );
+            })}
+            {grand ? (
+              <tr className="trial-grand-total trial-grand-total-footer">
+                <td colSpan={2}>
+                  <strong>GRAND TOTAL</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(gCdr)}</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(gCcr)}</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(gDr)}</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(gCr)}</strong>
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  // --- TRIAL DATE WISE (opening / transactions / closing) ---
+  if (type === 'trial-date-wise') {
+    const displayRows = sortTrialBalanceRows(data);
+    const grand = findTrialGrandRow(displayRows);
+    const num = (row, ...keys) => {
+      for (const k of keys) {
+        const v = row[k];
+        if (v == null || v === '') continue;
+        const n = parseFloat(v);
+        if (!Number.isNaN(n)) return n;
+      }
+      return 0;
+    };
+    const sumDetail = (keys) => {
+      let t = 0;
+      displayRows.forEach((row) => {
+        if (trialBalanceRowKind(row) !== 0) return;
+        t += num(row, keys[0], keys[1]);
+      });
+      return t;
+    };
+
+    return (
+      <div className="table-responsive table-responsive--trial table-responsive--trial-date-wise">
+        <table className="report-table report-table--trial report-table--trial-date-wise">
+          <thead>
+            <tr>
+              <th rowSpan={2} scope="col">
+                Code
+              </th>
+              <th rowSpan={2} scope="col">
+                Name
+              </th>
+              <th rowSpan={2} scope="col">
+                City
+              </th>
+              <th rowSpan={2} scope="col">
+                Pan
+              </th>
+              <th colSpan={2} className="text-center" scope="colgroup">
+                Opening Balance
+              </th>
+              <th colSpan={2} className="text-center" scope="colgroup">
+                Transactions
+              </th>
+              <th colSpan={2} className="text-center" scope="colgroup">
+                Closing Balance
+              </th>
+            </tr>
+            <tr>
+              <th className="text-right" scope="col">
+                Debit
+              </th>
+              <th className="text-right" scope="col">
+                Credit
+              </th>
+              <th className="text-right" scope="col">
+                Debit
+              </th>
+              <th className="text-right" scope="col">
+                Credit
+              </th>
+              <th className="text-right" scope="col">
+                Debit
+              </th>
+              <th className="text-right" scope="col">
+                Credit
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {displayRows
+              .filter((row) => trialBalanceRowKind(row) !== 2)
+              .map((row, idx) => {
+                const codeVal = row.CODE ?? row.code;
+                const nameVal = trialBalanceRowLabel(row);
+                const rowKind = trialBalanceRowKind(row);
+                const isTotal = rowKind >= 1;
+                const opDr = num(row, 'OP_DR', 'op_dr');
+                const opCr = num(row, 'OP_CR', 'op_cr');
+                const trnDr = num(row, 'TRN_DR', 'trn_dr');
+                const trnCr = num(row, 'TRN_CR', 'trn_cr');
+                const clDr = num(row, 'CL_DR', 'cl_dr');
+                const clCr = num(row, 'CL_CR', 'cl_cr');
+                const rowClass =
+                  rowKind === 1
+                    ? 'trial-schedule-total-row'
+                    : isTotal
+                      ? 'trial-subtotal-row'
+                      : 'clickable-row';
+                return (
+                  <tr
+                    key={idx}
+                    className={rowClass}
+                    onClick={() => {
+                      if (!isTotal && onLedgerClick) onLedgerClick(codeVal, nameVal);
+                    }}
+                  >
+                    <td className="trial-code">{codeVal != null && codeVal !== '' ? codeVal : '—'}</td>
+                    <td className="trial-name">
+                      <span className="name-text">{nameVal}</span>
+                    </td>
+                    <td className="trial-city">{rowKind === 1 ? '—' : row.CITY ?? row.city ?? '—'}</td>
+                    <td>{rowKind === 1 ? '—' : row.PAN ?? row.pan ?? '—'}</td>
+                    <td className={`text-right ${opDr > 0 ? 'dr-amt' : ''}`}>{opDr > 0 ? fmt(opDr) : '—'}</td>
+                    <td className={`text-right ${opCr > 0 ? 'cr-amt' : ''}`}>{opCr > 0 ? fmt(opCr) : '—'}</td>
+                    <td className={`text-right ${trnDr > 0 ? 'dr-amt' : ''}`}>{trnDr > 0 ? fmt(trnDr) : '—'}</td>
+                    <td className={`text-right ${trnCr > 0 ? 'cr-amt' : ''}`}>{trnCr > 0 ? fmt(trnCr) : '—'}</td>
+                    <td className={`text-right ${clDr > 0 ? 'dr-amt' : ''}`}>{clDr > 0 ? fmt(clDr) : '—'}</td>
+                    <td className={`text-right ${clCr > 0 ? 'cr-amt' : ''}`}>{clCr > 0 ? fmt(clCr) : '—'}</td>
+                  </tr>
+                );
+              })}
+            {grand ? (
+              <tr className="trial-grand-total trial-grand-total-footer">
+                <td colSpan={4}>
+                  <strong>GRAND TOTAL</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(num(grand, 'OP_DR', 'op_dr'))}</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(num(grand, 'OP_CR', 'op_cr'))}</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(num(grand, 'TRN_DR', 'trn_dr'))}</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(num(grand, 'TRN_CR', 'trn_cr'))}</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(num(grand, 'CL_DR', 'cl_dr'))}</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(num(grand, 'CL_CR', 'cl_cr'))}</strong>
+                </td>
+              </tr>
+            ) : (
+              <tr className="trial-grand-total trial-grand-total-footer">
+                <td colSpan={4}>
+                  <strong>GRAND TOTAL</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(sumDetail(['OP_DR', 'op_dr']))}</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(sumDetail(['OP_CR', 'op_cr']))}</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(sumDetail(['TRN_DR', 'trn_dr']))}</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(sumDetail(['TRN_CR', 'trn_cr']))}</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(sumDetail(['CL_DR', 'cl_dr']))}</strong>
+                </td>
+                <td className="text-right">
+                  <strong>{fmtAlways(sumDetail(['CL_CR', 'cl_cr']))}</strong>
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

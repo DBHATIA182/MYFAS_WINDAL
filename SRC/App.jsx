@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import axios from 'axios';
 import { IconSettings, IconVoice } from './components/ToolbarIcons';
 import LoginSlide from './slides/LoginSlide';
@@ -8,6 +8,9 @@ import Slide1 from './slides/Slide1';
 import Slide2 from './slides/slide2';
 import Slide3 from './slides/Slide3';
 import Slide4 from './slides/Slide4';
+import Slide30TrialBalanceSummary from './slides/Slide30TrialBalanceSummary';
+import Slide31TrialDateWise from './slides/Slide31TrialDateWise';
+const Slide32ProductionEntry = lazy(() => import('./slides/Slide32ProductionEntry'));
 import Slide5 from './slides/Slide5';
 import Slide6 from './slides/Slide6';
 import Slide7 from './slides/Slide7';
@@ -250,6 +253,15 @@ function App() {
 
   useEffect(() => {
     /* Temporarily disabled persisted-auth restore to verify mobile startup path. */
+  }, []);
+
+  /** Recover from a stuck print/picker leaving body unscrollable (mobile white screen). */
+  useEffect(() => {
+    try {
+      if (typeof document === 'undefined' || !document.body) return;
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+    } catch (_) {}
   }, []);
 
   /** Dev: confirm Vite proxy hits the API from this repo (see server.cjs cwd + clientName logs). */
@@ -559,6 +571,9 @@ function App() {
     else if (reportType === 'account-master') setCurrentSlide(26);
     else if (reportType === 'item-master') setCurrentSlide(27);
     else if (reportType === 'voucher-entry') setCurrentSlide(28);
+    else if (reportType === 'trial-balance-summary') setCurrentSlide(30);
+    else if (reportType === 'trial-date-wise') setCurrentSlide(31);
+    else if (reportType === 'production-entry') setCurrentSlide(32);
     else setCurrentSlide(4);
   };
 
@@ -971,6 +986,22 @@ function App() {
         )}
         {currentSlide === 3 && <Slide3 formData={formData} onPrev={handlePrev} onNext={handleSlide3Next} />}
         {currentSlide === 4 && <Slide4 apiBase={API_BASE} formData={formData} onPrev={handlePrev} onReset={handleReset} />}
+        {currentSlide === 30 && (
+          <Slide30TrialBalanceSummary
+            apiBase={API_BASE}
+            formData={formData}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+          />
+        )}
+        {currentSlide === 31 && (
+          <Slide31TrialDateWise
+            apiBase={API_BASE}
+            formData={formData}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+          />
+        )}
         {currentSlide === 5 && <Slide5 apiBase={API_BASE} formData={formData} onPrev={handlePrev} onReset={handleReset} />}
         {currentSlide === 6 && (
           <Slide6 apiBase={API_BASE} formData={formData} onPrev={() => setCurrentSlide(3)} onReset={handleReset} />
@@ -1094,6 +1125,23 @@ function App() {
             onPrev={() => setCurrentSlide(3)}
             onReset={handleReset}
           />
+        )}
+        {currentSlide === 32 && (
+          <Suspense
+            fallback={
+              <div className="app-loading">
+                <p>Loading production entry…</p>
+              </div>
+            }
+          >
+            <Slide32ProductionEntry
+              apiBase={API_BASE}
+              formData={formData}
+              userName={loginUserName}
+              onPrev={() => setCurrentSlide(3)}
+              onReset={handleReset}
+            />
+          </Suspense>
         )}
       </main>
       </AppSessionContext.Provider>

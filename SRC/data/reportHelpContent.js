@@ -32,6 +32,41 @@ export const REPORT_HELP = {
     ],
   },
 
+  'trial-balance-summary': {
+    title: 'Trial Balance Summary',
+    summary: 'Annexure (schedule) totals first; open detail and ledger from a row.',
+    sections: [
+      section('Parameters', ['Set as-of (ending) date.', 'Run Report.']),
+      section('Summary screen', [
+        'Shows one row per annexure / schedule with closing and period totals.',
+        'Tap a row → account detail for that schedule.',
+        'Pdf, Excel, Print, and WhatsApp on the toolbar.',
+      ]),
+      section('Detail & ledger', [
+        'On detail, tap an account → ledger for the financial year.',
+        'On ledger, tap a line → voucher; sale bill print where mapped.',
+      ]),
+    ],
+  },
+
+  'trial-date-wise': {
+    title: 'Trial Balance Date Wise',
+    summary: 'Opening, transactions, and closing balances for a date range.',
+    sections: [
+      section('Parameters', ['Starting date and ending date.', 'Run Report.']),
+      section('Columns', [
+        'Code, Name, City, Pan',
+        'Opening Balance (Debit / Credit)',
+        'Transactions (Debit / Credit)',
+        'Closing Balance (Debit / Credit)',
+      ]),
+      section('Drill-down', [
+        'Tap an account row → ledger for the same date range as the report.',
+        'Export: Pdf, Excel, Print, WhatsApp.',
+      ]),
+    ],
+  },
+
   'trial-balance': {
     title: 'Trial Balance',
     summary: 'Account balances as of a date, with optional schedule filter.',
@@ -263,6 +298,19 @@ export const REPORT_HELP = {
     ],
   },
 
+  'production-entry': {
+    title: 'Production Entry',
+    summary: 'Production records (PROD + STOCK type PR).',
+    sections: [
+      section('Use', [
+        'Header: date, Sr.No., milling item, weight, qty, B/K/H, plant.',
+        'Lines: item, prod %, qty, B/K/H, weight, shortage.',
+        'Save posts PROD and STOCK (TYPE PR). List, print, Prev/Next from toolbar.',
+        'Rights: DAL.USERS F5 — open, add, edit, delete (positions 1–4).',
+      ]),
+    ],
+  },
+
   'dispatch-challan-entry': {
     title: 'Dispatch Challan Entry',
     summary: 'Dispatch challans (ISSUE type S).',
@@ -367,6 +415,8 @@ export const REPORT_HELP = {
 const PDF_ORDER = [
   'reports-menu',
   'trial-balance',
+  'trial-balance-summary',
+  'trial-date-wise',
   'ledger',
   'ledger-interest',
   'customer-ledger',
@@ -384,6 +434,7 @@ const PDF_ORDER = [
   'purchase-order-entry',
   'purchase-bill-entry',
   'dispatch-challan-entry',
+  'production-entry',
   'sale-bill-entry',
   'purchase-list',
   'voucher-list',
