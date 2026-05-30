@@ -9,6 +9,62 @@ function section(title, bullets) {
   return { title, bullets: bullets.filter(Boolean) };
 }
 
+/** Getting started + drill-down flows for client PDF / full guide. */
+export const CLIENT_GUIDE_INTRO_SECTIONS = [
+  section('What is Windal Accounting?', [
+    'Web-based accounting for pulses, grain, and trading businesses.',
+    'Final accounts, ledgers, stock, sales, purchase, vouchers, and production on one system.',
+    'Works on office PC and mobile browser (same URL via Cloudflare tunnel on client installs).',
+  ]),
+  section('Step 1 — Log in', [
+    'Open your company URL (example: https://your-company.fasaccountingsoftware.in).',
+    'Enter User name and Password (from DAL.USERS).',
+    'Select Company and Financial Year, then continue to the main menu.',
+  ]),
+  section('Step 2 — Open the reports menu', [
+    'After login you see numbered modules (1–8). Click a module title to expand it.',
+    'Click a report or entry name to open it immediately.',
+    'Use ↑ / ↓ keys to move, Enter to open (desktop).',
+    'Use ← Back to go to the previous screen; 🏠 Home returns to the menu.',
+    'Tap ? (Help) on any screen for a short guide; download the full PDF from the menu Help button.',
+  ]),
+  section('Step 3 — Trial Balance → Ledger → Voucher (most important drill-down)', [
+    'Open Final Accounts → Trial Balance Report.',
+    'Set As-of (ending) date and Run Report.',
+    'You see one row per account with opening, debit, credit, and closing balances.',
+    'Click any account row → Ledger opens for that account (full financial year).',
+    'On the Ledger, each line is one posting; click a line → Voucher shows all ledger lines for that voucher (type, date, number).',
+    'Use ← Back: Voucher returns to Ledger; Ledger returns to Trial Balance.',
+    'On some ledger lines (sale-related), you may also open Sale Bill print when mapped.',
+  ]),
+  section('Trial Balance Summary (annexure flow)', [
+    'Open Trial Balance Summary → set as-of date → Run Report.',
+    'Summary shows one row per annexure / schedule.',
+    'Click a summary row → account detail for that schedule.',
+    'Click an account in detail → Ledger → click a line → Voucher (same as above).',
+  ]),
+  section('Trial Balance Date Wise', [
+    'Set starting and ending dates → Run Report.',
+    'Shows opening, period transactions, and closing per account.',
+    'Click an account row → Ledger for the same date range.',
+  ]),
+  section('Toolbar on report screens', [
+    'Pdf — save report as PDF file.',
+    'Excel — download spreadsheet.',
+    'Print — browser print dialog.',
+    'WhatsApp — share PDF (mobile-friendly).',
+    '← Back and 🏠 Home — navigation.',
+  ]),
+  section('Data entry modules (summary)', [
+    'Sales Order → Dispatch Challan → Sale Bill (sales workflow).',
+    'Purchase Order → GRN → Purchase Bill (purchase workflow).',
+    'Cash / Bank / Journal Entry — CV, BV, JV vouchers.',
+    'Production Entry — milling and production lines (posts stock TYPE PR).',
+    'A/c Master and Item Master — maintain parties and items.',
+    'Your user rights (F2, F5, F12, etc. in DAL.USERS) control add, edit, delete on each module.',
+  ]),
+];
+
 export const REPORT_HELP = {
   'reports-menu': {
     title: 'Reports & Modules',
@@ -477,8 +533,26 @@ function renderSectionsHtml(sections) {
     .join('');
 }
 
+function renderFlowDiagramHtml() {
+  return `
+  <div class="ug-flow-diagram">
+    <h3>Drill-down flow (example)</h3>
+    <div class="ug-flow-steps">
+      <div class="ug-flow-box ug-flow-box--start">Trial Balance<br/><small>Click an account row</small></div>
+      <div class="ug-flow-arrow" aria-hidden="true">→</div>
+      <div class="ug-flow-box">Ledger Account<br/><small>All transactions for that account</small></div>
+      <div class="ug-flow-arrow" aria-hidden="true">→</div>
+      <div class="ug-flow-box">Click a transaction line</div>
+      <div class="ug-flow-arrow" aria-hidden="true">→</div>
+      <div class="ug-flow-box ug-flow-box--end">Voucher detail<br/><small>All ledger lines on that voucher</small></div>
+    </div>
+    <p class="ug-flow-note">← Back on each screen returns one step. Balance Sheet and Trading A/C use similar click-through on account rows.</p>
+  </div>`;
+}
+
 export function buildUserGuideHtml({ companyName = '', appName = 'Windal Accounting', includeReportIds } = {}) {
   const ids = includeReportIds || PDF_ORDER;
+  const introHtml = renderSectionsHtml(CLIENT_GUIDE_INTRO_SECTIONS);
   const blocks = ids
     .filter((id) => REPORT_HELP[id])
     .map((id) => {
@@ -498,29 +572,58 @@ export function buildUserGuideHtml({ companyName = '', appName = 'Windal Account
   <meta charset="utf-8"/>
   <title>${escapeHtml(appName)} — User Guide</title>
   <style>
+    @page { margin: 14mm 12mm; }
     body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #1e293b; margin: 0; padding: 16px 20px; }
-    h1 { font-size: 18pt; color: #1e3a8a; margin: 0 0 8px; }
+    h1 { font-size: 20pt; color: #1e3a8a; margin: 0 0 6px; }
+    h2 { font-size: 14pt; color: #1e40af; margin: 22px 0 8px; page-break-after: avoid; }
+    .ug-cover { text-align: center; padding: 40px 20px 30px; border-bottom: 3px solid #1e3a8a; margin-bottom: 24px; }
+    .ug-cover h1 { font-size: 24pt; }
+    .ug-cover .ug-sub { font-size: 13pt; color: #475569; margin-top: 8px; }
     .ug-meta { font-size: 9.5pt; color: #64748b; margin-bottom: 20px; }
-    .ug-intro { background: #eff6ff; border: 1px solid #bfdbfe; padding: 12px 14px; border-radius: 8px; margin-bottom: 22px; }
+    .ug-intro-block { background: #f8fafc; border: 1px solid #cbd5e1; padding: 14px 16px; border-radius: 8px; margin-bottom: 22px; page-break-inside: avoid; }
+    .ug-flow-diagram { background: #eff6ff; border: 2px solid #93c5fd; border-radius: 10px; padding: 14px 16px; margin: 16px 0 22px; page-break-inside: avoid; }
+    .ug-flow-diagram h3 { margin: 0 0 12px; font-size: 11pt; color: #1e3a8a; }
+    .ug-flow-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-content: center; }
+    .ug-flow-box { background: #fff; border: 1px solid #64748b; border-radius: 6px; padding: 8px 10px; font-size: 9pt; text-align: center; min-width: 100px; font-weight: 600; }
+    .ug-flow-box small { display: block; font-weight: 400; color: #64748b; margin-top: 4px; font-size: 8pt; }
+    .ug-flow-box--start { border-color: #2563eb; background: #dbeafe; }
+    .ug-flow-box--end { border-color: #059669; background: #d1fae5; }
+    .ug-flow-arrow { font-size: 16pt; color: #2563eb; font-weight: 700; }
+    .ug-flow-note { margin: 12px 0 0; font-size: 9.5pt; color: #475569; }
     .ug-report { page-break-inside: avoid; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #e2e8f0; }
     .ug-report h2 { font-size: 13pt; color: #3349d1; margin: 0 0 6px; }
     .ug-summary { margin: 0 0 8px; font-size: 10pt; color: #475569; }
     .ug-section h3 { font-size: 10.5pt; margin: 10px 0 4px; color: #0f172a; }
     .ug-section ul { margin: 0 0 8px; padding-left: 18px; }
     .ug-section li { margin-bottom: 4px; line-height: 1.35; }
-    .ug-flow { font-weight: 600; color: #1d4ed8; }
+    @media print {
+      body { padding: 0; }
+      .ug-flow-steps { flex-wrap: nowrap; }
+    }
   </style>
 </head>
 <body>
-  <h1>${escapeHtml(appName)} — Reports User Guide</h1>
-  <p class="ug-meta">${companyName ? escapeHtml(companyName) + ' · ' : ''}Generated ${escapeHtml(new Date().toLocaleString())}</p>
-  <div class="ug-intro">
-    <p><span class="ug-flow">Common navigation:</span> Trial Balance → click account → <strong>Ledger</strong> → click line → <strong>Voucher</strong>. Use ← Back on each screen. Many other reports use similar click-through where rows are highlighted.</p>
-    <p>On each screen, tap the <strong>?</strong> help button for a short guide. This PDF lists all modules in depth.</p>
+  <div class="ug-cover">
+    <h1>${escapeHtml(appName)}</h1>
+    <p class="ug-sub">Client User Guide — Features &amp; How to Use</p>
+    ${companyName ? `<p class="ug-meta">${escapeHtml(companyName)}</p>` : ''}
+    <p class="ug-meta">${escapeHtml(new Date().toLocaleDateString('en-IN', { dateStyle: 'long' }))}</p>
   </div>
+
+  <h2>Getting started</h2>
+  <div class="ug-intro-block">${introHtml}</div>
+  ${renderFlowDiagramHtml()}
+
+  <h2>Module reference</h2>
+  <p class="ug-meta">Detailed help for each report and entry screen.</p>
   ${blocks}
 </body>
 </html>`;
+}
+
+/** Alias for client-facing PDF filename / scripts. */
+export function buildClientUserGuideHtml(opts) {
+  return buildUserGuideHtml(opts);
 }
 
 export function getPdfReportIdsForApp({ includeSalesEntry = true, includeStockLot = false } = {}) {

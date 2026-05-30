@@ -40,7 +40,7 @@ try {
     if (-not (Test-Path -LiteralPath $stopScript)) {
         throw "Missing: $stopScript"
     }
-    & $stopScript -AppRoot $AppRoot -StopScheduledTasks -ReleaseApiPort5001 -ReleasePorts5174 -WaitSeconds 3
+    & $stopScript -AppRoot $AppRoot -StopScheduledTasks -ReleaseApiPort5001 -ReleasePorts5174 -WaitSeconds 5
     if (-not $? -or ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE)) {
         throw "stop-apptest-services.ps1 failed (exit $LASTEXITCODE)"
     }
@@ -58,13 +58,20 @@ try {
     Write-Log "Git/build step finished." "OK"
 
     Write-Log "Step 3/3: Starting APPTEST services..."
-    $startScript = Join-Path $AppRoot "start-apptest-services.ps1"
-    if (-not (Test-Path -LiteralPath $startScript)) {
-        throw "Missing: $startScript"
-    }
-    & $startScript -AppRoot $AppRoot
-    if (-not $? -or ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE)) {
-        throw "start-apptest-services.ps1 failed (exit $LASTEXITCODE)"
+    $stackStart = Join-Path $AppRoot "Start-WindalStack.ps1"
+    $legacyStart = Join-Path $AppRoot "start-apptest-services.ps1"
+    if (Test-Path -LiteralPath $stackStart) {
+        & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $stackStart -AppRoot $AppRoot
+        if ($LASTEXITCODE -ne 0) {
+            throw "Start-WindalStack.ps1 failed (exit $LASTEXITCODE)"
+        }
+    } elseif (Test-Path -LiteralPath $legacyStart) {
+        & $legacyStart -AppRoot $AppRoot
+        if (-not $? -or ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE)) {
+            throw "start-apptest-services.ps1 failed (exit $LASTEXITCODE)"
+        }
+    } else {
+        throw "Missing Start-WindalStack.ps1 or start-apptest-services.ps1"
     }
     Write-Log "Start step finished." "OK"
 

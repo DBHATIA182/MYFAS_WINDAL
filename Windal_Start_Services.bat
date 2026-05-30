@@ -1,40 +1,32 @@
 @echo off
 setlocal
-REM Run this ONLY from your Windal APPTEST clone (this folder holds connection.config.json + config.yml).
-REM Remote-managed Cloudflare may push localhost:5173 for your hostname (see tunnel window logs). Local config.yml is IGNORED.
-REM If public URL stays GRAINFAS: run instead  start-services-for-cloudflare-5173-route.bat  (Windal Vite listens 5173 to match).
+REM Windal — restart API (5001), Vite (5174), tunnel. Frees ports first if already in use.
+REM Runs in background (no cmd /k windows on taskbar). Logs: logs\windal-stack.log, logs\server.log
 set "APP=%~dp0"
 cd /d "%APP%"
 
 echo.
-echo === Windal APPTEST — dual-tunnel safe restart ===
+echo === Windal — restart services (background) ===
 echo Folder: %APP%
-echo Web UI: http://localhost:5174    (5173 is often GRAINFAS / another repo — wrong app)
-echo Public: https://dal-rgind.fasaccountingsoftware.in
-findstr /i "clientName" "%APP%connection.config.json" 2>nul
+echo Frees ports 5001 and 5174 if busy, then starts API + Web + Tunnel.
+echo Logs: logs\windal-stack.log  logs\server.log  logs\frontend.log  logs\tunnel.log
+echo.
+echo Auto-start at Windows boot: run setup-windal-autostart.cmd as Administrator (once).
 echo.
 
-set "PATH=%ProgramFiles%\Cloudflared;%ProgramFiles(x86)%\Cloudflared;%ProgramFiles%\cloudflared;%ProgramFiles(x86)%\cloudflared;%PATH%;%ProgramFiles%\nodejs;%LOCALAPPDATA%\Programs\nodejs"
-
-REM Do not kill all cloudflared processes: another client tunnel may be running on this same PC.
-echo [1/4] Stopping WINDAL listeners only: 5174 (Vite) and 5001 (API^)...
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%APP%free-windal-stack-ports.ps1" -Ports 5174,5001
-
-echo [2/4] Waiting 3 seconds (lets sockets release^)...
-timeout /t 3 /nobreak >nul
-
-echo [3/4] Starting API and Vite for WINDAL...
-start "Windal-API" /min /D "%APP%" cmd /k "node server.cjs"
-timeout /t 2 /nobreak >nul
-start "Windal-Vite" /min /D "%APP%" cmd /k "set WINDAL_TUNNEL_DEV=1&& npm run dev -- --host 0.0.0.0 --port 5174"
-timeout /t 2 /nobreak >nul
-
-echo [4/4] Starting WINDAL tunnel only (other tunnels are left running)...
-start "Windal-Tunnel" /min /D "%APP%" cmd /k "cloudflared tunnel --config .\config.yml run"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%APP%Start-WindalStack.ps1" -AppRoot "%APP%"
+set "RC=%ERRORLEVEL%"
+if %RC% NEQ 0 (
+  echo.
+  echo Stack start failed. See logs\windal-stack.log
+  pause
+  exit /b %RC%
+)
 
 echo.
-echo After ~5s open: https://dal-rgind.fasaccountingsoftware.in/windal-appmarker.txt
-echo Expected: plain text WINDAL_APPTEST   (not GRAINFAS sign-in page)
-echo If sign-in still appears: stop any other Cursor/terminal "npm run dev" from another folder, re-run this bat.
+echo Started in background. Wait ~10 seconds, then open your company URL in the browser.
+echo To stop: run stop-windal-stack.cmd or Task Manager - end node.exe / cloudflared.exe
 echo.
+timeout /t 5 /nobreak >nul
 endlocal
+exit /b 0

@@ -1,21 +1,32 @@
-# Dev PC — commit/push:
-# cd E:\WINDAL\APPTEST
-# .\push-all-to-git.ps1 -CommitMessage "your message here"
+# ========== DEV PC — push changes to GitHub ==========
+cd E:\WINDAL\APPTEST
+.\push-all-to-git.ps1 -CommitMessage "describe your change here"
 
-# ========== CLIENT PC — manual update (D:\windal\apptest) ==========
-# Prefer desktop shortcut / Update-APPTEST-From-Desktop.cmd (runs run-desktop-update.ps1).
-
+# ========== CLIENT PC — one-time setup (Administrator) ==========
 cd D:\windal\apptest
 
+REM 1) Auto-start Windal when user logs in:
+setup-windal-autostart.cmd
+
+REM 2) Auto git pull + build every day (and after logon/reboot).
+REM    Scheduled task name on every client: git_dal_update
+setup-windal-git-update.cmd -AtLogon
+
+REM Or custom daily time (24h clock):
+powershell -ExecutionPolicy Bypass -File .\setup-scheduled-task-git-update.ps1 -AtLogon -DailyTime "03:00"
+
+# ========== CLIENT PC — manual update anytime ==========
+cd D:\windal\apptest
 powershell -ExecutionPolicy Bypass -File .\run-desktop-update.ps1 -AppRoot "D:\windal\apptest" -Branch main
 
-# Or step by step:
-# powershell -ExecutionPolicy Bypass -File .\stop-apptest-services.ps1 -AppRoot "D:\windal\apptest" -StopScheduledTasks -ReleaseApiPort5001 -ReleasePorts5174 -WaitSeconds 3
-# powershell -ExecutionPolicy Bypass -File .\update-from-git.ps1 -Branch main -SkipProcessStop
-# powershell -ExecutionPolicy Bypass -File .\start-apptest-services.ps1 -AppRoot "D:\windal\apptest"
+REM Or double-click: Update-APPTEST-From-Desktop.cmd
 
-# If you see "process cannot access the file":
-# 1) Close API / Vite / Tunnel PowerShell windows
-# 2) Run stop script with -StopScheduledTasks (stops auto-restart tasks)
-# 3) Do not open desktop-update.log in Notepad while updating
-# 4) Run update again
+# ========== CLIENT PC — test scheduled git update without waiting ==========
+schtasks /Run /TN "git_dal_update"
+type logs\git-auto-update.log
+
+# ========== Logs ==========
+REM logs\git-auto-update.log     — automatic git update
+REM logs\desktop-update.log      — manual desktop update
+REM logs\windal-stack.log        — service start/stop
+REM logs\autostart-bootstrap.log — autostart at logon

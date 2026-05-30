@@ -4,10 +4,17 @@ REM Usage (CMD or PowerShell):
 REM   .\setup-client.cmd
 REM   .\setup-client.cmd dal-srfipulses
 REM   .\setup-client.cmd dal-srfipulses XE
+REM   .\setup-client.cmd dal-srfipulses XE skip-install
 cd /d "%~dp0"
 
 set "KEY=%~1"
 set "TNS=%~2"
+set "EXTRA="
+if /i "%~3"=="skip-install" set "EXTRA=-SkipPrerequisiteInstall"
+if "%TNS%"=="skip-install" (
+  set "TNS=XE"
+  set "EXTRA=-SkipPrerequisiteInstall"
+)
 if "%TNS%"=="" set "TNS=XE"
 
 if "%KEY%"=="" (
@@ -24,6 +31,6 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup-clie
   -OraclePrimaryPassword "DAL" ^
   -OracleSecondaryUser "DAL" ^
   -OracleSecondaryPassword "DAL" ^
-  -OracleConnectString "%TNS%"
+  -OracleConnectString "%TNS%" %EXTRA%
 
 if errorlevel 1 pause

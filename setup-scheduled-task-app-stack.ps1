@@ -1,31 +1,44 @@
 <#
 .SYNOPSIS
-  Registers one Windows scheduled task at startup: API (node server.cjs), Vite dev, Cloudflare tunnel.
+  Registers Windal to start API + Vite + tunnel automatically.
 
-.DESCRIPTION
-  Uses run-autostart-stack.cmd (PATH includes Node + cloudflared; npm.cmd avoids PowerShell execution policy).
-  Run PowerShell as Administrator. Default task name: FAS-<clientName>-AppStack from connection.config.json.
+.PARAMETER RunAtLogon
+  Start when you sign in to Windows (DEFAULT - most reliable on dev PC and E: drive).
 
-  If you already use FAS-<client>-API from setup-client.ps1 or FAS-<client>-AllServices, disable those
-  tasks to avoid two processes binding to port 5001 / 5174 (Windal UI; 5173 may be another app).
+.PARAMETER AtStartup
+  Start at boot as SYSTEM (+ delay). Use only on client servers that must run without login.
 
-.PARAMETER AppRoot
-  Folder containing run-autostart-stack.cmd, server.cjs, config.yml. Default: this script's directory.
-
-.PARAMETER TaskName
-  Override scheduled task name.
-
-.EXAMPLE
-  powershell -ExecutionPolicy Bypass -File .\setup-scheduled-task-app-stack.ps1
+.PARAMETER StartupDelayMinutes
+  Delay after trigger (default 1 for logon, 3 for startup).
 #>
 [CmdletBinding()]
 param(
-    [string]$AppRoot = "",
-    [string]$TaskName = ""
+    [string]$AppRoot = '',
+    [string]$TaskName = '',
+    [int]$StartupDelayMinutes = -1,
+    [switch]$RunAtLogon,
+    [switch]$AtStartup
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
+
+function Test-IsAdministrator {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($id)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+if (-not (Test-IsAdministrator)) {
+    throw @'
+Access denied. Scheduled tasks require Administrator.
+
+Right-click setup-windal-autostart.cmd and choose "Run as administrator".
+Or open CMD as Admin, then:
+  cd /d E:\WINDAL\APPTEST
+  setup-windal-autostart.cmd
+'@
+}
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if ([string]::IsNullOrWhiteSpace($AppRoot)) {
@@ -33,53 +46,102 @@ if ([string]::IsNullOrWhiteSpace($AppRoot)) {
 }
 $AppRoot = (Resolve-Path -LiteralPath $AppRoot).Path
 
-$launcher = Join-Path $AppRoot "run-autostart-stack.cmd"
-if (-not (Test-Path -LiteralPath $launcher)) {
-    throw "Missing launcher: $launcher"
+$startPs1 = Join-Path $AppRoot 'Start-WindalStack.ps1'
+if (-not (Test-Path -LiteralPath $startPs1)) {
+    throw "Missing $startPs1"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $AppRoot 'server.cjs'))) {
+    throw "Missing server.cjs at $AppRoot"
 }
 
-$serverJs = Join-Path $AppRoot "server.cjs"
-if (-not (Test-Path -LiteralPath $serverJs)) {
-    throw "Missing server.cjs at $serverJs"
-}
-
-$configYml = Join-Path $AppRoot "config.yml"
-if (-not (Test-Path -LiteralPath $configYml)) {
-    Write-Warning "config.yml not found at $configYml - tunnel start will fail until you add it."
-}
-
-$configPath = Join-Path $AppRoot "connection.config.json"
+$configPath = Join-Path $AppRoot 'connection.config.json'
 if (-not (Test-Path -LiteralPath $configPath)) {
-    throw "Missing $configPath (needed for default task name)."
+    throw "Missing $configPath"
 }
 
 if ([string]::IsNullOrWhiteSpace($TaskName)) {
     $cfg = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
     $client = $cfg.clientName
+    if ([string]::IsNullOrWhiteSpace($client)) { $client = $cfg.defaultClientKey }
     if ([string]::IsNullOrWhiteSpace($client)) {
-        $client = $cfg.defaultClientKey
-    }
-    if ([string]::IsNullOrWhiteSpace($client)) {
-        throw "connection.config.json has no clientName or defaultClientKey; pass -TaskName explicitly."
+        throw 'Set clientName in connection.config.json or pass -TaskName'
     }
     $TaskName = "FAS-$client-AppStack"
 }
 
-$taskRun = "cmd.exe /c `"$launcher`""
-Write-Host "Creating scheduled task '$TaskName'" -ForegroundColor Cyan
-Write-Host "  Action: $taskRun" -ForegroundColor Gray
-Write-Host "  Trigger: At system startup (ONSTART), SYSTEM, highest privileges" -ForegroundColor Gray
+# Default: logon (works on E: drive dev PCs). Use -AtStartup only for headless client servers.
+$useLogon = $true
+if ($AtStartup) { $useLogon = $false }
+if ($RunAtLogon) { $useLogon = $true }
 
-& schtasks /Create /TN $TaskName /TR $taskRun /SC ONSTART /RL HIGHEST /RU SYSTEM /F | Out-Host
-if ($LASTEXITCODE -ne 0) {
-    throw "schtasks failed (exit $LASTEXITCODE). Run PowerShell as Administrator."
+if ($StartupDelayMinutes -lt 0) {
+    $StartupDelayMinutes = if ($useLogon) { 1 } else { 3 }
 }
 
-Write-Host ""
-Write-Host "Done. Task name: $TaskName" -ForegroundColor Green
-Write-Host "Launcher: $launcher" -ForegroundColor Green
-Write-Host "Logs: $(Join-Path $AppRoot 'logs')" -ForegroundColor Green
-Write-Host ""
-Write-Host 'Disable conflicting tasks if any (Task Scheduler Library):' -ForegroundColor Yellow
-Write-Host '  FAS-*-API  (API-only from setup-client.ps1)' -ForegroundColor DarkYellow
-Write-Host '  FAS-*-AllServices  (uses run-all-services.cmd)' -ForegroundColor DarkYellow
+$logsDir = Join-Path $AppRoot 'logs'
+if (-not (Test-Path -LiteralPath $logsDir)) {
+    New-Item -Path $logsDir -ItemType Directory -Force | Out-Null
+}
+
+# Best-effort: let SYSTEM write logs (ignore errors on locked log files)
+$icacls = Join-Path $env:SystemRoot 'System32\icacls.exe'
+if (Test-Path -LiteralPath $icacls) {
+    try {
+        & $icacls $logsDir /grant 'SYSTEM:(OI)(CI)M' 'Users:(OI)(CI)M' /T 2>$null | Out-Null
+    } catch { }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'Note: could not update ACL on logs folder (continuing anyway).' -ForegroundColor DarkYellow
+    }
+}
+
+Get-ScheduledTask -TaskPath '\' -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.TaskName -ne $TaskName -and (
+            $_.TaskName -like 'FAS-*-API' -or $_.TaskName -like 'FAS-*-AllServices'
+        )
+    } |
+    ForEach-Object {
+        Write-Host "Disabling old task: $($_.TaskName)" -ForegroundColor Yellow
+        Disable-ScheduledTask -TaskName $_.TaskName -ErrorAction SilentlyContinue | Out-Null
+    }
+
+# Run PowerShell directly (more reliable than cmd wrapper under SYSTEM)
+$psArgs = ('-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -AppRoot "{1}"' -f $startPs1, $AppRoot)
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $psArgs -WorkingDirectory $AppRoot
+
+if ($useLogon) {
+    $user = $env:USERNAME
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
+    if ($StartupDelayMinutes -gt 0) {
+        $trigger.Delay = ('PT{0}M' -f $StartupDelayMinutes)
+    }
+    $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Highest
+    $desc = "Windal stack at logon for $user"
+    Write-Host "Mode: At logon for $user (delay $StartupDelayMinutes min) - RECOMMENDED" -ForegroundColor Green
+} else {
+    $trigger = New-ScheduledTaskTrigger -AtStartup
+    if ($StartupDelayMinutes -gt 0) {
+        $trigger.Delay = ('PT{0}M' -f $StartupDelayMinutes)
+    }
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    $desc = ('Windal stack at startup (+{0} min delay) as SYSTEM' -f $StartupDelayMinutes)
+    Write-Host "Mode: At system startup as SYSTEM (delay $StartupDelayMinutes min)" -ForegroundColor Cyan
+}
+
+$settings = New-ScheduledTaskSettingsSet `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries `
+    -StartWhenAvailable `
+    -MultipleInstances IgnoreNew
+
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description $desc -Force | Out-Null
+
+Write-Host ''
+Write-Host "Task created: $TaskName" -ForegroundColor Green
+Write-Host ('Log file: {0}' -f (Join-Path $logsDir 'autostart-bootstrap.log'))
+Write-Host ''
+Write-Host 'Test now (Admin):' -ForegroundColor Yellow
+Write-Host ('  schtasks /Run /TN "{0}"' -f $TaskName)
+Write-Host '  Wait 90 sec, then open logs\autostart-bootstrap.log'
+Write-Host ''
+Write-Host 'After reboot: sign in to Windows, wait 2 min, check http://localhost:5174'

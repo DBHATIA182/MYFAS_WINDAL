@@ -1,5 +1,84 @@
-1.copy oracle_bridge and apptest folder to \windal
-2.cd D:\WINDAL\apptest
-3.powershell
-4. cd D:\windal\apptest
-5.powershell -ExecutionPolicy Bypass -File .\setup-client.ps1 `
+WINDAL CLIENT PC — INSTALLATION STEPS
+=====================================
+Repo: https://github.com/DBHATIA182/MYFAS_WINDAL.git
+Typical path: D:\WINDAL\apptest  (or E:\WINDAL\APPTEST on dev PC)
+
+PREREQUISITES (one time per PC)
+--------------------------------
+- Git for Windows (git --version)
+- Node.js LTS (node --version)
+- cloudflared (for tunnel)
+- Oracle Instant Client under D:\WINDAL\oracle_bridge\instantclient_23_0
+- tnsnames.ora in D:\WINDAL\ (parent folder)
+- PowerShell as Administrator for steps 10–12 below
+
+FIRST-TIME / REFRESH INSTALL (your workflow)
+--------------------------------------------
+1. Copy oracle_bridge and apptest folder to D:\WINDAL\
+   (If refreshing: you will rename old apptest in step 6.)
+
+2. cd D:\WINDAL\apptest
+
+3. Open PowerShell (Administrator for setup scripts later).
+
+4. cd D:\WINDAL\apptest
+
+5. Run setup on existing copy (optional if only refreshing from Git):
+   ..\setup-client.ps1 -ClientKey "dal-modern" -AutoInstallNode:$false -AutoInstallCloudflared:$false
+   (Use your real client key from connection.config.json.)
+
+6. Rename apptest to apptest_old
+   cd D:\WINDAL
+   ren apptest apptest_old
+
+7. cd D:\WINDAL
+
+8. git clone https://github.com/DBHATIA182/MYFAS_WINDAL.git apptest
+
+9. cd D:\WINDAL\apptest
+
+   Copy local files from apptest_old (Git does not keep these):
+   - connection.config.json
+   - config.yml
+   - tunnel *.json (cloudflared credentials in app folder)
+
+   Install and build:
+   npm ci
+   npm run build
+
+10. setup-windal-autostart.cmd          (Run as Administrator)
+    Creates scheduled task: FAS-<clientName>-AppStack
+    (clientName from connection.config.json, e.g. FAS-dal-modern-AppStack)
+    Starts API + Vite + tunnel ~1 min after you sign in to Windows.
+    Test: schtasks /Run /TN "FAS-<your-client>-AppStack"
+    Log: logs\autostart-bootstrap.log , logs\windal-stack.log
+
+11. setup-windal-git-update.cmd        (Run as Administrator)
+    Creates scheduled task: git_dal_update   (SAME NAME ON EVERY CLIENT)
+    Each run: STOP all services -> git pull + npm ci + build -> RESTART
+    Default schedule: daily 02:00 + 5 min after logon
+    Test: schtasks /Run /TN "git_dal_update"
+    Log: logs\git-auto-update.log
+    Optional first run with setup:
+      setup-windal-git-update.cmd -RunNow
+
+MANUAL UPDATE ANYTIME (no wait for schedule)
+--------------------------------------------
+Update-APPTEST-From-Desktop.cmd
+  or
+powershell -ExecutionPolicy Bypass -File .\run-desktop-update.ps1 -AppRoot "D:\WINDAL\apptest" -Branch main
+
+DEV PC — PUSH CHANGES TO GITHUB
+---------------------------------
+cd E:\WINDAL\APPTEST
+.\push-all-to-git.ps1 -CommitMessage "your message"
+
+SCHEDULED TASK NAMES (summary)
+------------------------------
+Autostart at logon:  FAS-<clientName>-AppStack   (per client, from connection.config.json)
+Auto git update:     git_dal_update              (same on every client PC)
+
+See also:
+  git_update_command_from_powershell.txt
+  CLIENT_SETUP.md
+  docs\WINDAL_CLIENT_INSTALLATION_GUIDE.html

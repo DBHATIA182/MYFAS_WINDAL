@@ -72,19 +72,69 @@ function saleBillPrintSalePlantCodeSql() {
   return 'A.PLANT_CODE';
 }
 
-// Oracle paths: parent folder of this app (e.g. \windal\apptest → ..\oracle_bridge, TNS in parent \windal)
-const FAS_PARENT_ROOT = path.join(__dirname, '..');
-const CLIENT_PATH = path.join(FAS_PARENT_ROOT, 'oracle_bridge', 'instantclient_23_0');
-const TNS_PATH = FAS_PARENT_ROOT;
-
-try {
-    oracledb.initOracleClient({ libDir: CLIENT_PATH, configDir: TNS_PATH });
-    console.log('✅ Oracle Bridge (instant client + TNS):', CLIENT_PATH, '|', TNS_PATH);
-} catch (err) {
-    if (!err.message.includes('already initialized')) {
-        console.error("Oracle Init Error:", err.message);
-    }
+function envTrimEarly(name) {
+  const v = process.env[name];
+  if (v === undefined || v === null) return '';
+  return String(v).trim();
 }
+
+// Oracle paths: parent folder of this app (e.g. \windal\apptest → ..\oracle_bridge, TNS in parent \windal)
+const FAS_PARENT_ROOT = path.resolve(__dirname, '..');
+const CLIENT_PATH = path.resolve(
+  envTrimEarly('FAS_ORACLE_CLIENT_LIB') || path.join(FAS_PARENT_ROOT, 'oracle_bridge', 'instantclient_23_0')
+);
+const TNS_PATH = path.resolve(envTrimEarly('FAS_ORACLE_TNS_DIR') || FAS_PARENT_ROOT);
+const OCI_DLL = path.join(CLIENT_PATH, 'oci.dll');
+
+function ensureOracleClientOnPath() {
+  const parts = String(process.env.PATH || '')
+    .split(path.delimiter)
+    .filter(Boolean);
+  if (!parts.some((p) => path.resolve(p) === CLIENT_PATH)) {
+    process.env.PATH = `${CLIENT_PATH}${path.delimiter}${process.env.PATH || ''}`;
+  }
+}
+
+function initOracleThickClient() {
+  if (!fs.existsSync(OCI_DLL)) {
+    console.error('❌ Oracle Instant Client not found at:', CLIENT_PATH);
+    console.error('   Expected file:', OCI_DLL);
+    console.error('   Copy instantclient_23_0 under:', path.join(FAS_PARENT_ROOT, 'oracle_bridge'));
+    process.exit(1);
+  }
+  const tnsFile = path.join(TNS_PATH, 'tnsnames.ora');
+  if (!fs.existsSync(tnsFile)) {
+    console.warn('⚠️ tnsnames.ora not found at:', tnsFile);
+    console.warn('   connectString aliases like "XE" need this file (copy from SQL*Plus NETWORK\\ADMIN).');
+  }
+  ensureOracleClientOnPath();
+  try {
+    oracledb.initOracleClient({ libDir: CLIENT_PATH, configDir: TNS_PATH });
+  } catch (err) {
+    if (err.message && err.message.includes('already initialized')) {
+      return;
+    }
+    console.error('❌ Oracle Init Error:', err.message);
+    console.error('   libDir:', CLIENT_PATH);
+    console.error('   configDir (TNS):', TNS_PATH);
+    console.error('   Fixes: install Microsoft VC++ Redistributable (x64), reboot, confirm oci.dll is 64-bit.');
+    const nodeExe = process.execPath || '';
+    if (/\(x86\)/i.test(nodeExe)) {
+      console.error(
+        '   Node is under Program Files (x86). Reinstall Node 64-bit to C:\\Program Files\\nodejs (avoids NJS-514).'
+      );
+    }
+    process.exit(1);
+  }
+  if (!oracledb.oracleClientVersionString) {
+    console.error('❌ Oracle thick mode did not start (thin mode only). Check Instant Client + VC++ x64.');
+    process.exit(1);
+  }
+  console.log('✅ Oracle Bridge (thick):', CLIENT_PATH, '| TNS:', TNS_PATH);
+  console.log('   Client version:', oracledb.oracleClientVersionString);
+}
+
+initOracleThickClient();
 
 const rootDomain = connectionConfig.domain?.rootDomain || 'fasaccountingsoftware.in';
 const localOrigin = connectionConfig.local?.webOrigin;

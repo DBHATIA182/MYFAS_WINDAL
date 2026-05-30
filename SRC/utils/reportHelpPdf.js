@@ -10,7 +10,7 @@ export async function downloadUserGuidePdf({
   const includeReportIds = getPdfReportIdsForApp({ includeSalesEntry, includeStockLot });
   const html = buildUserGuideHtml({ companyName, appName, includeReportIds });
   const stamp = new Date().toISOString().split('T')[0];
-  const filename = `${String(companyName || appName).replace(/[^\w.-]+/g, '_')}_Reports_User_Guide_${stamp}.pdf`;
+  const filename = `${String(companyName || appName).replace(/[^\w.-]+/g, '_')}_Client_User_Guide_${stamp}.pdf`;
   const options = {
     margin: [10, 10, 12, 10],
     filename,

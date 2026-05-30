@@ -30,6 +30,10 @@ param(
     [Parameter(Mandatory = $false)]
     [switch]$SkipBuild,
 
+    # Skip winget/offline install when Node + cloudflared are already on the PC.
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipPrerequisiteInstall,
+
     [Parameter(Mandatory = $false)]
     [bool]$AutoInstallNode = $true,
 
@@ -37,10 +41,42 @@ param(
     [bool]$AutoInstallCloudflared = $true,
 
     [Parameter(Mandatory = $false)]
-    [string]$OfflinePackageRoot = "e:\mobile application software"
+    [string]$OfflinePackageRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($SkipPrerequisiteInstall) {
+    $AutoInstallNode = $false
+    $AutoInstallCloudflared = $false
+}
+
+function Get-OfflinePackageSearchRoots {
+    param([string]$ExplicitRoot, [string]$AppRoot)
+    $roots = @()
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitRoot)) {
+        $roots += $ExplicitRoot.Trim()
+    }
+    $roots += @(
+        (Join-Path $AppRoot "offline-installers"),
+        (Join-Path $AppRoot "installers"),
+        (Join-Path (Split-Path $AppRoot -Parent) "offline-installers"),
+        "e:\mobile application software",
+        "d:\mobile application software"
+    )
+    $seen = @{}
+    $unique = @()
+    foreach ($r in $roots) {
+        if ([string]::IsNullOrWhiteSpace($r)) { continue }
+        $norm = $r.Trim().TrimEnd('\')
+        $key = $norm.ToLowerInvariant()
+        if (-not $seen.ContainsKey($key)) {
+            $seen[$key] = $true
+            $unique += $norm
+        }
+    }
+    return $unique
+}
 
 function Write-Step([string]$message) {
     Write-Host ""
@@ -53,9 +89,32 @@ function Ensure-Command([string]$commandName) {
     }
 }
 
+function Test-WingetAvailable {
+    return [bool](Get-Command winget -ErrorAction SilentlyContinue)
+}
+
 function Ensure-Winget {
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        throw "winget is required for auto-install. Install App Installer from Microsoft Store or set AutoInstall flags to false."
+    if (-not (Test-WingetAvailable)) {
+        throw @"
+winget is not available on this PC and Node.js / cloudflared were not found locally.
+
+Do ONE of the following, then run setup again:
+
+  A) Install prerequisites manually (no winget):
+     - Node.js LTS: https://nodejs.org/  (need v18+)
+     - cloudflared: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+     Then run:
+       powershell -ExecutionPolicy Bypass -File .\setup-client.ps1 -AutoInstallNode `$false -AutoInstallCloudflared `$false
+
+  B) Copy offline installers into:
+       .\offline-installers\
+     (node-v*-x64.msi and cloudflared-windows-amd64.msi) and run setup again.
+
+  C) Install App Installer from Microsoft Store (enables winget), then retry setup.
+
+Searched offline folders:
+$($script:OfflineSearchRootsDisplay)
+"@
     }
 }
 
@@ -252,14 +311,23 @@ function Install-CloudflaredFromLocal {
 function Try-InstallFromLocalPackage {
     param(
         [Parameter(Mandatory = $true)][string]$CommandName,
-        [Parameter(Mandatory = $true)][string]$OfflineRootPath
+        [Parameter(Mandatory = $true)][string[]]$OfflineRootPaths
     )
-    switch ($CommandName.ToLowerInvariant()) {
-        "node" { return Install-NodeFromLocal -RootPath $OfflineRootPath }
-        "npm" { return Install-NodeFromLocal -RootPath $OfflineRootPath }
-        "cloudflared" { return Install-CloudflaredFromLocal -RootPath $OfflineRootPath }
-        default { return $false }
+    foreach ($root in $OfflineRootPaths) {
+        if (-not (Test-Path $root)) { continue }
+        $installed = $false
+        switch ($CommandName.ToLowerInvariant()) {
+            "node" { $installed = Install-NodeFromLocal -RootPath $root }
+            "npm" { $installed = Install-NodeFromLocal -RootPath $root }
+            "cloudflared" { $installed = Install-CloudflaredFromLocal -RootPath $root }
+            default { $installed = $false }
+        }
+        if ($installed) {
+            Write-Host "  Used offline package from: $root" -ForegroundColor DarkGray
+            return $true
+        }
     }
+    return $false
 }
 
 function Install-WithWinget {
@@ -280,7 +348,7 @@ function Ensure-CommandOrInstall {
         [Parameter(Mandatory = $true)][string]$PackageId,
         [Parameter(Mandatory = $true)][string]$DisplayName,
         [Parameter(Mandatory = $true)][bool]$CanInstall,
-        [Parameter(Mandatory = $true)][string]$OfflineRootPath
+        [Parameter(Mandatory = $true)][string[]]$OfflineRootPaths
     )
     $commandExists = Get-Command $CommandName -ErrorAction SilentlyContinue
     if ($commandExists) {
@@ -295,10 +363,13 @@ function Ensure-CommandOrInstall {
         throw "Required command '$CommandName' is missing and auto-install is disabled."
     }
 
-    $installedFromLocal = Try-InstallFromLocalPackage -CommandName $CommandName -OfflineRootPath $OfflineRootPath
+    $installedFromLocal = Try-InstallFromLocalPackage -CommandName $CommandName -OfflineRootPaths $OfflineRootPaths
     if (-not $installedFromLocal) {
-        Ensure-Winget
-        Install-WithWinget -PackageId $PackageId -DisplayName $DisplayName
+        if (Test-WingetAvailable) {
+            Install-WithWinget -PackageId $PackageId -DisplayName $DisplayName
+        } else {
+            Ensure-Winget
+        }
     }
 
     Refresh-CommonPathEntries
@@ -310,11 +381,12 @@ function Ensure-CommandOrInstall {
             }
             return
         }
-        throw "$DisplayName installation did not expose '$CommandName' in PATH. Verify local package files in '$OfflineRootPath' or open a new terminal and run setup again."
+        $rootsHint = ($OfflineRootPaths | Where-Object { Test-Path $_ } | Select-Object -First 3) -join "; "
+        throw "$DisplayName installation did not expose '$CommandName' in PATH. Put installers in .\offline-installers\ or open a new terminal and run setup again. Checked: $rootsHint"
     }
 
     if (($CommandName -ieq "node" -or $CommandName -ieq "npm") -and -not (Test-NodeVersionSupported -MinimumMajor 18)) {
-        throw "Node.js version is too old after installation. Ensure Node.js 18+ installer exists in '$OfflineRootPath' and run setup again."
+        throw "Node.js version is too old after installation. Ensure Node.js 18+ installer exists in .\offline-installers\ and run setup again."
     }
 }
 
@@ -417,10 +489,18 @@ function Register-NssmService {
 $appRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $appRoot
 
+$offlineSearchRoots = Get-OfflinePackageSearchRoots -ExplicitRoot $OfflinePackageRoot -AppRoot $appRoot
+$script:OfflineSearchRootsDisplay = ($offlineSearchRoots | ForEach-Object {
+    if (Test-Path $_) { "  [found] $_" } else { "  [missing] $_" }
+}) -join [Environment]::NewLine
+
 Write-Step "Checking prerequisites"
-Ensure-CommandOrInstall -CommandName "node" -PackageId "OpenJS.NodeJS.LTS" -DisplayName "Node.js LTS" -CanInstall $AutoInstallNode -OfflineRootPath $OfflinePackageRoot
-Ensure-CommandOrInstall -CommandName "npm" -PackageId "OpenJS.NodeJS.LTS" -DisplayName "Node.js LTS (npm)" -CanInstall $AutoInstallNode -OfflineRootPath $OfflinePackageRoot
-Ensure-CommandOrInstall -CommandName "cloudflared" -PackageId "Cloudflare.cloudflared" -DisplayName "Cloudflare Tunnel" -CanInstall $AutoInstallCloudflared -OfflineRootPath $OfflinePackageRoot
+Write-Host "Offline installer search paths:" -ForegroundColor DarkGray
+Write-Host $script:OfflineSearchRootsDisplay -ForegroundColor DarkGray
+
+Ensure-CommandOrInstall -CommandName "node" -PackageId "OpenJS.NodeJS.LTS" -DisplayName "Node.js LTS" -CanInstall $AutoInstallNode -OfflineRootPaths $offlineSearchRoots
+Ensure-CommandOrInstall -CommandName "npm" -PackageId "OpenJS.NodeJS.LTS" -DisplayName "Node.js LTS (npm)" -CanInstall $AutoInstallNode -OfflineRootPaths $offlineSearchRoots
+Ensure-CommandOrInstall -CommandName "cloudflared" -PackageId "Cloudflare.cloudflared" -DisplayName "Cloudflare Tunnel" -CanInstall $AutoInstallCloudflared -OfflineRootPaths $offlineSearchRoots
 
 $client = Get-ClientKey -InitialValue $ClientKey
 $configPath = Join-Path $appRoot "connection.config.json"

@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Windal Accounting System — Client User Guide</title>
+  <style>
+    @page { margin: 14mm 12mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.45;
+      color: #1e293b;
+      max-width: 210mm;
+      margin: 0 auto;
+      padding: 18px 22px 32px;
+      background: #fff;
+    }
+    h1 { font-size: 22pt; color: #1e3a8a; margin: 0 0 6px; }
+    h2 {
+      font-size: 14pt;
+      color: #1e40af;
+      margin: 28px 0 10px;
+      padding-bottom: 4px;
+      border-bottom: 2px solid #cbd5e1;
+      page-break-after: avoid;
+    }
+    h3 { font-size: 11pt; color: #0f172a; margin: 14px 0 6px; }
+    p { margin: 0 0 8px; }
+    ul, ol { margin: 0 0 10px; padding-left: 22px; }
+    li { margin-bottom: 5px; }
+    .cover {
+      text-align: center;
+      padding: 36px 16px 28px;
+      border: 3px solid #1e3a8a;
+      border-radius: 12px;
+      margin-bottom: 28px;
+      background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+    }
+    .cover .subtitle { font-size: 14pt; color: #475569; margin: 8px 0 16px; }
+    .cover .meta { font-size: 10pt; color: #64748b; }
+    .tip {
+      background: #eff6ff;
+      border-left: 4px solid #2563eb;
+      padding: 10px 14px;
+      margin: 12px 0;
+      font-size: 10.5pt;
+    }
+    .flow {
+      background: #f0fdf4;
+      border: 2px solid #86efac;
+      border-radius: 10px;
+      padding: 16px;
+      margin: 16px 0;
+      page-break-inside: avoid;
+    }
+    .flow-chain {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin: 12px 0;
+    }
+    .flow-box {
+      background: #fff;
+      border: 1px solid #64748b;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 9.5pt;
+      font-weight: 600;
+      text-align: center;
+      min-width: 110px;
+    }
+    .flow-box small { display: block; font-weight: 400; color: #64748b; margin-top: 4px; font-size: 8.5pt; }
+    .flow-box--a { background: #dbeafe; border-color: #2563eb; }
+    .flow-box--b { background: #fef3c7; border-color: #d97706; }
+    .flow-box--c { background: #d1fae5; border-color: #059669; }
+    .flow-arrow { font-size: 18pt; color: #2563eb; font-weight: 700; }
+    table.modules {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10pt;
+      margin: 10px 0 16px;
+    }
+    table.modules th {
+      background: #1e293b;
+      color: #fff;
+      text-align: left;
+      padding: 8px 10px;
+    }
+    table.modules td {
+      border: 1px solid #cbd5e1;
+      padding: 7px 10px;
+      vertical-align: top;
+    }
+    table.modules tr:nth-child(even) td { background: #f8fafc; }
+    .module-num { font-weight: 700; color: #1e40af; white-space: nowrap; }
+    .steps { counter-reset: step; list-style: none; padding-left: 0; }
+    .steps li {
+      counter-increment: step;
+      padding-left: 36px;
+      position: relative;
+      margin-bottom: 10px;
+    }
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 26px;
+      height: 26px;
+      background: #2563eb;
+      color: #fff;
+      border-radius: 50%;
+      text-align: center;
+      line-height: 26px;
+      font-size: 10pt;
+      font-weight: 700;
+    }
+    .print-hint {
+      margin-top: 24px;
+      padding: 12px;
+      border: 1px dashed #94a3b8;
+      font-size: 10pt;
+      color: #64748b;
+      text-align: center;
+    }
+    @media print {
+      body { padding: 0; max-width: none; }
+      .print-hint { display: none; }
+      .flow-chain { flex-wrap: nowrap; }
+      h2 { page-break-before: auto; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="cover">
+    <h1>Windal Accounting System</h1>
+    <p class="subtitle">Client User Guide — Features &amp; How to Use</p>
+    <p class="meta">For office staff · Reports, entries, drill-down navigation</p>
+  </div>
+
+  <h2>1. Overview</h2>
+  <p>Windal Accounting is a web application for trading and pulses businesses. It covers:</p>
+  <ul>
+    <li><strong>Final accounts</strong> — Trial Balance, Trading A/C, Profit &amp; Loss, Balance Sheet</li>
+    <li><strong>Ledgers</strong> — Account ledger, customer/supplier bills, broker outstanding, ageing</li>
+    <li><strong>Stock</strong> — Stock summary, HSN sales/purchase reports</li>
+    <li><strong>Sales</strong> — Order, dispatch challan, sale bill entry and printing, GSTR-1</li>
+    <li><strong>Purchase</strong> — Purchase order, GRN, purchase bill, purchase list</li>
+    <li><strong>Vouchers</strong> — Cash, bank, and journal entry (CV / BV / JV)</li>
+    <li><strong>Production</strong> — Production entry and stock posting (TYPE PR)</li>
+    <li><strong>Masters</strong> — Account master and item master</li>
+  </ul>
+  <p>Open the system in Chrome or Edge on your PC or mobile using the URL provided by your administrator.</p>
+
+  <h2>2. Log in and open a report</h2>
+  <ol class="steps">
+    <li>Enter <strong>User name</strong> and <strong>Password</strong> (from your company user list).</li>
+    <li>Select <strong>Company</strong> and <strong>Financial Year</strong>, then continue.</li>
+    <li>On the main menu, click a module header (1–8) to expand it.</li>
+    <li>Click the report or entry you need — it opens immediately.</li>
+  </ol>
+  <div class="tip">
+    <strong>Navigation:</strong> Use <strong>← Back</strong> to return one screen. Use <strong>🏠 Home</strong> to return to the menu.
+    On any screen, tap <strong>?</strong> (Help) for a short guide.
+  </div>
+
+  <h2>3. Trial Balance → Ledger → Voucher (step by step)</h2>
+  <p>This is the most common way to check an account and see the original voucher behind a posting.</p>
+
+  <h3>Example: check an account from Trial Balance</h3>
+  <ol class="steps">
+    <li>Open <strong>Final Accounts</strong> → <strong>Trial Balance Report</strong>.</li>
+    <li>Set <strong>As-of (ending) date</strong> and click <strong>Run Report</strong>.</li>
+    <li>The list shows every account with opening, debit, credit, and closing balances.</li>
+    <li><strong>Click any account row</strong> (e.g. a party or expense account).</li>
+    <li>The <strong>Ledger Account</strong> screen opens — all transactions for that account in the financial year.</li>
+    <li><strong>Click any transaction line</strong> on the ledger.</li>
+    <li>The <strong>Voucher</strong> screen opens — all ledger lines posted on that voucher (type, date, number).</li>
+    <li>Press <strong>← Back</strong> to return to the ledger, then again to return to trial balance.</li>
+  </ol>
+
+  <div class="flow">
+    <p><strong>Visual flow</strong></p>
+    <div class="flow-chain">
+      <div class="flow-box flow-box--a">Trial Balance<small>Click account row</small></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box flow-box--b">Ledger Account<small>Click transaction line</small></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box flow-box--c">Voucher detail<small>All lines on voucher</small></div>
+    </div>
+    <p>On some ledger lines (sale-related), you may also open <strong>Sale Bill print</strong> when the voucher is linked to a sale bill.</p>
+  </div>
+
+  <h3>Trial Balance Summary (by annexure / schedule)</h3>
+  <ol class="steps">
+    <li>Open <strong>Trial Balance Summary</strong> → set as-of date → Run Report.</li>
+    <li>Summary shows one row per annexure (schedule).</li>
+    <li><strong>Click a summary row</strong> → account detail for that schedule.</li>
+    <li><strong>Click an account</strong> → Ledger → click a line → Voucher (same as above).</li>
+  </ol>
+
+  <h3>Trial Balance Date Wise</h3>
+  <p>Set <strong>starting</strong> and <strong>ending</strong> dates. The report shows opening, period movement, and closing per account. <strong>Click an account row</strong> to open the ledger for that date range.</p>
+
+  <h3>Same idea on other reports</h3>
+  <ul>
+    <li><strong>Balance Sheet</strong> — click an account → ledger → voucher on line click.</li>
+    <li><strong>Trading A/C / P&amp;L</strong> — click highlighted amounts or accounts where enabled → ledger.</li>
+    <li><strong>Voucher List</strong> — click a row → voucher detail lines.</li>
+  </ul>
+
+  <h2>4. Main menu — all modules</h2>
+  <table class="modules">
+    <thead>
+      <tr><th>Module</th><th>Reports &amp; entries</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="module-num">1 Final Accounts</td>
+        <td>Trial Balance, Trial Balance Summary, Trial Date Wise, Trading A/C, Profit &amp; Loss, Balance Sheet</td>
+      </tr>
+      <tr>
+        <td class="module-num">2 Ledger Reports</td>
+        <td>Ledger Report, Ledger With Interest, Customer Ledger, Supplier Ledger, Broker OS, Ageing Report</td>
+      </tr>
+      <tr>
+        <td class="module-num">3 Stock</td>
+        <td>Stock Sum, HSN Sales, HSN Purchase</td>
+      </tr>
+      <tr>
+        <td class="module-num">4 Sales</td>
+        <td>Sales Order, Dispatch Challan, Sale Bill, Sale Bill Printing, Sale Bill List, GSTR-1</td>
+      </tr>
+      <tr>
+        <td class="module-num">5 Purchase</td>
+        <td>Purchase Order, Goods Receipt Note (GRN), Purchase Bill, Purchase List</td>
+      </tr>
+      <tr>
+        <td class="module-num">6 Voucher</td>
+        <td>Cash / Bank / Journal Entry, Voucher List</td>
+      </tr>
+      <tr>
+        <td class="module-num">7 Production</td>
+        <td>Production Entry (milling + production lines, stock TYPE PR)</td>
+      </tr>
+      <tr>
+        <td class="module-num">8 Master</td>
+        <td>A/c Master (parties, brokers, suppliers), Item Master</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>5. Data entry screens (brief)</h2>
+
+  <h3>Sale Bill</h3>
+  <p>Enter party, items, quantities, GST, etc. Save posts to SALE, LEDGER, STOCK, and BILLS. Use toolbar for Add, Edit, Delete, Print, Prev/Next. Rights from your user profile.</p>
+
+  <h3>Purchase Bill</h3>
+  <p>Enter supplier bill, lines with weights and GST. Save posts PURCHASE, STOCK, LEDGER, BILLS. Print from toolbar after save.</p>
+
+  <h3>Dispatch Challan / Sales Order / Purchase Order / GRN</h3>
+  <p>Standard document entry with party search, line items, Prev/Next between vouchers, List screen, and Print. Pending SO/PO can be picked on lines where shown.</p>
+
+  <h3>Production Entry</h3>
+  <p>Date, Sr.No., milling item, weight, qty, B/K/H, plant (required). Add production lines with item, prod %, qty, weight, shortage. Save posts PROD and STOCK (TYPE PR). List, Print, Prev/Next on toolbar.</p>
+
+  <h3>Cash / Bank / Journal Voucher</h3>
+  <p>CV, BV, JV entry with debit/credit lines. Save posts VOUCHER, LEDGER, BILLS. Use Voucher List to find and open existing vouchers.</p>
+
+  <h2>6. Export and share reports</h2>
+  <p>On most report screens the toolbar offers:</p>
+  <ul>
+    <li><strong>Pdf</strong> — save report as PDF file</li>
+    <li><strong>Excel</strong> — download spreadsheet</li>
+    <li><strong>Print</strong> — send to printer</li>
+    <li><strong>WhatsApp</strong> — share PDF (useful on mobile)</li>
+  </ul>
+
+  <h2>7. Mobile use</h2>
+  <ul>
+    <li>Same URL as desktop; layout adapts to phone screen.</li>
+    <li>Swipe sideways on wide reports if needed.</li>
+    <li>Entry screens use search sheets for party and item selection.</li>
+    <li>Print opens the system print dialog; PDF saves to device or Downloads.</li>
+  </ul>
+
+  <h2>8. User rights</h2>
+  <p>Your administrator controls which modules you can open, add, edit, or delete (stored in DAL.USERS — F2 sale bill, F5 production, F12 sales order, etc.). If you see <strong>Access Denied</strong>, ask your admin to update your rights.</p>
+
+  <h2>9. In-app full PDF guide</h2>
+  <p>After login, on the reports menu click <strong>?</strong> (Help) and choose <strong>Download full user guide (PDF)</strong> for an up-to-date copy including every module.</p>
+
+  <p class="print-hint">To save this document as PDF: press <strong>Ctrl+P</strong> → choose <strong>Save as PDF</strong> → Save.</p>
+
+</body>
+</html>
