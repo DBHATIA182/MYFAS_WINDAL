@@ -1,0 +1,611 @@
+/* Main menu: left modules + right report tiles (desktop & mobile) */
+
+.app--windal-dashboard {
+  background: #f0f2f5;
+  min-height: 100dvh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.app--windal-dashboard .app-main {
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app--windal-dashboard .app-main > .slide {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  box-shadow: none;
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.windal-dash {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  color: #1e293b;
+  position: relative;
+}
+
+.windal-dash__backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  border: none;
+  background: rgba(15, 23, 42, 0.45);
+  cursor: pointer;
+}
+
+/* ── Sidebar ── */
+.windal-dash__sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, #1a2744 0%, #121c32 100%);
+  color: #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  z-index: 50;
+}
+
+.windal-dash__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.windal-dash__brand-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f59e0b, #ea580c);
+  color: #fff;
+  font-weight: 800;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.windal-dash__brand-name {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.windal-dash__nav {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.windal-dash__nav-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(226, 232, 240, 0.88);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.windal-dash__nav-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.windal-dash__nav-item.is-active {
+  background: rgba(59, 130, 246, 0.25);
+  color: #fff;
+  font-weight: 600;
+}
+
+.windal-dash__nav-icon {
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 17px;
+}
+
+.windal-dash__nav-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.windal-dash__nav-chevron {
+  opacity: 0.45;
+  font-size: 16px;
+}
+
+.windal-dash__sidebar-foot {
+  flex-shrink: 0;
+  margin-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 10px 0 12px;
+}
+
+.windal-dash__nav-item--exit {
+  color: #fca5a5;
+}
+
+.windal-dash__user-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px 4px;
+  font-size: 12px;
+}
+
+.windal-dash__user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #3b82f6;
+  color: #fff;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Main panel ── */
+.windal-dash__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #f0f2f5;
+}
+
+.windal-dash__topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.windal-dash__menu-btn {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-width: 44px;
+  height: 44px;
+  padding: 4px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: inherit;
+  color: #1a3d73;
+}
+
+.windal-dash__menu-btn-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.windal-dash__menu-btn-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+/* Horizontal module picker — visible on phone/tablet only */
+.windal-dash__module-strip {
+  display: none;
+}
+
+.windal-dash__module-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 20px;
+  border: 1.5px solid #cbd5e1;
+  background: #fff;
+  color: #475569;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.windal-dash__module-chip.is-active {
+  background: #1a3d73;
+  border-color: #1a3d73;
+  color: #fff;
+}
+
+.windal-dash__module-chip span[aria-hidden='true'] {
+  font-size: 14px;
+}
+
+.windal-dash__topbar-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.windal-dash__topbar-company {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1a3d73;
+  line-height: 1.2;
+}
+
+.windal-dash__topbar-fy {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.windal-dash__topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.windal-dash__topbar-actions .toolbar-icon-btn,
+.windal-dash__topbar-actions .voice-command-btn,
+.windal-dash__topbar-actions .btn-report-help {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.windal-dash__topbar-exit {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.windal-dash__fy-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  background: linear-gradient(90deg, #1a3d73 0%, #2a5494 100%);
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.windal-dash__fy-banner span:last-child {
+  font-size: 13px;
+  opacity: 0.92;
+  text-align: right;
+}
+
+.windal-dash__content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 18px calc(20px + env(safe-area-inset-bottom, 0px));
+  -webkit-overflow-scrolling: touch;
+}
+
+.windal-dash__welcome {
+  margin-bottom: 18px;
+}
+
+.windal-dash__welcome-title {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a3d73;
+  letter-spacing: -0.02em;
+}
+
+.windal-dash__welcome-sub {
+  margin: 0;
+  font-size: 14px;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.windal-dash__section-title {
+  margin: 0 0 14px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.windal-dash__quick-block {
+  margin-bottom: 20px;
+}
+
+.windal-dash__module-block {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.windal-dash__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 12px;
+}
+
+.windal-dash__grid--quick,
+.windal-dash__grid--module {
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 12px;
+}
+
+.windal-dash__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 10px;
+  min-height: 108px;
+  border: 1px solid #e8ecf1;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(15, 30, 60, 0.06);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: center;
+  transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
+}
+
+.windal-dash__tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(15, 30, 60, 0.1);
+  border-color: #cbd5e1;
+}
+
+.windal-dash__tile:active {
+  transform: translateY(0);
+}
+
+.windal-dash__tile-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.windal-dash__tile-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+/* ── Mobile ── */
+@media (max-width: 900px) {
+  .windal-dash__menu-btn {
+    display: flex;
+  }
+
+  .windal-dash__module-strip {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px 2px 14px;
+    margin: 0 -2px 4px;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+  }
+
+  .windal-dash__module-chip {
+    scroll-snap-align: start;
+  }
+
+  .windal-dash__backdrop {
+    display: none;
+  }
+
+  .windal-dash--sidebar-open .windal-dash__backdrop {
+    display: block;
+  }
+
+  .windal-dash__sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: min(280px, 88vw);
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
+  }
+
+  .windal-dash--sidebar-open .windal-dash__sidebar {
+    transform: translateX(0);
+  }
+
+  /* Same quick-access tiles as desktop (size & grid) */
+  .windal-dash__grid--quick,
+  .windal-dash__grid--module {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .windal-dash__grid--quick .windal-dash__tile,
+  .windal-dash__grid--module .windal-dash__tile {
+    min-height: 108px;
+    padding: 16px 10px;
+  }
+
+  .windal-dash__grid--quick .windal-dash__tile-icon,
+  .windal-dash__grid--module .windal-dash__tile-icon {
+    width: 48px;
+    height: 48px;
+    font-size: 24px;
+  }
+
+  .windal-dash__grid--quick .windal-dash__tile-label,
+  .windal-dash__grid--module .windal-dash__tile-label {
+    font-size: 12px;
+  }
+
+  .windal-dash__welcome-title {
+    font-size: 19px;
+  }
+
+  .windal-dash__fy-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    font-size: 13px;
+  }
+
+  .windal-dash__topbar-exit {
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+}
+
+@media (min-width: 901px) {
+  .windal-dash__backdrop {
+    display: none !important;
+  }
+
+  /* Modules grouped under brand; Exit/user just below (no large empty gap) */
+  .windal-dash__sidebar {
+    height: 100%;
+    max-height: 100dvh;
+    justify-content: flex-start;
+  }
+
+  .windal-dash__brand {
+    padding: 12px 14px;
+    flex-shrink: 0;
+  }
+
+  .windal-dash__brand-logo {
+    width: 34px;
+    height: 34px;
+    font-size: 17px;
+  }
+
+  .windal-dash__brand-name {
+    font-size: 14px;
+  }
+
+  .windal-dash__nav {
+    flex: 0 0 auto;
+    overflow-y: visible;
+    padding: 6px 10px;
+    gap: 7px;
+  }
+
+  .windal-dash__nav-item {
+    padding: 9px 12px;
+    gap: 10px;
+    font-size: 15px;
+    line-height: 1.3;
+  }
+
+  .windal-dash__nav-icon {
+    width: 24px;
+    font-size: 17px;
+  }
+
+  .windal-dash__nav-chevron {
+    font-size: 15px;
+  }
+
+  .windal-dash__sidebar-foot {
+    margin-top: 16px;
+    padding: 8px 0 10px;
+  }
+
+  .windal-dash__nav-item--exit {
+    padding: 9px 12px;
+    font-size: 15px;
+  }
+
+  .windal-dash__user-pill {
+    padding: 6px 12px 4px;
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .windal-dash__user-avatar {
+    width: 30px;
+    height: 30px;
+    font-size: 13px;
+  }
+
+  /* Desktop: hide horizontal module chips; use sidebar only */
+  .windal-dash__module-strip {
+    display: none;
+  }
+
+  /* Desktop: Home = quick access only; other modules = that module's reports only */
+  .windal-dash:has(.windal-dash__module-block) .windal-dash__quick-block {
+    display: none;
+  }
+}
+
+@media (max-width: 400px) {
+  .windal-dash__grid--quick,
+  .windal-dash__grid--module {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+}

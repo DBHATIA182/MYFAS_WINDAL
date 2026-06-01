@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
 import { exitApp } from '../utils/exitApp';
-import FasFlowLayout from '../components/FasFlowLayout';
+import WindalInitialFlowCard from '../components/WindalInitialFlowCard';
+import { WINDAL_BRAND } from '../utils/windalBrand';
 
 const MAX_LEN = 10;
 
@@ -12,18 +13,12 @@ function toHubUpper(s) {
     .slice(0, MAX_LEN);
 }
 
-export default function LoginSlide({ apiBase, onSuccess, onExit, appName = 'FAS Accounting', settingsSlot = null }) {
+export default function LoginSlide({ apiBase, onSuccess, onExit, settingsSlot = null }) {
   const [userName, setUserName] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  const brand = useMemo(() => {
-    const words = String(appName || '').trim().split(/\s+/).filter(Boolean);
-    const short = words[0] || 'FAS';
-    return { short, sub: 'ACCOUNTING SUITE' };
-  }, [appName]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -58,117 +53,80 @@ export default function LoginSlide({ apiBase, onSuccess, onExit, appName = 'FAS 
   };
 
   return (
-    <div className="slide slide-login slide-fas-flow">
-      <FasFlowLayout
-        mode="brand"
-        step={1}
-        logoLetter={brand.short.slice(0, 1).toUpperCase()}
-        productName={brand.short}
-        productSub={brand.sub}
-        headerActions={settingsSlot}
+    <div className="slide slide-login slide-windal-initial">
+      <WindalInitialFlowCard
+        variant="login"
+        stepTitle="USER LOGIN"
+        settingsSlot={settingsSlot}
+        footer={WINDAL_BRAND.footerNote}
       >
-        <form onSubmit={handleSubmit} className="fas-flow-login-form">
-          <div>
-            <div className="fas-flow-title">Welcome back 👋</div>
-            <div className="fas-flow-subtitle">Sign in to access your company accounts</div>
-          </div>
-
+        <form onSubmit={handleSubmit}>
           {error ? (
-            <div className="fas-form-api-error" role="alert">
+            <div className="windal-initial-error" role="alert">
               <strong>Could not sign in.</strong> {error}
             </div>
           ) : null}
 
-          <div className="fas-field-group">
-            <div className="fas-field-label">User name</div>
-            <div className="fas-field-input">
-              <span className="fas-field-icon" aria-hidden="true">
-                👤
-              </span>
-              <input
-                id="login-user"
-                name="user_name"
-                type="text"
-                autoComplete="username"
-                maxLength={MAX_LEN}
-                value={userName}
-                onChange={(e) => setUserName(toHubUpper(e.target.value))}
-                onFocus={() => {
-                  try {
-                    window.scrollTo(0, 0);
-                    document.documentElement.scrollLeft = 0;
-                    document.body.scrollLeft = 0;
-                  } catch {
-                    /* ignore */
-                  }
-                }}
-                disabled={loading}
-                placeholder=""
-              />
-            </div>
-          </div>
-
-          <div className="fas-field-group">
-            <div className="fas-field-label">Password</div>
-            <div className="fas-field-input">
-              <span className="fas-field-icon" aria-hidden="true">
-                🔒
-              </span>
-              <input
-                id="login-pw"
-                name="pw"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="current-password"
-                spellCheck={false}
-                maxLength={MAX_LEN}
-                value={password}
-                onChange={(e) => setPassword(toHubUpper(e.target.value))}
-                onFocus={() => {
-                  try {
-                    window.scrollTo(0, 0);
-                    document.documentElement.scrollLeft = 0;
-                    document.body.scrollLeft = 0;
-                  } catch {
-                    /* ignore */
-                  }
-                }}
-                disabled={loading}
-              />
-            </div>
-          </div>
-
-          <label className="fas-show-pass">
+          <label className="windal-initial-label" htmlFor="login-user">
+            User Name
+          </label>
+          <div className="windal-initial-input-wrap">
             <input
-              type="checkbox"
-              className="fas-toggle-input"
-              checked={showPassword}
-              onChange={(e) => setShowPassword(e.target.checked)}
+              id="login-user"
+              name="user_name"
+              type="text"
+              className="windal-initial-input"
+              autoComplete="username"
+              maxLength={MAX_LEN}
+              value={userName}
+              onChange={(e) => setUserName(toHubUpper(e.target.value))}
               disabled={loading}
             />
-            <span className="fas-toggle-switch" aria-hidden="true" />
-            <span>Show password</span>
-          </label>
-
-          <div className="fas-info-tip">
-            Username and password are case-sensitive and sent in <strong>UPPERCASE</strong> (same as legacy install).
           </div>
 
-          <div className="fas-btn-row">
+          <label className="windal-initial-label" htmlFor="login-pw">
+            Password
+          </label>
+          <div className="windal-initial-input-wrap">
+            <input
+              id="login-pw"
+              name="pw"
+              type={showPassword ? 'text' : 'password'}
+              className="windal-initial-input windal-initial-input--pw"
+              autoComplete="current-password"
+              spellCheck={false}
+              maxLength={MAX_LEN}
+              value={password}
+              onChange={(e) => setPassword(toHubUpper(e.target.value))}
+              disabled={loading}
+            />
             <button
               type="button"
-              className="fas-btn fas-btn-ghost"
+              className="windal-initial-pw-toggle"
+              onClick={() => setShowPassword((v) => !v)}
+              disabled={loading}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              title={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? '🙈' : '👁'}
+            </button>
+          </div>
+
+          <div className="windal-initial-btn-row">
+            <button
+              type="button"
+              className="windal-initial-btn windal-initial-btn--ghost"
               onClick={() => (onExit ? onExit() : exitApp())}
               disabled={loading}
-              title="Closes the window when allowed; otherwise leaves a blank tab you can close."
             >
               Exit
             </button>
-            <button type="submit" className="fas-btn fas-btn-primary" disabled={loading}>
-              {loading ? 'Signing in…' : 'Sign In →'}
+            <button type="submit" className="windal-initial-btn windal-initial-btn--primary" disabled={loading}>
+              {loading ? 'Connecting…' : '→ Connect'}
             </button>
           </div>
         </form>
-      </FasFlowLayout>
+      </WindalInitialFlowCard>
     </div>
   );
 }

@@ -93,6 +93,7 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
   const [billPrintOpen, setBillPrintOpen] = useState(false);
   const [billPrintParams, setBillPrintParams] = useState(null);
   const lookupRequestSeqRef = useRef(0);
+  const saleChartDrillRanRef = useRef(null);
 
   const compCode = formData.comp_code ?? formData.COMP_CODE;
   const compUid = formData.comp_uid ?? formData.COMP_UID;
@@ -264,51 +265,100 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
     setBillPrintOpen(true);
   };
 
+  const runSaleListQuery = async (overrides = {}) => {
+    const s = overrides.startDate ?? startDate;
+    const e = overrides.endDate ?? endDate;
+    if (!s || !e) {
+      alert('Please set starting and ending dates.');
+      return false;
+    }
+    const itemCode =
+      overrides.itemCode !== undefined ? String(overrides.itemCode || '').trim() : selectedItem.trim();
+
+    const params = {
+      comp_code: compCode,
+      comp_uid: compUid,
+      s_date: toOracleDate(s),
+      e_date: toOracleDate(e),
+    };
+    if (selectedMcode.trim()) params.mcode = selectedMcode.trim();
+    if (selectedBk.trim()) params.b_code = selectedBk.trim();
+    if (itemCode) params.item_code = itemCode;
+    if (salePtype.trim()) params.ptype = salePtype.trim();
+    if (billNoStart.trim()) params.sb_no = billNoStart.trim();
+    if (billNoEnd.trim()) params.eb_no = billNoEnd.trim();
+    if (selectedPlant.trim()) params.plant_code = selectedPlant.trim();
+    if (markaInput.trim()) params.marka = markaInput.trim();
+    if (bTypeInput.trim()) params.b_type = bTypeInput.trim();
+
+    const { data } = await axios.get(`${apiBase}/api/sale-list`, {
+      params,
+      withCredentials: true,
+      timeout: 120000,
+    });
+    const rows = Array.isArray(data) ? data : [];
+    if (rows.length === 0) {
+      alert(
+        'No rows returned. Check: dates and bill no range; clear party / broker / item / plant / marka / B type. The list uses numeric SALE.TYPE = ptype (1–9), or TYPE 1–9 when “Mixed” is selected.'
+      );
+      return false;
+    }
+    setReportData(rows);
+    setSaleSortMode('date');
+    setShowReport(true);
+    return true;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!startDate || !endDate) {
-      alert('Please set starting and ending dates.');
-      return;
-    }
     setLoading(true);
     try {
-      const params = {
-        comp_code: compCode,
-        comp_uid: compUid,
-        s_date: toOracleDate(startDate),
-        e_date: toOracleDate(endDate),
-      };
-      if (selectedMcode.trim()) params.mcode = selectedMcode.trim();
-      if (selectedBk.trim()) params.b_code = selectedBk.trim();
-      if (selectedItem.trim()) params.item_code = selectedItem.trim();
-      if (salePtype.trim()) params.ptype = salePtype.trim();
-      if (billNoStart.trim()) params.sb_no = billNoStart.trim();
-      if (billNoEnd.trim()) params.eb_no = billNoEnd.trim();
-      if (selectedPlant.trim()) params.plant_code = selectedPlant.trim();
-      if (markaInput.trim()) params.marka = markaInput.trim();
-      if (bTypeInput.trim()) params.b_type = bTypeInput.trim();
-
-      const { data } = await axios.get(`${apiBase}/api/sale-list`, {
-        params,
-        withCredentials: true,
-        timeout: 120000,
-      });
-      const rows = Array.isArray(data) ? data : [];
-      if (rows.length === 0) {
-        alert(
-          'No rows returned. Check: dates and bill no range; clear party / broker / item / plant / marka / B type. The list uses numeric SALE.TYPE = ptype (1–9), or TYPE 1–9 when “Mixed” is selected.'
-        );
-      } else {
-        setReportData(rows);
-        setSaleSortMode('date');
-        setShowReport(true);
-      }
+      await runSaleListQuery();
     } catch (error) {
       alert('Error: ' + (error.response?.data?.error || error.message));
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const d = formData.saleChartDrilldown;
+    if (!d?.autoRun || !d.startDate || !d.endDate) return;
+    const runKey = String(d.at ?? `${d.startDate}-${d.endDate}-${d.itemCode || ''}`);
+    if (saleChartDrillRanRef.current === runKey) return;
+    saleChartDrillRanRef.current = runKey;
+
+    setStartDate(d.startDate);
+    setEndDate(d.endDate);
+    if (d.itemCode) {
+      setSelectedItem(String(d.itemCode).trim());
+      if (d.itemName) setItemSearch(String(d.itemName).trim());
+    } else {
+      setSelectedItem('');
+      setItemSearch('');
+    }
+
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        if (!cancelled) {
+          await runSaleListQuery({
+            startDate: d.startDate,
+            endDate: d.endDate,
+            itemCode: d.itemCode || '',
+          });
+        }
+      } catch (error) {
+        if (!cancelled) alert('Error: ' + (error.response?.data?.error || error.message));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.saleChartDrilldown]);
 
   const listTypeLabel = SALE_LIST_PTYPE_OPTIONS.find((o) => o.value === salePtype)?.label ?? 'Mixed — TYPE 1–9';
   const selectedPlantRow = plants.find((p) => String(p.PLANT_CODE ?? p.plant_code ?? '').trim() === selectedPlant.trim());

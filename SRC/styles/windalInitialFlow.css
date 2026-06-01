@@ -1,0 +1,464 @@
+/* Login → company → year: centered card on solid blue (MFFAS-style) */
+
+.app--windal-initial {
+  background: #1e4a8a;
+  min-height: 100dvh;
+}
+
+.app--windal-initial .app-main {
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  background: #1e4a8a;
+}
+
+.app--windal-initial .app-main > .slide {
+  width: 100%;
+  max-width: 100%;
+  padding: 16px;
+  box-shadow: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: min(100dvh, 100%);
+}
+
+.windal-initial-page {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.windal-initial-card__brand-tools {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 2;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.windal-initial-card__brand-tools .view-settings,
+.windal-initial-card__brand-tools .toolbar-icon-btn,
+.windal-initial-card__brand-tools .voice-command-btn {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.windal-initial-card__brand-tools .view-settings-menu {
+  right: 0;
+  left: auto;
+}
+
+.windal-initial-card {
+  width: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  background: #fff;
+}
+
+/* Login brand header */
+.windal-initial-card__brand {
+  position: relative;
+  background: linear-gradient(180deg, #1a3d73 0%, #153566 100%);
+  padding: 18px 20px 16px;
+  text-align: center;
+  color: #fff;
+}
+
+.windal-initial-card__fas {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: 10px;
+  opacity: 0.95;
+}
+
+.windal-initial-card__brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.windal-initial-logo {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #fff;
+  color: #1a3d73;
+  font-size: 28px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.windal-initial-card__titles {
+  text-align: left;
+}
+
+.windal-initial-product {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+}
+
+.windal-initial-tagline {
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.92;
+  margin-top: 4px;
+  line-height: 1.35;
+}
+
+.windal-initial-band {
+  background: #e8e4dc;
+  padding: 10px 16px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1a3d73;
+  letter-spacing: 0.06em;
+}
+
+/* Company / year step header */
+.windal-initial-card__step-head {
+  background: linear-gradient(180deg, #1a3d73 0%, #153566 100%);
+  padding: 12px 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  color: #fff;
+}
+
+.windal-initial-card__step-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.windal-initial-card__step-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.windal-initial-card__step-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.windal-initial-card__step-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+  max-width: 50%;
+}
+
+.windal-initial-card__step-tools {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.windal-initial-card__step-tools .view-settings {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.windal-initial-card__step-tools .toolbar-icon-btn,
+.windal-initial-card__step-tools .voice-command-btn {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  min-width: 32px;
+  padding: 0;
+  margin: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.windal-initial-card__step-tools .view-settings-menu {
+  right: 0;
+  left: auto;
+  top: calc(100% + 4px);
+}
+
+.windal-initial-card__step-user {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0.92;
+  line-height: 1.2;
+  text-align: right;
+}
+
+.windal-initial-body {
+  padding: 18px 20px 20px;
+  background: #fff;
+}
+
+.windal-initial-footer {
+  padding: 0 20px 14px;
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+  background: #fff;
+}
+
+.windal-initial-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a3d73;
+  margin-bottom: 6px;
+}
+
+.windal-initial-input-wrap {
+  position: relative;
+  margin-bottom: 14px;
+}
+
+.windal-initial-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font-size: 15px;
+  font-weight: 600;
+  border: 1px solid #c5cdd8;
+  border-radius: 2px;
+  color: #1e293b;
+  font-family: inherit;
+}
+
+.windal-initial-input:focus {
+  outline: 2px solid rgba(26, 61, 115, 0.35);
+  border-color: #1a3d73;
+}
+
+.windal-initial-input--pw {
+  padding-right: 40px;
+}
+
+.windal-initial-pw-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px 6px;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.65;
+}
+
+.windal-initial-pw-toggle:hover {
+  opacity: 1;
+}
+
+.windal-initial-error {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  font-size: 13px;
+  border-radius: 4px;
+}
+
+.windal-initial-btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.windal-initial-btn {
+  flex: 1;
+  padding: 11px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.windal-initial-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.windal-initial-btn--primary {
+  background: #1a3d73;
+  color: #fff;
+  border-color: #153566;
+}
+
+.windal-initial-btn--primary:hover:not(:disabled) {
+  background: #153566;
+}
+
+.windal-initial-btn--ghost {
+  background: #e8e8e8;
+  color: #334155;
+  border-color: #d1d5db;
+  flex: 0 0 42%;
+}
+
+.windal-initial-btn--ghost:hover:not(:disabled) {
+  background: #ddd;
+}
+
+.windal-initial-section-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: #15803d;
+  margin-bottom: 10px;
+}
+
+.windal-initial-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  max-height: min(52vh, 320px);
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 2px;
+}
+
+.windal-initial-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+  background: #fff;
+  text-align: left;
+  width: 100%;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  font-family: inherit;
+}
+
+.windal-initial-list-item:last-child {
+  border-bottom: none;
+}
+
+.windal-initial-list-item:hover {
+  background: #f8fafc;
+}
+
+.windal-initial-list-item.is-selected {
+  background: #1a3d73;
+  color: #fff;
+}
+
+.windal-initial-list-item__check {
+  font-size: 16px;
+  opacity: 0;
+}
+
+.windal-initial-list-item.is-selected .windal-initial-list-item__check {
+  opacity: 1;
+}
+
+.windal-initial-company-line {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a3d73;
+  margin-bottom: 12px;
+  line-height: 1.45;
+}
+
+.windal-initial-year-table-wrap {
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.windal-initial-year-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.windal-initial-year-table thead th {
+  background: #1a3d73;
+  color: #fff;
+  padding: 10px 8px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.windal-initial-year-table tbody tr {
+  cursor: pointer;
+}
+
+.windal-initial-year-table tbody td {
+  padding: 10px 8px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #1e293b;
+  font-weight: 500;
+}
+
+.windal-initial-year-table tbody tr:hover td {
+  background: #f1f5f9;
+}
+
+.windal-initial-year-table tbody tr.is-selected td {
+  background: #dbeafe;
+  color: #1a3d73;
+  font-weight: 700;
+}
+
+@media (max-width: 380px) {
+  .windal-initial-product {
+    font-size: 22px;
+  }
+  .windal-initial-logo {
+    width: 44px;
+    height: 44px;
+    font-size: 22px;
+  }
+}

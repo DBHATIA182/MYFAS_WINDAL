@@ -3720,6 +3720,350 @@ app.get('/api/years', async (req, res) => {
   }
 });
 
+function formatDateDmyFromRaw(raw) {
+  const d = parseDateOnly(raw);
+  if (!d) return '';
+  return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+}
+
+function buildMonthSlotsBetween(sDateDmy, eDateDmy) {
+  const start = parseDateOnly(sDateDmy);
+  const end = parseDateOnly(eDateDmy);
+  if (!start || !end) return [];
+  const slots = [];
+  let cur = new Date(start.getFullYear(), start.getMonth(), 1);
+  const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+  while (cur.getTime() <= endMonth.getTime()) {
+    const y = cur.getFullYear();
+    const m = cur.getMonth() + 1;
+    slots.push({
+      monthKey: `${y}-${String(m).padStart(2, '0')}`,
+      label: cur.toLocaleString('en-IN', { month: 'short' }),
+      calYear: y,
+      calMonth: m,
+    });
+    cur = new Date(y, cur.getMonth() + 1, 1);
+  }
+  return slots;
+}
+
+const SALE_GRAPH_WT_EXPR =
+  'CASE WHEN NVL(A.TYPE, 0) = 8 THEN -NVL(A.WEIGHT, 0) ELSE NVL(A.WEIGHT, 0) END';
+const SALE_GRAPH_AMT_EXPR =
+  'CASE WHEN NVL(A.TYPE, 0) = 8 THEN -NVL(A.BILL_AMT, 0) ELSE NVL(A.BILL_AMT, 0) END';
+
+function saleGraphItemFilterSql(item_code) {
+  const code = item_code != null ? String(item_code).trim() : '';
+  if (!code) return { sql: '', binds: {} };
+  return {
+    sql: ' AND TRIM(TO_CHAR(A.ITEM_CODE)) = TRIM(:item_code) ',
+    binds: { item_code: code },
+  };
+}
+
+async function fetchSaleMonthlyAggregate(comp_code, comp_uid, s_date, e_date, item_code = '') {
+  const itemFilter = saleGraphItemFilterSql(item_code);
+  const sql = `
+    SELECT
+      TO_CHAR(TRUNC(A.BILL_DATE, 'MM'), 'YYYY-MM') AS MONTH_KEY,
+      TRIM(TO_CHAR(A.BILL_DATE, 'MON', 'NLS_DATE_LANGUAGE=ENGLISH')) AS MONTH_NAME,
+      SUM(${SALE_GRAPH_WT_EXPR}) AS TOTAL_WEIGHT,
+      SUM(${SALE_GRAPH_AMT_EXPR}) AS TOTAL_AMOUNT,
+      COUNT(*) AS LINE_COUNT
+    FROM SALE A
+    WHERE A.COMP_CODE = :comp_code
+      AND A.TYPE BETWEEN 1 AND 9
+      AND TRUNC(A.BILL_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))
+                                  AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))
+      ${itemFilter.sql}
+    GROUP BY TRUNC(A.BILL_DATE, 'MM'),
+             TO_CHAR(A.BILL_DATE, 'MON', 'NLS_DATE_LANGUAGE=ENGLISH')
+    ORDER BY MONTH_KEY`;
+  return runQuery(sql, { comp_code, s_date, e_date, ...itemFilter.binds }, comp_uid);
+}
+
+/** All items × month in one query (for item-wise charts). */
+async function fetchSaleMonthlyByItemRows(comp_code, comp_uid, s_date, e_date) {
+  const sql = `
+    SELECT
+      TRIM(TO_CHAR(A.ITEM_CODE)) AS ITEM_CODE,
+      NVL(MAX(C.ITEM_NAME), TRIM(TO_CHAR(A.ITEM_CODE))) AS ITEM_NAME,
+      TO_CHAR(TRUNC(A.BILL_DATE, 'MM'), 'YYYY-MM') AS MONTH_KEY,
+      SUM(${SALE_GRAPH_WT_EXPR}) AS TOTAL_WEIGHT,
+      SUM(${SALE_GRAPH_AMT_EXPR}) AS TOTAL_AMOUNT,
+      COUNT(*) AS LINE_COUNT
+    FROM SALE A
+    LEFT JOIN ITEMMAST C
+      ON A.COMP_CODE = C.COMP_CODE
+     AND TRIM(TO_CHAR(A.ITEM_CODE)) = TRIM(TO_CHAR(C.ITEM_CODE))
+    WHERE A.COMP_CODE = :comp_code
+      AND A.TYPE BETWEEN 1 AND 9
+      AND TRIM(TO_CHAR(A.ITEM_CODE)) IS NOT NULL
+      AND TRUNC(A.BILL_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY'))
+                                  AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))
+    GROUP BY TRIM(TO_CHAR(A.ITEM_CODE)),
+             TRUNC(A.BILL_DATE, 'MM'),
+             TO_CHAR(A.BILL_DATE, 'MON', 'NLS_DATE_LANGUAGE=ENGLISH')
+    ORDER BY ITEM_CODE, MONTH_KEY`;
+  return runQuery(sql, { comp_code, s_date, e_date }, comp_uid);
+}
+
+function mapSaleMonthlyByItem(rows) {
+  const byItem = new Map();
+  for (const row of rows || []) {
+    const itemCode = String(row.ITEM_CODE ?? row.item_code ?? '').trim();
+    if (!itemCode) continue;
+    const monthKey = String(row.MONTH_KEY ?? row.month_key ?? '').trim();
+    if (!monthKey) continue;
+    if (!byItem.has(itemCode)) {
+      byItem.set(itemCode, {
+        itemCode,
+        itemName: String(row.ITEM_NAME ?? row.item_name ?? itemCode).trim(),
+        months: new Map(),
+      });
+    }
+    const entry = byItem.get(itemCode);
+    if (row.ITEM_NAME ?? row.item_name) {
+      entry.itemName = String(row.ITEM_NAME ?? row.item_name).trim();
+    }
+    entry.months.set(monthKey, {
+      weight: Number(row.TOTAL_WEIGHT ?? row.total_weight ?? 0) || 0,
+      amount: Number(row.TOTAL_AMOUNT ?? row.total_amount ?? 0) || 0,
+      lineCount: Number(row.LINE_COUNT ?? row.line_count ?? 0) || 0,
+    });
+  }
+  return byItem;
+}
+
+function buildItemMonthSeries(slots, prevSlots, curItemMonths, prevItemMonths, hasPrevious) {
+  const curMap = curItemMonths instanceof Map ? curItemMonths : mapSaleMonthlyRows([]);
+  const prevMap = prevItemMonths instanceof Map ? prevItemMonths : new Map();
+  return buildSaleGraphPayload({
+    slots,
+    prevSlots,
+    currentMap: curMap,
+    previousMap: prevMap,
+    currentYearLabel: '',
+    previousYearLabel: '',
+    hasPrevious,
+  });
+}
+
+async function resolveSaleGraphPreviousYear(comp_code, comp_uid, slots) {
+  let previousMap = new Map();
+  let prevSlots = [];
+  let previousYearLabel = '';
+  let hasPrevious = false;
+  let prevUid = null;
+  let ps = '';
+  let pe = '';
+
+  const yearRows = await runQuery(
+    'SELECT comp_uid, comp_year, comp_s_dt, comp_e_dt FROM compdet WHERE comp_code = :code ORDER BY comp_year DESC',
+    { code: comp_code }
+  );
+  const uidNorm = String(comp_uid).trim();
+  const idx = (yearRows || []).findIndex((r) => String(r.COMP_UID ?? r.comp_uid ?? '').trim() === uidNorm);
+  const prevRow = idx >= 0 && idx + 1 < yearRows.length ? yearRows[idx + 1] : null;
+
+  if (prevRow) {
+    prevUid = prevRow.COMP_UID ?? prevRow.comp_uid;
+    ps = formatDateDmyFromRaw(prevRow.COMP_S_DT ?? prevRow.comp_s_dt);
+    pe = formatDateDmyFromRaw(prevRow.COMP_E_DT ?? prevRow.comp_e_dt);
+    if (prevUid != null && String(prevUid).trim() !== '' && ps && pe) {
+      previousYearLabel = String(prevRow.COMP_YEAR ?? prevRow.comp_year ?? '').trim();
+      hasPrevious = true;
+      prevSlots = buildMonthSlotsBetween(ps, pe);
+      while (prevSlots.length < slots.length) {
+        const i = prevSlots.length;
+        prevSlots.push({
+          monthKey: `__prev_pad_${i}`,
+          label: slots[i]?.label || '',
+          calYear: 0,
+          calMonth: 0,
+        });
+      }
+    }
+  }
+
+  return { previousMap, prevSlots, previousYearLabel, hasPrevious, prevUid, ps, pe };
+}
+
+function mapSaleMonthlyRows(rows) {
+  const map = new Map();
+  for (const row of rows || []) {
+    const key = String(row.MONTH_KEY ?? row.month_key ?? '').trim();
+    if (!key) continue;
+    map.set(key, {
+      weight: Number(row.TOTAL_WEIGHT ?? row.total_weight ?? 0) || 0,
+      amount: Number(row.TOTAL_AMOUNT ?? row.total_amount ?? 0) || 0,
+      lineCount: Number(row.LINE_COUNT ?? row.line_count ?? 0) || 0,
+    });
+  }
+  return map;
+}
+
+function buildSaleGraphPayload({
+  slots,
+  prevSlots,
+  currentMap,
+  previousMap,
+  currentYearLabel,
+  previousYearLabel,
+  hasPrevious,
+}) {
+  const months = slots.map((slot, index) => {
+    const cur = currentMap.get(slot.monthKey) || { weight: 0, amount: 0, lineCount: 0 };
+    let previous = null;
+    if (hasPrevious && prevSlots && prevSlots[index]) {
+      const prevSlot = prevSlots[index];
+      const pv = previousMap.get(prevSlot.monthKey) || { weight: 0, amount: 0, lineCount: 0 };
+      previous = { weight: pv.weight, amount: pv.amount, lineCount: pv.lineCount };
+    }
+    return {
+      monthKey: slot.monthKey,
+      label: slot.label,
+      fyIndex: index,
+      current: { weight: cur.weight, amount: cur.amount, lineCount: cur.lineCount },
+      previous,
+    };
+  });
+
+  const sumSeries = (key) =>
+    months.reduce(
+      (acc, m) => {
+        const part = m[key];
+        if (!part) return acc;
+        acc.weight += part.weight || 0;
+        acc.amount += part.amount || 0;
+        return acc;
+      },
+      { weight: 0, amount: 0 }
+    );
+
+  return {
+    currentYearLabel: currentYearLabel || '',
+    previousYearLabel: previousYearLabel || '',
+    hasPrevious: Boolean(hasPrevious),
+    months,
+    totals: {
+      current: sumSeries('current'),
+      previous: hasPrevious ? sumSeries('previous') : null,
+    },
+  };
+}
+
+/** Month-wise sale weight & amount (current FY + previous FY; optional item_code filter). */
+app.get('/api/sale-graph-monthly', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, comp_year, item_code, include_items } = req.query;
+    if (!comp_code || comp_uid == null || String(comp_uid).trim() === '') {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (!s_date || !e_date) {
+      return res.status(400).json({ error: 's_date and e_date (DD-MM-YYYY) are required' });
+    }
+
+    const itemCode = item_code != null ? String(item_code).trim() : '';
+    const wantItems = String(include_items || '').trim() === '1' || String(include_items || '').toLowerCase() === 'true';
+
+    const slots = buildMonthSlotsBetween(s_date, e_date);
+    const prevCtx = await resolveSaleGraphPreviousYear(comp_code, comp_uid, slots);
+    const { prevSlots, previousYearLabel, hasPrevious, prevUid, ps, pe } = prevCtx;
+
+    const currentRows = await fetchSaleMonthlyAggregate(comp_code, comp_uid, s_date, e_date, itemCode);
+    const currentMap = mapSaleMonthlyRows(currentRows);
+
+    let previousMap = prevCtx.previousMap;
+    if (hasPrevious && prevUid && ps && pe) {
+      const prevRows = await fetchSaleMonthlyAggregate(comp_code, prevUid, ps, pe, itemCode);
+      previousMap = mapSaleMonthlyRows(prevRows);
+    }
+
+    const summary = buildSaleGraphPayload({
+      slots,
+      prevSlots,
+      currentMap,
+      previousMap,
+      currentYearLabel: String(comp_year || '').trim(),
+      previousYearLabel,
+      hasPrevious,
+    });
+    summary.view = itemCode ? 'item' : 'all';
+    summary.itemCode = itemCode;
+    if (itemCode) {
+      const curItemRows = await fetchSaleMonthlyByItemRows(comp_code, comp_uid, s_date, e_date);
+      const curByItem = mapSaleMonthlyByItem(curItemRows);
+      const hit = curByItem.get(itemCode);
+      if (hit) {
+        summary.itemName = hit.itemName;
+      }
+    }
+
+    if (!wantItems || itemCode) {
+      return res.json(summary);
+    }
+
+    const curItemRows = await fetchSaleMonthlyByItemRows(comp_code, comp_uid, s_date, e_date);
+    const curByItem = mapSaleMonthlyByItem(curItemRows);
+    let prevByItem = new Map();
+    if (hasPrevious && prevUid && ps && pe) {
+      const prevItemRows = await fetchSaleMonthlyByItemRows(comp_code, prevUid, ps, pe);
+      prevByItem = mapSaleMonthlyByItem(prevItemRows);
+    }
+
+    const itemList = [];
+    for (const [code, entry] of curByItem.entries()) {
+      const prevEntry = prevByItem.get(code);
+      const series = buildItemMonthSeries(
+        slots,
+        prevSlots,
+        entry.months,
+        prevEntry?.months || new Map(),
+        hasPrevious
+      );
+      itemList.push({
+        itemCode: code,
+        itemName: entry.itemName,
+        totals: series.totals,
+      });
+    }
+    itemList.sort(
+      (a, b) => (b.totals?.current?.amount || 0) - (a.totals?.current?.amount || 0)
+    );
+
+    const topLimit = 12;
+    const topItems = itemList.slice(0, topLimit).map((it) => {
+      const curEntry = curByItem.get(it.itemCode);
+      const prevEntry = prevByItem.get(it.itemCode);
+      const chart = buildItemMonthSeries(
+        slots,
+        prevSlots,
+        curEntry?.months || new Map(),
+        prevEntry?.months || new Map(),
+        hasPrevious
+      );
+      chart.currentYearLabel = summary.currentYearLabel;
+      chart.previousYearLabel = summary.previousYearLabel;
+      chart.hasPrevious = hasPrevious;
+      chart.itemCode = it.itemCode;
+      chart.itemName = it.itemName;
+      return chart;
+    });
+
+    summary.items = itemList.map((it) => ({
+      itemCode: it.itemCode,
+      itemName: it.itemName,
+      totals: it.totals,
+    }));
+    summary.topItems = topItems;
+    res.json(summary);
+  } catch (err) {
+    console.error('❌ sale-graph-monthly error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 3. Trial Balance (The Main Report)
 // 3. Trial Balance (The Main Report with Totals)
 app.get('/api/trial-balance', async (req, res) => {

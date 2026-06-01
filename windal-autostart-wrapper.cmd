@@ -2,6 +2,7 @@
 REM Called by Windows Task Scheduler at startup. Always logs success/failure.
 setlocal
 set "APP=%~dp0"
+if "%APP:~-1%"=="\" set "APP=%APP:~0,-1%"
 cd /d "%APP%"
 if not exist logs mkdir logs
 
@@ -20,7 +21,7 @@ set "PATH=%ProgramFiles%\nodejs;%LOCALAPPDATA%\Programs\nodejs;%ProgramFiles%\Cl
 where node >> "%BOOTLOG%" 2>&1
 where npm.cmd >> "%BOOTLOG%" 2>&1
 
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%APP%Start-WindalStack.ps1" -AppRoot "%APP%" >> "%BOOTLOG%" 2>&1
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%APP%\Start-WindalStack.ps1" -AppRoot "%APP%" >> "%BOOTLOG%" 2>&1
 set "RC=%ERRORLEVEL%"
 echo [%date% %time%] Start-WindalStack.ps1 exit code=%RC%>> "%BOOTLOG%"
 

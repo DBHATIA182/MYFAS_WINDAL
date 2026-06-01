@@ -24,11 +24,27 @@ param(
 
 $ErrorActionPreference = 'Continue'
 
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-if ([string]::IsNullOrWhiteSpace($AppRoot)) {
-    $AppRoot = $scriptDir
+function Get-NormalizedAppRoot {
+    param(
+        [string]$Path,
+        [string]$Fallback
+    )
+    $p = [string]$Path
+    if ([string]::IsNullOrWhiteSpace($p)) {
+        $p = $Fallback
+    }
+    $p = $p.Trim().Trim('"').Trim("'")
+    while ($p.Length -gt 3 -and ($p.EndsWith('\') -or $p.EndsWith('/'))) {
+        $p = $p.Substring(0, $p.Length - 1)
+    }
+    if (-not (Test-Path -LiteralPath $p)) {
+        throw "App folder not found: '$p' (check -AppRoot; avoid trailing backslash inside quotes from .cmd)"
+    }
+    return (Resolve-Path -LiteralPath $p).Path
 }
-$AppRoot = (Resolve-Path -LiteralPath $AppRoot).Path
+
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$AppRoot = Get-NormalizedAppRoot -Path $AppRoot -Fallback $scriptDir
 
 $logsDir = Join-Path $AppRoot 'logs'
 if (-not (Test-Path -LiteralPath $logsDir)) {

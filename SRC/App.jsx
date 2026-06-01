@@ -34,10 +34,14 @@ import Slide29Grn from './slides/Slide29Grn';
 import Slide26AccountMaster from './slides/Slide26AccountMaster';
 import Slide27ItemMaster from './slides/Slide27ItemMaster';
 import Slide28VoucherEntry from './slides/Slide28VoucherEntry';
+import Slide33SaleGraph from './slides/Slide33SaleGraph';
 import { exitApp, performExitWindow } from './utils/exitApp';
 import connectionConfig from '../connection.config.json';
 import './App.css';
 import './styles/fasFlowTheme.css';
+import './styles/windalInitialFlow.css';
+import './styles/windalDashboard.css';
+import { getWindalDocumentTitle } from './utils/windalBrand';
 import './saleEntryDesktop.css';
 import './purchaseBillEntry.css';
 
@@ -118,7 +122,7 @@ const apiSubdomainSuffix = connectionConfig.domain?.apiSubdomainSuffix || '-api'
 const knownClients = connectionConfig.clients || {};
 const configuredClientName = connectionConfig.clientName || connectionConfig.defaultClientKey || '';
 const APP_DISPLAY_NAME = String(connectionConfig.product?.displayName || '').trim() || 'Windal Accounting';
-const APP_DOCUMENT_TITLE = String(connectionConfig.product?.displayTitle || '').trim() || `${APP_DISPLAY_NAME} System`;
+const APP_DOCUMENT_TITLE = getWindalDocumentTitle(connectionConfig.product?.displayTitle);
 
 function renderFatalStartupMessage(errorLike) {
   try {
@@ -574,7 +578,25 @@ function App() {
     else if (reportType === 'trial-balance-summary') setCurrentSlide(30);
     else if (reportType === 'trial-date-wise') setCurrentSlide(31);
     else if (reportType === 'production-entry') setCurrentSlide(32);
+    else if (reportType === 'sale-chart' || reportType === 'sale-graph') setCurrentSlide(33);
     else setCurrentSlide(4);
+  };
+
+  const openSaleListFromChart = (payload) => {
+    setFormData((prev) => ({
+      ...prev,
+      reportType: 'sale-list',
+      saleChartDrilldown: {
+        startDate: payload.startDate,
+        endDate: payload.endDate,
+        itemCode: payload.itemCode || '',
+        itemName: payload.itemName || '',
+        monthLabel: payload.monthLabel || '',
+        autoRun: true,
+        at: Date.now(),
+      },
+    }));
+    setCurrentSlide(8);
   };
 
   const handlePrev = () => setCurrentSlide(prev => prev - 1);
@@ -877,8 +899,11 @@ function App() {
   }
 
   const hideAppHeaderChrome = authenticated && currentSlide >= 1;
-  const useFasFlowFullScreen = !authenticated || (authenticated && currentSlide >= 1 && currentSlide <= 4);
-  const appClassName = `app ${viewMode === 'desktop' ? 'app--desktop' : 'app--mobile'}${hideAppHeaderChrome ? ' app--no-header' : ''}${useFasFlowFullScreen ? ' app--fas-flow' : ''}`;
+  const useWindalInitial =
+    !authenticated || (authenticated && currentSlide >= 1 && currentSlide <= 2);
+  const useWindalDashboard = authenticated && currentSlide === 3;
+  const useFasFlowFullScreen = authenticated && currentSlide === 4;
+  const appClassName = `app ${viewMode === 'desktop' ? 'app--desktop' : 'app--mobile'}${hideAppHeaderChrome ? ' app--no-header' : ''}${useWindalInitial ? ' app--windal-initial' : ''}${useWindalDashboard ? ' app--windal-dashboard' : ''}${useFasFlowFullScreen ? ' app--fas-flow' : ''}`;
 
   if (!clientGuardChecked) {
     return (
@@ -925,7 +950,6 @@ function App() {
             apiBase={API_BASE}
             onSuccess={handleLoginSuccess}
             onExit={exitApp}
-            appName={APP_DISPLAY_NAME}
             settingsSlot={renderViewSettings()}
           />
         </main>
@@ -970,7 +994,7 @@ function App() {
             companies={companies}
             onNext={handleSlide1Next}
             onExit={handleExitApp}
-            appName={APP_DISPLAY_NAME}
+            userName={loginUserName}
             flowHeaderActions={flowHeaderActions}
           />
         )}
@@ -981,10 +1005,11 @@ function App() {
             onPrev={handlePrev}
             onNext={handleSlide2Next}
             flowHeaderActions={flowHeaderActions}
-            appName={APP_DISPLAY_NAME}
           />
         )}
-        {currentSlide === 3 && <Slide3 formData={formData} onPrev={handlePrev} onNext={handleSlide3Next} />}
+        {currentSlide === 3 && (
+          <Slide3 formData={formData} onPrev={handlePrev} onNext={handleSlide3Next} onExit={handleExitApp} />
+        )}
         {currentSlide === 4 && <Slide4 apiBase={API_BASE} formData={formData} onPrev={handlePrev} onReset={handleReset} />}
         {currentSlide === 30 && (
           <Slide30TrialBalanceSummary
@@ -1142,6 +1167,15 @@ function App() {
               onReset={handleReset}
             />
           </Suspense>
+        )}
+        {currentSlide === 33 && (
+          <Slide33SaleGraph
+            apiBase={API_BASE}
+            formData={formData}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+            onOpenSaleList={openSaleListFromChart}
+          />
         )}
       </main>
       </AppSessionContext.Provider>
