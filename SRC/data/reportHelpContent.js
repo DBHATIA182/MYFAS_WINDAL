@@ -208,6 +208,18 @@ export const REPORT_HELP = {
     ],
   },
 
+  'overdue-customers': {
+    title: 'Overdue Customers',
+    summary: 'Customers with sale bills still pending more than 30 days (bill-wise DR − CR).',
+    sections: [
+      section('Use', [
+        'Lists customers (schedule 8.x) where at least one bill is overdue beyond the minimum days.',
+        'Change as-of date, minimum days, or minimum overdue amount (e.g. 2000 hides customers below that total), then Refresh.',
+        'Tap a customer row to open Customer Ledger for that account (outstanding bills).',
+      ]),
+    ],
+  },
+
   'supplier-ledger': {
     title: 'Supplier Ledger',
     summary: 'Supplier bills with balance per bill (CR − DR).',

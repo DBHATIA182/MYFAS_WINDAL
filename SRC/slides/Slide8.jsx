@@ -407,7 +407,10 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
     const saleSortLabel =
       saleSortMode === 'party' ? 'Party-wise' : saleSortMode === 'item' ? 'Item-wise' : saleSortMode === 'broker' ? 'Broker-wise' : 'Date-wise';
     return (
-      <div className="slide slide-report">
+      <div
+        className="slide slide-report"
+        style={{ width: '100%', maxWidth: '100%', minWidth: 0, flex: '1 1 auto', alignSelf: 'stretch' }}
+      >
         <SaleBillPrintModal
           open={billPrintOpen}
           onClose={() => {
@@ -510,7 +513,10 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
   }
 
   return (
-    <div className="slide slide-8">
+    <div
+      className="slide slide-8"
+      style={{ width: '100%', maxWidth: '100%', minWidth: 0, flex: '1 1 auto', alignSelf: 'stretch' }}
+    >
       <h2>Sale bill list</h2>
       <SessionInfoLine formData={formData} helpReportId="sale-list">
         <br />

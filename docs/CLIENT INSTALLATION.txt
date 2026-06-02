@@ -82,3 +82,10 @@ See also:
   git_update_command_from_powershell.txt
   CLIENT_SETUP.md
   docs\WINDAL_CLIENT_INSTALLATION_GUIDE.html
+
+
+
+to setup schedule task for update and services
+.\setup-windal-git-update.cmd in powershell
+.\setup-windal-autostart.cmd
+

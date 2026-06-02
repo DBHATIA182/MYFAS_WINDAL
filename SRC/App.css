@@ -122,11 +122,15 @@ body {
 .app-main {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
   padding: 1rem;
   display: flex;
-  justify-content: center;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .app-loading {
@@ -170,6 +174,22 @@ body {
   box-sizing: border-box;
 }
 
+.slide.slide-windal-dashboard,
+.app--windal-dashboard .slide.slide-3.slide-windal-dashboard {
+  max-width: none !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  align-self: stretch !important;
+  flex: 1 1 auto !important;
+  height: 100% !important;
+  max-height: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+}
+
 .slide-3 .company-info,
 .slide-3-menu-header,
 .slide-3 .button-group {
@@ -177,17 +197,34 @@ body {
 }
 
 .slide-report {
-  max-width: min(1200px, calc(100vw - 2rem)) !important;
+  max-width: min(1200px, 100%) !important;
   width: 100%;
   min-width: 0;
   padding: 1rem !important;
   box-sizing: border-box;
+  overflow-x: auto;
 }
 
 .slide-report .report-display {
   min-width: 0;
   width: 100%;
   max-width: 100%;
+}
+
+.app--fas-flow .slide-report {
+  max-width: none !important;
+  height: 100%;
+  max-height: none;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app--fas-flow .slide-report .report-display {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .report-toolbar {
@@ -392,6 +429,11 @@ body {
 
 .app--no-header .app-main {
   padding-top: 0.35rem;
+}
+
+.app--windal-dashboard.app--no-header .app-main,
+.app--fas-flow.app--no-header .app-main {
+  padding: 0 !important;
 }
 
 .app--no-header.app--desktop .sale-entry-desktop.slide {
@@ -5977,13 +6019,75 @@ td.sale-list-total-pad {
   }
 }
 
-/* Force desktop layout even on narrow devices when user picks Desktop mode */
+html {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+body {
+  overflow-x: hidden;
+  max-width: 100%;
+  width: 100%;
+}
+
+#root {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.app {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
 body.force-desktop-view {
-  overflow-x: auto;
+  overflow-x: hidden;
 }
 
 body.force-desktop-view .app--desktop {
-  min-width: 1100px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.app-main:has(> .slide-windal-dashboard) {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 0;
+  width: 100%;
+  min-width: 0;
+}
+
+.app-main:has(> .slide-windal-dashboard) > .slide-windal-dashboard {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
+}
+
+.app-main:has(> .slide.slide-8),
+.app-main:has(> .slide.slide-report) {
+  align-items: stretch;
+  padding: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.app-main:has(> .slide.slide-8) > .slide.slide-8,
+.app-main:has(> .slide.slide-report) > .slide.slide-report {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* —— Sale bill entry (slide 21) —— */

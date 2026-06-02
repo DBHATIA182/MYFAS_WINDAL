@@ -58,6 +58,7 @@ export default function Slide6({ apiBase, onPrev, onReset, formData }) {
   const [showReport, setShowReport] = useState(false);
   const partySearchInputRef = useRef(null);
   const billStartInputRef = useRef(null);
+  const customerLedgerDrillRanRef = useRef(null);
   const [listHighlight, setListHighlight] = useState(0);
 
   const compCode = formData.comp_code ?? formData.COMP_CODE;
@@ -68,6 +69,17 @@ export default function Slide6({ apiBase, onPrev, onReset, formData }) {
   const ledgerKind = isSupplierLedger ? 'supplier' : 'customer';
   const ledgerTitle = isSupplierLedger ? 'SupplierLedger' : 'CustomerLedger';
   const showPartyBal = !isSupplierLedger;
+  const openedFromOverdue =
+    formData.customerLedgerDrilldown?.returnReport === 'overdue-customers' ||
+    formData.customerLedgerDrilldown?.returnSlide === 34;
+
+  const handleReportBack = () => {
+    if (openedFromOverdue) {
+      onPrev?.();
+      return;
+    }
+    setShowReport(false);
+  };
 
   useEffect(() => {
     if (!compCode) return;
@@ -149,67 +161,120 @@ export default function Slide6({ apiBase, onPrev, onReset, formData }) {
 
   const selectedPartyRow = parties.find((p) => String(p.CODE ?? p.code) === String(selectedCode));
 
+  const runBillLedgerQuery = async (overrides = {}) => {
+    const code = overrides.code !== undefined ? String(overrides.code || '').trim() : selectedCode;
+    if (!code) {
+      alert('Please select a party (search and pick from the list).');
+      return false;
+    }
+    const bs = overrides.billStart ?? billStart;
+    const be = overrides.billEnd ?? billEnd;
+    const ped = overrides.payEndDate ?? payEndDate;
+    const filterMco = overrides.mco ?? mco;
+    if (!bs || !be || !ped) {
+      alert('Please set bill date range and payment ending date.');
+      return false;
+    }
+    const params = {
+      comp_code: compCode,
+      code,
+      s_date: toOracleDate(bs),
+      e_date: toOracleDate(be),
+      p_edt: toOracleDate(ped),
+      mco: filterMco,
+      comp_uid: compUid,
+      ledger_kind: ledgerKind,
+    };
+    if (requireInterest === 'Y') {
+      const asOf = overrides.interestAsOf ?? interestAsOf ?? ped;
+      if (!asOf) {
+        alert('Interest as-of date is required when interest is Yes.');
+        return false;
+      }
+      params.include_interest = 'Y';
+      params.int_indt = toOracleDate(asOf);
+      params.gs_days = intGsDays.trim() || '0';
+      params.ged_days = intGedDays.trim() || '30';
+      params.group_cd = intGroupCd.trim() || '0';
+      params.bombay_dhara = intBombayDhara.trim() || '0';
+    } else {
+      params.include_interest = 'N';
+    }
+
+    const { data } = await axios.get(`${apiBase}/api/bill-ledger`, {
+      params,
+      withCredentials: true,
+      timeout: 120000,
+    });
+    const rows = Array.isArray(data) ? data : [];
+    if (rows.length === 0) {
+      alert(
+        `No rows returned from BILLS for this party and dates for ${ledgerTitle}.\n\n` +
+          `This report reads BILLS bill-wise (${isSupplierLedger ? 'supplier mode: CR - DR' : 'customer mode: DR - CR'}). ` +
+          'If vouchers exist only in LEDGER, widen dates or check expected rows in BILLS.'
+      );
+      return false;
+    }
+    setReportData(rows);
+    setShowReport(true);
+    return true;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedCode) {
-      alert('Please select a party (search and pick from the list).');
-      return;
-    }
-    if (!billStart || !billEnd || !payEndDate) {
-      alert('Please set bill date range and payment ending date.');
-      return;
-    }
     setLoading(true);
     try {
-      const params = {
-        comp_code: compCode,
-        code: selectedCode,
-        s_date: toOracleDate(billStart),
-        e_date: toOracleDate(billEnd),
-        p_edt: toOracleDate(payEndDate),
-        mco,
-        comp_uid: compUid,
-        ledger_kind: ledgerKind,
-      };
-      if (requireInterest === 'Y') {
-        const asOf = interestAsOf || payEndDate;
-        if (!asOf) {
-          alert('Interest as-of date is required when interest is Yes.');
-          setLoading(false);
-          return;
-        }
-        params.include_interest = 'Y';
-        params.int_indt = toOracleDate(asOf);
-        params.gs_days = intGsDays.trim() || '0';
-        params.ged_days = intGedDays.trim() || '30';
-        params.group_cd = intGroupCd.trim() || '0';
-        params.bombay_dhara = intBombayDhara.trim() || '0';
-      } else {
-        params.include_interest = 'N';
-      }
-
-      const { data } = await axios.get(`${apiBase}/api/bill-ledger`, {
-        params,
-        withCredentials: true,
-        timeout: 120000,
-      });
-      const rows = Array.isArray(data) ? data : [];
-      if (rows.length === 0) {
-        alert(
-          `No rows returned from BILLS for this party and dates for ${ledgerTitle}.\n\n` +
-            `This report reads BILLS bill-wise (${isSupplierLedger ? 'supplier mode: CR - DR' : 'customer mode: DR - CR'}). ` +
-            'If vouchers exist only in LEDGER, widen dates or check expected rows in BILLS.'
-        );
-      } else {
-        setReportData(rows);
-        setShowReport(true);
-      }
+      await runBillLedgerQuery();
     } catch (error) {
       alert('Error: ' + (error.response?.data?.error || error.message));
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const d = formData.customerLedgerDrilldown;
+    if (!d?.autoRun || !d.code || isSupplierLedger) return;
+    const runKey = String(d.at ?? `${d.code}-${d.asOfDate || ''}`);
+    if (customerLedgerDrillRanRef.current === runKey) return;
+    customerLedgerDrillRanRef.current = runKey;
+
+    const code = String(d.code).trim();
+    const asOf = d.asOfDate ? toInputDateString(d.asOfDate) : toInputDateString(new Date());
+    setSelectedCode(code);
+    setPartySearch('');
+    setMco('O');
+    setBillStart(DEFAULT_HISTORY_START_DATE);
+    if (asOf) {
+      setBillEnd(asOf);
+      setPayEndDate(asOf);
+      setInterestAsOf(asOf);
+    }
+
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        if (!cancelled) {
+          await runBillLedgerQuery({
+            code,
+            billStart: DEFAULT_HISTORY_START_DATE,
+            billEnd: asOf,
+            payEndDate: asOf,
+            mco: 'O',
+            interestAsOf: asOf,
+          });
+        }
+      } catch (error) {
+        if (!cancelled) alert('Error: ' + (error.response?.data?.error || error.message));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.customerLedgerDrilldown, isSupplierLedger]);
 
   const pdfMeta = {
     companyName: compName,
@@ -249,8 +314,8 @@ export default function Slide6({ apiBase, onPrev, onReset, formData }) {
           <h2>{ledgerTitle}</h2>
           <div className="toolbar-actions">
             
-            <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
-              ← Back
+            <button type="button" className="btn btn-toolbar-back" onClick={handleReportBack}>
+              {openedFromOverdue ? '← Back to overdue' : '← Back'}
             </button>
             <button
               type="button"

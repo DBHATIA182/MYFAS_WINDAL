@@ -260,20 +260,24 @@ export default function WindalDashboardMenu({ formData, onPrev, onNext, onExit }
               Welcome, {user}
             </h1>
             <p className="windal-dash__welcome-sub">
-              Use quick access below, or pick a module for more reports.
+              {activeModuleId !== HOME_MODULE_ID && activeModule
+                ? `${activeModule.sidebarLabel} reports below. Tap Home for quick access.`
+                : 'Use quick access below, or pick a module for more reports.'}
             </p>
           </div>
 
           {moduleStrip}
 
-          <section className="windal-dash__quick-block" aria-labelledby="windal-quick-access-heading">
-            <h2 id="windal-quick-access-heading" className="windal-dash__section-title">
-              Quick Access
-            </h2>
-            <div className="windal-dash__grid windal-dash__grid--quick" role="list">
-              {quickTiles}
-            </div>
-          </section>
+          {activeModuleId === HOME_MODULE_ID ? (
+            <section className="windal-dash__quick-block" aria-labelledby="windal-quick-access-heading">
+              <h2 id="windal-quick-access-heading" className="windal-dash__section-title">
+                Quick Access
+              </h2>
+              <div className="windal-dash__grid windal-dash__grid--quick" role="list">
+                {quickTiles}
+              </div>
+            </section>
+          ) : null}
 
           {activeModuleId !== HOME_MODULE_ID && activeModule ? (
             <section className="windal-dash__module-block" aria-labelledby="windal-module-reports-heading">

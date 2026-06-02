@@ -35,6 +35,7 @@ import Slide26AccountMaster from './slides/Slide26AccountMaster';
 import Slide27ItemMaster from './slides/Slide27ItemMaster';
 import Slide28VoucherEntry from './slides/Slide28VoucherEntry';
 import Slide33SaleGraph from './slides/Slide33SaleGraph';
+import Slide34OverdueCustomers from './slides/Slide34OverdueCustomers';
 import { exitApp, performExitWindow } from './utils/exitApp';
 import connectionConfig from '../connection.config.json';
 import './App.css';
@@ -579,7 +580,38 @@ function App() {
     else if (reportType === 'trial-date-wise') setCurrentSlide(31);
     else if (reportType === 'production-entry') setCurrentSlide(32);
     else if (reportType === 'sale-chart' || reportType === 'sale-graph') setCurrentSlide(33);
+    else if (reportType === 'overdue-customers') setCurrentSlide(34);
     else setCurrentSlide(4);
+  };
+
+  const openCustomerLedgerFromOverdue = (payload) => {
+    setFormData((prev) => ({
+      ...prev,
+      reportType: 'customer-ledger',
+      customerLedgerDrilldown: {
+        code: payload.code,
+        name: payload.name || '',
+        city: payload.city || '',
+        asOfDate: payload.asOfDate,
+        returnReport: 'overdue-customers',
+        returnSlide: 34,
+        autoRun: true,
+        at: Date.now(),
+      },
+    }));
+    setCurrentSlide(6);
+  };
+
+  const backFromCustomerLedger = () => {
+    if (formData.customerLedgerDrilldown?.returnReport === 'overdue-customers') {
+      setFormData((prev) => {
+        const { customerLedgerDrilldown, ...rest } = prev;
+        return { ...rest, reportType: 'overdue-customers' };
+      });
+      setCurrentSlide(34);
+      return;
+    }
+    setCurrentSlide(3);
   };
 
   const openSaleListFromChart = (payload) => {
@@ -902,7 +934,7 @@ function App() {
   const useWindalInitial =
     !authenticated || (authenticated && currentSlide >= 1 && currentSlide <= 2);
   const useWindalDashboard = authenticated && currentSlide === 3;
-  const useFasFlowFullScreen = authenticated && currentSlide === 4;
+  const useFasFlowFullScreen = authenticated && currentSlide > 3;
   const appClassName = `app ${viewMode === 'desktop' ? 'app--desktop' : 'app--mobile'}${hideAppHeaderChrome ? ' app--no-header' : ''}${useWindalInitial ? ' app--windal-initial' : ''}${useWindalDashboard ? ' app--windal-dashboard' : ''}${useFasFlowFullScreen ? ' app--fas-flow' : ''}`;
 
   if (!clientGuardChecked) {
@@ -1029,7 +1061,7 @@ function App() {
         )}
         {currentSlide === 5 && <Slide5 apiBase={API_BASE} formData={formData} onPrev={handlePrev} onReset={handleReset} />}
         {currentSlide === 6 && (
-          <Slide6 apiBase={API_BASE} formData={formData} onPrev={() => setCurrentSlide(3)} onReset={handleReset} />
+          <Slide6 apiBase={API_BASE} formData={formData} onPrev={backFromCustomerLedger} onReset={handleReset} />
         )}
         {currentSlide === 7 && (
           <Slide7 apiBase={API_BASE} formData={formData} onPrev={() => setCurrentSlide(3)} onReset={handleReset} />
@@ -1175,6 +1207,15 @@ function App() {
             onPrev={() => setCurrentSlide(3)}
             onReset={handleReset}
             onOpenSaleList={openSaleListFromChart}
+          />
+        )}
+        {currentSlide === 34 && (
+          <Slide34OverdueCustomers
+            apiBase={API_BASE}
+            formData={formData}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+            onOpenCustomerLedger={openCustomerLedgerFromOverdue}
           />
         )}
       </main>

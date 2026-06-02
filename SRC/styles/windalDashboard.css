@@ -1,25 +1,43 @@
 /* Main menu: left modules + right report tiles (desktop & mobile) */
 
-.app--windal-dashboard {
+.app.app--windal-dashboard {
+  position: fixed;
+  inset: 0;
   background: #f0f2f5;
   min-height: 100dvh;
   height: 100dvh;
   max-height: 100dvh;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow: hidden;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
 
 .app--windal-dashboard .app-main {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   padding: 0;
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   overflow: hidden;
 }
 
 .app--windal-dashboard .app-main > .slide {
-  flex: 1;
+  flex: 1 1 auto;
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 0;
   height: 100%;
-  max-width: none;
   padding: 0;
   margin: 0;
   box-shadow: none;
@@ -27,14 +45,35 @@
   overflow: hidden;
 }
 
+.slide.slide-windal-dashboard {
+  flex: 1 1 auto;
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.slide.slide-windal-dashboard > .windal-dash {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
 .windal-dash {
   display: flex;
   width: 100%;
+  max-width: 100%;
   height: 100%;
   min-height: 0;
+  min-width: 0;
   font-family: 'Segoe UI', system-ui, sans-serif;
   color: #1e293b;
   position: relative;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .windal-dash__backdrop {
@@ -314,26 +353,36 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 18px;
+  padding: 14px max(14px, env(safe-area-inset-right, 0px)) 14px max(14px, env(safe-area-inset-left, 0px));
   background: linear-gradient(90deg, #1a3d73 0%, #2a5494 100%);
   color: #fff;
   font-weight: 600;
   font-size: 14px;
   flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .windal-dash__fy-banner span:last-child {
   font-size: 13px;
   opacity: 0.92;
   text-align: right;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .windal-dash__content {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
   overflow-y: auto;
-  padding: 18px 18px calc(20px + env(safe-area-inset-bottom, 0px));
+  padding: 18px max(14px, env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px))
+    max(14px, env(safe-area-inset-left, 0px));
   -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
 }
 
 .windal-dash__welcome {
@@ -374,14 +423,20 @@
 
 .windal-dash__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(118px, 100%), 1fr));
   gap: 12px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .windal-dash__grid--quick,
 .windal-dash__grid--module {
-  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100px, 100%), 1fr));
   gap: 12px;
+  width: 100%;
+  max-width: 100%;
 }
 
 .windal-dash__tile {
@@ -431,8 +486,8 @@
   word-break: break-word;
 }
 
-/* ── Mobile ── */
-@media (max-width: 900px) {
+/* ── Mobile & tablet ── */
+@media (max-width: 1024px) {
   .windal-dash__menu-btn {
     display: flex;
   }
@@ -517,9 +572,52 @@
     padding: 8px 10px;
     font-size: 11px;
   }
+
+  .windal-dash__module-block {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .app--desktop .windal-dash__menu-btn,
+  body.force-desktop-view .windal-dash__menu-btn {
+    display: none !important;
+  }
+
+  .app--desktop .windal-dash__module-strip,
+  body.force-desktop-view .windal-dash__module-strip {
+    display: none !important;
+  }
+
+  .app--desktop .windal-dash__backdrop,
+  body.force-desktop-view .windal-dash__backdrop {
+    display: none !important;
+  }
+
+  .app--desktop .windal-dash__sidebar,
+  body.force-desktop-view .windal-dash__sidebar {
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+    width: 220px;
+    min-width: 200px;
+    max-width: 32vw;
+    flex-shrink: 0;
+    box-shadow: none;
+  }
+
+  .app--desktop .windal-dash__main,
+  body.force-desktop-view .windal-dash__main {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+    max-width: none;
+  }
 }
 
-@media (min-width: 901px) {
+@media (min-width: 1025px) {
   .windal-dash__backdrop {
     display: none !important;
   }
@@ -596,10 +694,6 @@
     display: none;
   }
 
-  /* Desktop: Home = quick access only; other modules = that module's reports only */
-  .windal-dash:has(.windal-dash__module-block) .windal-dash__quick-block {
-    display: none;
-  }
 }
 
 @media (max-width: 400px) {
@@ -608,4 +702,84 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
   }
+}
+
+body.force-desktop-view .windal-dash__menu-btn {
+  display: none !important;
+}
+
+body.force-desktop-view .windal-dash__module-strip {
+  display: none !important;
+}
+
+body.force-desktop-view .windal-dash__backdrop {
+  display: none !important;
+}
+
+body.force-desktop-view .windal-dash__sidebar {
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  width: 220px;
+  min-width: 200px;
+  max-width: 32vw;
+  flex-shrink: 0;
+  box-shadow: none;
+  z-index: 1;
+}
+
+body.force-desktop-view .windal-dash__main {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  max-width: none;
+}
+
+body.force-desktop-view .windal-dash__grid--quick,
+body.force-desktop-view .windal-dash__grid--module {
+  grid-template-columns: repeat(auto-fill, minmax(min(96px, 100%), 1fr));
+}
+
+.app--windal-dashboard {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.app--windal-dashboard .app-main {
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+.app--windal-dashboard .app-main > .slide,
+.app--windal-dashboard .slide.slide-3,
+.app--windal-dashboard .slide.slide-windal-dashboard {
+  flex: 1 1 auto !important;
+  align-self: stretch !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+}
+
+.app--windal-dashboard .windal-dash {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }

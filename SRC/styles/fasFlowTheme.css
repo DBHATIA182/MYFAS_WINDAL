@@ -48,12 +48,20 @@ body,
 }
 
 /* Full-screen flow: login → company → year → reports menu */
-.app--fas-flow {
+.app.app--fas-flow {
+  position: fixed;
+  inset: 0;
   background: var(--fas-surface);
   min-height: 100dvh;
   height: 100dvh;
   max-height: 100dvh;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
 }
 
 .app--fas-flow .app-main {
@@ -73,14 +81,21 @@ body,
 }
 
 .app--fas-flow .app-main > .slide {
-  flex: 1;
+  flex: 1 1 auto;
+  align-self: stretch;
   min-height: 0;
   min-width: 0;
   width: 100%;
   max-width: 100%;
+  height: 100%;
+  max-height: none;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   box-sizing: border-box;
+  box-shadow: none;
+  border-radius: 0;
+  margin: 0;
 }
 
 .app--fas-flow.app--no-header .app-main {
@@ -872,6 +887,7 @@ body,
   box-shadow: none;
   max-width: none;
   width: 100%;
+  min-width: 0;
   height: 100%;
   max-height: none;
   min-height: 0;
@@ -879,13 +895,21 @@ body,
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .fas-tb-flow {
   flex: 1;
   min-height: 0;
   height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--fas-surface);
+}
+
+.fas-tb-flow > .fas-report-header {
+  flex-shrink: 0;
 }
 
 .fas-report-header {
@@ -1032,6 +1056,19 @@ body,
   flex-direction: column;
   gap: 12px;
   padding: 14px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+}
+
+.slide.slide-33-sale-chart .fas-flow-body.fas-tb-body {
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.slide.slide-34-overdue .fas-flow-body.fas-tb-body.overdue-shell {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .fas-tb-host--results .fas-tb-body {
@@ -1251,6 +1288,60 @@ body,
   height: 100%;
   max-height: none;
   padding: 0;
+}
+
+.app--fas-flow .app-main > .slide {
+  max-width: none;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.app--fas-flow .slide.slide-report,
+.app--fas-flow .slide[class*='slide-'] {
+  max-width: none !important;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.app--fas-flow .slide.slide-8,
+.app--fas-flow .slide.slide-report {
+  padding: 0.75rem 1rem !important;
+  background: #fff;
+}
+
+.app--fas-flow .slide.slide-8 > h2,
+.app--fas-flow .slide.slide-8 > .company-info,
+.app--fas-flow .slide.slide-8 > .form-api-error,
+.app--fas-flow .slide.slide-report > .report-toolbar,
+.app--fas-flow .slide.slide-report > .report-sort-switch,
+.app--fas-flow .slide.slide-report > .report-info,
+.app--fas-flow .slide.slide-report > .button-group {
+  flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app--fas-flow .slide.slide-8 > .report-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.app--fas-flow .slide.slide-8 .form-group,
+.app--fas-flow .slide.slide-8 .account-search-group,
+.app--fas-flow .slide.slide-8 .account-search-results {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 @media (max-width: 640px) {

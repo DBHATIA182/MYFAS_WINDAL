@@ -4600,6 +4600,73 @@ app.get('/api/ageing', async (req, res) => {
   }
 });
 
+/** Customers with bill-wise pending balance older than min_days (default 30). */
+app.get('/api/overdue-customers', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, e_date, min_days, min_amount } = req.query;
+    if (!comp_code || comp_uid == null || String(comp_uid).trim() === '') {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (!e_date) {
+      return res.status(400).json({ error: 'e_date (DD-MM-YYYY) is required' });
+    }
+    const minDays = Math.max(1, parseInt(String(min_days ?? '30').trim(), 10) || 30);
+    const minAmount = Math.max(0, Number(String(min_amount ?? '0').trim().replace(/,/g, '')) || 0);
+
+    const sql = `
+      WITH bill_pending AS (
+        SELECT
+          TRIM(TO_CHAR(A.CODE)) AS CODE,
+          B.NAME,
+          B.CITY,
+          B.TEL_NO_O,
+          A.BILL_DATE,
+          A.BILL_NO,
+          A.B_TYPE,
+          SUM(NVL(A.DR_AMT, 0) - NVL(A.CR_AMT, 0)) AS BAL
+        FROM BILLS A
+        INNER JOIN MASTER B
+          ON A.COMP_CODE = B.COMP_CODE
+         AND TRIM(TO_CHAR(A.CODE)) = TRIM(TO_CHAR(B.CODE))
+        WHERE A.COMP_CODE = :comp_code
+          AND A.VR_DATE <= TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))
+          AND ROUND(NVL(B.SCHEDULE, 0), 2) >= 8
+          AND ROUND(NVL(B.SCHEDULE, 0), 2) < 9
+        GROUP BY TRIM(TO_CHAR(A.CODE)), B.NAME, B.CITY, B.TEL_NO_O, A.BILL_DATE, A.BILL_NO, A.B_TYPE
+        HAVING SUM(NVL(A.DR_AMT, 0) - NVL(A.CR_AMT, 0)) > 0.0001
+      )
+      SELECT
+        CODE,
+        NAME,
+        CITY,
+        TEL_NO_O,
+        SUM(BAL) AS OVERDUE_BAL,
+        COUNT(*) AS BILL_COUNT,
+        MAX(TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY')) - TRUNC(BILL_DATE)) AS MAX_DAYS,
+        MIN(BILL_DATE) AS OLDEST_BILL_DATE
+      FROM bill_pending
+      WHERE TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY')) - TRUNC(BILL_DATE) > :min_days
+      GROUP BY CODE, NAME, CITY, TEL_NO_O
+      HAVING SUM(BAL) > :min_amount
+      ORDER BY UPPER(TRIM(NAME)), UPPER(TRIM(CODE))`;
+
+    const rows = await runQuery(
+      sql,
+      { comp_code, e_date, min_days: minDays, min_amount: minAmount },
+      comp_uid
+    );
+    res.json({
+      rows: rows || [],
+      e_date,
+      min_days: minDays,
+      min_amount: minAmount,
+    });
+  } catch (err) {
+    console.error('❌ overdue-customers error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/ageing-bills-detail', async (req, res) => {
   try {
     const { comp_code, comp_uid, code, schedule, e_date } = req.query;
