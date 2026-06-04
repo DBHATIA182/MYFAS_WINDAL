@@ -21,7 +21,7 @@ set "PATH=%ProgramFiles%\nodejs;%LOCALAPPDATA%\Programs\nodejs;%ProgramFiles%\Cl
 where node >> "%BOOTLOG%" 2>&1
 where npm.cmd >> "%BOOTLOG%" 2>&1
 
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%APP%\Start-WindalStack.ps1" -AppRoot "%APP%" >> "%BOOTLOG%" 2>&1
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%APP%\Start-WindalStack.ps1" -AppRoot "%APP%" -ProductionWeb >> "%BOOTLOG%" 2>&1
 set "RC=%ERRORLEVEL%"
 echo [%date% %time%] Start-WindalStack.ps1 exit code=%RC%>> "%BOOTLOG%"
 

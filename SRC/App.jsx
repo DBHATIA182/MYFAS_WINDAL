@@ -145,13 +145,14 @@ function renderFatalStartupMessage(errorLike) {
   }
 }
 
+/** e.g. dal-demo.fasaccountingsoftware.in → dal-demo (not dal). */
 function getClientKeyFromHost(host, domain) {
   if (!host || !domain) return null;
   const suffix = `.${domain}`;
   if (!host.endsWith(suffix)) return null;
-  const subdomain = host.slice(0, -suffix.length);
-  if (!subdomain) return null;
-  return subdomain.split('.')[0] || null;
+  const subdomain = host.slice(0, -suffix.length).toLowerCase();
+  if (!subdomain || subdomain.includes('.')) return null;
+  return subdomain;
 }
 
 function normalizeClientKey(value) {
@@ -187,11 +188,19 @@ function getConnectingClientLabel() {
 
 const connectingClientDisplay = getConnectingClientLabel();
 
-const API_BASE = import.meta.env.DEV
-  ? ''
-  : isLocalHost
-    ? connectionConfig.local?.apiBase || 'http://localhost:5001'
-    : remoteApiBase;
+/** dal-demo.fasaccountingsoftware.in — use /api on same host (tunnel ingress); avoids mobile issues with dal-demo-api + Vite dev. */
+const isTunnelPublicHost =
+  !isLocalHost &&
+  hostClientKey &&
+  configuredClientName &&
+  normalizeClientKey(hostClientKey) === normalizeClientKey(configuredClientName);
+
+const API_BASE =
+  import.meta.env.DEV || isTunnelPublicHost
+    ? ''
+    : isLocalHost
+      ? connectionConfig.local?.apiBase || 'http://localhost:5001'
+      : remoteApiBase;
 const TOTAL_STEPS = 21;
 const VIEW_MODE_STORAGE_KEY = 'gfas_view_mode';
 const AUTH_STORAGE_KEY = 'gfas_auth_state_v1';
@@ -203,7 +212,7 @@ function readPersistedAuth() {
 if (import.meta.env.DEV && API_BASE === '') {
   console.info('API → Vite proxy → http://localhost:5001 — UI dev port 5174 — start backend: npm run server');
 }
-if (!import.meta.env.DEV && !isLocalHost && !API_BASE) {
+if (!import.meta.env.DEV && !isLocalHost && !API_BASE && !isTunnelPublicHost) {
   console.warn('No remote API base resolved. Check connection.config.json clientName/domain.');
 }
 console.log('Current API Base:', API_BASE || '(same origin /api proxy)');

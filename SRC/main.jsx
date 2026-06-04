@@ -35,7 +35,13 @@ try {
         <App />
       </React.StrictMode>,
     );
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('windal-app-ready'));
+    }
   }
 } catch (err) {
   renderFatalStartupMessage(err);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('windal-app-ready'));
+  }
 }

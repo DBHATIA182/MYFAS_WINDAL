@@ -15,7 +15,32 @@
     />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <p id="windal-boot" style="padding: 1rem; font-family: system-ui, sans-serif; color: #334155; line-height: 1.5">
+        Loading…
+      </p>
+    </div>
+    <script>
+      (function () {
+        var bootTimer = window.setTimeout(function () {
+          var el = document.getElementById('windal-boot');
+          if (!el) return;
+          el.style.color = '#b91c1c';
+          el.innerHTML =
+            'App did not start on this device.<br><br>' +
+            '<strong>On the PC:</strong> run <code>Windal_Start_Services.bat</code> or <code>Windal_Start_Services-Mobile.bat</code> ' +
+            '(build + preview — not npm run dev alone).<br><br>' +
+            'Then on the phone: clear site data for this site and open again.';
+        }, 18000);
+        window.addEventListener(
+          'windal-app-ready',
+          function () {
+            window.clearTimeout(bootTimer);
+          },
+          { once: true },
+        );
+      })();
+    </script>
     <script type="module" src="/SRC/main.jsx"></script>
   </body>
 </html>

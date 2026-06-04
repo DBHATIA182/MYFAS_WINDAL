@@ -4,10 +4,13 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "dev:all": "concurrently -n api,web -c blue,green \"node server.cjs\" \"vite\"",
+    "dev": "vite --host 0.0.0.0 --port 5175 --strictPort",
+    "dev:all": "concurrently -n api,web -c blue,green \"node server.cjs\" \"npm run dev\"",
     "build": "vite build",
-    "preview": "vite preview",
+    "build:tunnel": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 5174 --strictPort",
+    "preview:tunnel": "set WINDAL_TUNNEL_DEV=1&& vite preview --host 0.0.0.0 --port 5174 --strictPort",
+    "tunnel:web": "npm run build && npm run preview:tunnel",
     "server": "node server.cjs",
     "start": "node server.cjs",
     "setup:client": "powershell -ExecutionPolicy Bypass -File .\\setup-client.ps1"

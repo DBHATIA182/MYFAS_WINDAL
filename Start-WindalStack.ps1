@@ -13,13 +13,17 @@
 
 .PARAMETER WaitSeconds
   Seconds to wait after freeing ports (default 3).
+
+.PARAMETER ProductionWeb
+  Build once and serve with vite preview (recommended for phone on dal-demo). Slower restart; much more reliable than Vite dev through Cloudflare.
 #>
 [CmdletBinding()]
 param(
     [string]$AppRoot = '',
-    [int[]]$Ports = @(5001, 5174),
+    [int[]]$Ports = @(5001, 5174, 5175),
     [switch]$KillAllCloudflared,
-    [int]$WaitSeconds = 3
+    [int]$WaitSeconds = 3,
+    [switch]$ProductionWeb = $true
 )
 
 $ErrorActionPreference = 'Continue'
@@ -183,8 +187,39 @@ $nodeQ = '"' + $nodeExe + '"'
 $npmQ = '"' + $npmCmd + '"'
 Start-HiddenCmdJob -Name 'Windal-API' -CmdLine "$nodeQ server.cjs" -LogFile $serverLog
 Start-Sleep -Seconds 2
-Start-HiddenCmdJob -Name 'Windal-Vite' -CmdLine "set WINDAL_TUNNEL_DEV=1&& $npmQ run dev -- --host 0.0.0.0 --port 5174" -LogFile $frontendLog
-Start-Sleep -Seconds 2
+
+if ($ProductionWeb) {
+    Write-StackLog 'ProductionWeb: npm run build (for mobile / dal-demo tunnel)'
+    $buildLog = Join-Path $logsDir 'frontend-build.log'
+    $buildCmd = "cd /d `"$AppRoot`" & $npmQ run build >> `"$buildLog`" 2>&1"
+    $bp = Start-Process -FilePath 'cmd.exe' -ArgumentList @('/c', $buildCmd) -WorkingDirectory $AppRoot -WindowStyle Hidden -Wait -PassThru
+    if ($bp.ExitCode -ne 0) {
+        Write-StackLog "ERROR: npm run build failed (exit $($bp.ExitCode)). See $buildLog"
+        exit $bp.ExitCode
+    }
+    Write-StackLog 'ProductionWeb: starting vite preview on 5174'
+    Start-HiddenCmdJob -Name 'Windal-Preview' -CmdLine "$npmQ run preview" -LogFile $frontendLog
+} else {
+    Write-StackLog 'WARNING: Starting Vite DEV on port 5175 only - dal-demo tunnel needs -ProductionWeb (default).'
+    Start-HiddenCmdJob -Name 'Windal-Vite' -CmdLine "$npmQ run dev" -LogFile $frontendLog
+}
+Start-Sleep -Seconds 8
+
+try {
+    $probe = Invoke-WebRequest -Uri 'http://127.0.0.1:5174/' -UseBasicParsing -TimeoutSec 15
+    $body = [string]$probe.Content
+    if ($body -match '/SRC/main\.jsx|/@vite/client') {
+        Write-StackLog 'ERROR: Port 5174 is still Vite DEV. Stop all node on 5174, then run this script again (do not run npm run dev on 5174).'
+    } elseif ($body -match '/assets/index-[^"]+\.js') {
+        Write-StackLog 'OK: Port 5174 is production preview (/assets/ bundle) - phone should work after cache clear.'
+    } else {
+        Write-StackLog 'WARNING: Port 5174 responded but HTML format unexpected. Check logs\frontend.log'
+    }
+} catch {
+    Write-StackLog "WARNING: Could not probe http://127.0.0.1:5174/ - $($_.Exception.Message)"
+}
+
+Start-Sleep -Seconds 1
 
 $configYml = Join-Path $AppRoot 'config.yml'
 $cfExe = Resolve-ToolExe 'cloudflared.exe'

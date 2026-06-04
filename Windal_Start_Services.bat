@@ -10,12 +10,13 @@ echo.
 echo === Windal - restart services (background) ===
 echo Folder: %APP%
 echo Frees ports 5001 and 5174 if busy, then starts API + Web + Tunnel.
-echo Logs: logs\windal-stack.log  logs\server.log  logs\frontend.log  logs\tunnel.log
+echo Web uses PRODUCTION build (required for phone on dal-demo — not Vite dev).
+echo Logs: logs\windal-stack.log  logs\server.log  logs\frontend-build.log  logs\frontend.log
 echo.
 echo Auto-start at Windows boot: run setup-windal-autostart.cmd as Administrator (once).
 echo.
 
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%APP%\Start-WindalStack.ps1" -AppRoot "%APP%"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%APP%\Start-WindalStack.ps1" -AppRoot "%APP%" -ProductionWeb
 set "RC=%ERRORLEVEL%"
 if %RC% NEQ 0 (
   echo.
@@ -25,9 +26,12 @@ if %RC% NEQ 0 (
 )
 
 echo.
-echo Started in background. Wait ~10 seconds, then open your company URL in the browser.
-echo To stop: run stop-windal-stack.cmd or Task Manager - end node.exe / cloudflared.exe
+echo Started in background. Wait ~30s for build, then verify on PC:
+echo   curl.exe -s http://127.0.0.1:5174/ ^| findstr assets/index
+echo Must show assets/index — NOT SRC/main.jsx. If wrong: close npm run dev windows, run Windal_Fix_Tunnel_Now.cmd
+echo Phone: clear site data, then https://dal-demo.fasaccountingsoftware.in/
+echo To stop: stop-windal-stack.cmd
 echo.
-timeout /t 5 /nobreak >nul
+timeout /t 8 /nobreak >nul
 endlocal
 exit /b 0

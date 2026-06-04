@@ -178,6 +178,10 @@ app.get('/api/client-identity', (req, res) => {
   });
 });
 
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, port: PORT });
+});
+
 /** Merge file overrides without letting JSON null / empty wipe credentials (spread alone can set password: null). */
 function mergeOracleConn(defaults, fileOverride) {
   const o = fileOverride && typeof fileOverride === 'object' ? fileOverride : {};
