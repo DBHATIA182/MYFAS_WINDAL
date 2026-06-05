@@ -266,8 +266,10 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
           : purchaseSortMode === 'broker'
             ? 'Broker/Purchase code-wise'
             : 'Date-wise';
+    const listCaption = `${compName || 'Company'} Purchase list from ${toDisplayDate(startDate)} to ${toDisplayDate(endDate)}`;
+
     return (
-      <div className="slide slide-report slide-11">
+      <div className="slide slide-report slide-11 list-report-screen slide-report--mobile-toolbar-row">
         <PurchaseBillPrintModal
           open={billPrintOpen}
           onClose={() => {
@@ -280,14 +282,22 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
           billParams={billPrintParams}
           companyName={compName}
         />
-        <SessionInfoLine formData={formData} helpReportId="purchase-list" />
-        <div className="report-toolbar">
-          <h2>Purchase list</h2>
-          <div className="toolbar-actions">
-            
-            <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
-              ← Back
-            </button>
+        <div className="list-report-screen__chrome">
+          <SessionInfoLine formData={formData} helpReportId="purchase-list" />
+          <div className="report-toolbar">
+            <h2>Purchase list</h2>
+            <div className="toolbar-actions">
+              <button
+                type="button"
+                className="btn btn-toolbar-back"
+                aria-label="Back"
+                onClick={() => setShowReport(false)}
+              >
+                <span className="report-toolbar-back-full">← Back</span>
+                <span className="report-toolbar-back-short" aria-hidden="true">
+                  ←
+                </span>
+              </button>
             <button type="button" className="btn btn-export" onClick={downloadPdf}>
               Pdf
             </button>
@@ -307,10 +317,10 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
             <button type="button" className="btn btn-whatsapp" onClick={shareWa}>
               💬 WhatsApp
             </button>
+            </div>
           </div>
-        </div>
 
-        <div className="report-sort-switch" role="group" aria-label="Purchase list sort">
+          <div className="report-sort-switch" role="group" aria-label="Purchase list sort">
           <span className="report-sort-switch__label">Sort:</span>
           <button
             type="button"
@@ -340,21 +350,21 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
           >
             Broker/Pur
           </button>
-        </div>
+          </div>
 
-        <div className="report-info">
-          <p>
-            <strong>Type</strong> {type} · <strong>Dates</strong> {toDisplayDate(startDate)} - {toDisplayDate(endDate)} ·{' '}
-            <strong>Party</strong> {code || 'All'} · <strong>Broker</strong> {bkCode || 'All'} · <strong>Item</strong>{' '}
-            {itemCode || 'All'} · <strong>Plant</strong> {plantCode || 'All'}
-          </p>
-          <p>
-            <SessionLineText formData={formData} />. Click any data row to open purchase bill print. Current view:{' '}
-            <strong>{purchaseSortLabel}</strong>.
-          </p>
-        </div>
+          <div className="report-info">
+            <p className="report-info__line report-info__line--full">
+              <strong>Type</strong> {type} · <strong>Dates</strong> {toDisplayDate(startDate)} - {toDisplayDate(endDate)} ·{' '}
+              <strong>Party</strong> {code || 'All'} · <strong>Broker</strong> {bkCode || 'All'} · <strong>Item</strong>{' '}
+              {itemCode || 'All'} · <strong>Plant</strong> {plantCode || 'All'}
+              <br />
+              <SessionLineText formData={formData} />. Click any data row to open purchase bill print. Current view:{' '}
+              <strong>{purchaseSortLabel}</strong>.
+            </p>
+            <p className="report-info__line report-info__line--short">{listCaption}</p>
+          </div>
 
-        <div className="report-sort-switch" role="group" aria-label="Purchase list paging">
+          <div className="report-sort-switch" role="group" aria-label="Purchase list paging">
           <span className="report-sort-switch__label">
             Page {Math.min(currentPage, totalPages)} / {totalPages} · Rows {sortedRows.length}
           </span>
@@ -389,6 +399,7 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
             <option value={200}>200 / page</option>
             <option value={500}>500 / page</option>
           </select>
+          </div>
         </div>
 
         <div className="report-display">
@@ -514,12 +525,6 @@ export default function Slide11({ apiBase, formData, onPrev, onReset }) {
           </table>
           </div>
           {sortedRows.length === 0 ? <p className="stock-sum-empty">No rows returned.</p> : null}
-        </div>
-
-        <div className="button-group">
-          <button type="button" className="btn btn-secondary" onClick={() => setShowReport(false)}>
-            ← Back
-          </button>
         </div>
       </div>
     );

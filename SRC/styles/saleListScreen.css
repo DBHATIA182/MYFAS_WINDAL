@@ -1,6 +1,6 @@
-/* Sale list — fit viewport (no position:absolute; avoids blank screen) */
+/* Sale / Purchase list report — fixed chrome, scrollable grid */
 
-.app-main:has(> .sale-list-screen) {
+.app-main:has(> .list-report-screen) {
   align-items: stretch !important;
   justify-content: flex-start !important;
   padding: 0 !important;
@@ -9,9 +9,14 @@
   width: 100%;
 }
 
-.sale-list-screen.slide,
-.sale-list-screen.slide.slide-8,
-.sale-list-screen.slide.slide-report {
+.app--fas-flow .slide.list-report-screen {
+  padding: 0 !important;
+}
+
+.list-report-screen.slide,
+.list-report-screen.slide.slide-8,
+.list-report-screen.slide.slide-11,
+.list-report-screen.slide.slide-report {
   flex: 1 1 auto !important;
   align-self: stretch !important;
   width: 100% !important;
@@ -31,55 +36,110 @@
   box-sizing: border-box;
 }
 
-.sale-list-screen__scroll {
-  flex: 1 1 auto;
-  min-height: 0;
+.list-report-screen__chrome {
+  flex-shrink: 0;
   min-width: 0;
   width: 100%;
-  max-width: 100%;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 0.75rem 1rem;
+  padding: 0.55rem 0.65rem 0.35rem;
   box-sizing: border-box;
-  -webkit-overflow-scrolling: touch;
 }
 
-.sale-list-screen--report .sale-list-screen__scroll {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.sale-list-screen--report .report-display {
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
-  width: 100%;
-  max-width: 100%;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.sale-list-screen .report-toolbar,
-.sale-list-screen .report-sort-switch,
-.sale-list-screen .report-info,
-.sale-list-screen > h2,
-.sale-list-screen > .company-info,
-.sale-list-screen .button-group {
+.list-report-screen .report-toolbar,
+.list-report-screen .report-sort-switch,
+.list-report-screen .report-info,
+.list-report-screen .session-info-line,
+.list-report-screen .button-group {
   flex-shrink: 0;
   max-width: 100%;
   min-width: 0;
 }
 
-.sale-list-screen .report-form {
+/* Grid area: delegate scroll to inner table-responsive wrapper */
+.list-report-screen .report-display {
+  flex: 1 1 0;
+  min-height: 0;
   min-width: 0;
+  width: 100%;
   max-width: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0 0.65rem 0.5rem;
+  box-sizing: border-box;
 }
 
-.sale-list-screen .form-group,
-.sale-list-screen .account-search-group,
-.sale-list-screen .account-search-results {
-  max-width: 100%;
+.list-report-screen .report-display .table-responsive--sale-list,
+.list-report-screen .report-display .table-responsive--bill-ledger {
+  flex: 1 1 auto;
+  min-height: 0;
   min-width: 0;
-  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  max-height: none !important;
+  height: auto;
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+  overscroll-behavior: contain;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.list-report-screen .report-info {
+  margin-bottom: 0.35rem;
+}
+
+.list-report-screen .report-info p {
+  margin: 0;
+}
+
+.report-info__line--short {
+  display: none;
+  font-size: 0.82rem;
+  color: #334155;
+  line-height: 1.35;
+}
+
+.report-info__line--full {
+  display: block;
+}
+
+/* Sticky column headers while scrolling the grid */
+.list-report-screen .purchase-list-table thead th,
+.list-report-screen .report-table--sale-list thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: #2d3748 !important;
+  box-shadow: 0 1px 0 #1a202c;
+}
+
+.list-report-screen .report-table--sale-list thead tr.sale-list-item-col-head th,
+.list-report-screen .report-table--sale-list tr.sale-list-item-summary-head th {
+  position: static;
+  top: auto;
+}
+
+@media (max-width: 640px) {
+  .list-report-screen .session-info-line {
+    display: none !important;
+  }
+
+  .report-info__line--full {
+    display: none !important;
+  }
+
+  .report-info__line--short {
+    display: block;
+  }
+
+  .list-report-screen .button-group {
+    display: none !important;
+  }
+
+  .list-report-screen .sale-list-scroll-sync--top {
+    display: none !important;
+  }
 }

@@ -46,6 +46,7 @@ export default function MasterPartyPickList({
   panelVariant,
   openOnFocus = false,
   showSearchIcon = false,
+  showAllWhenEmpty = false,
   searchBtnTabIndex,
   onAfterSelect,
 }) {
@@ -82,9 +83,9 @@ export default function MasterPartyPickList({
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return [];
+    if (!q) return showAllWhenEmpty ? options : [];
     return options.filter((o) => filterFor(o).toLowerCase().includes(q));
-  }, [options, filter, filterFor]);
+  }, [options, filter, filterFor, showAllWhenEmpty]);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -462,7 +463,7 @@ export default function MasterPartyPickList({
             <div className="master-party-pick__list" onTouchMove={(e) => e.stopPropagation()}>
               {filtered.length === 0 ? (
                 <div className="master-party-pick__empty">
-                  {filter.trim() ? 'No matches' : 'Type to search'}
+                  {filter.trim() ? 'No matches' : showAllWhenEmpty ? 'No accounts' : 'Type to search'}
                 </div>
               ) : (
                 filtered.map((o, idx) => {

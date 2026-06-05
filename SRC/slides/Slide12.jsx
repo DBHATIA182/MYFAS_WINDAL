@@ -191,14 +191,21 @@ export default function Slide12({ apiBase, onPrev, onReset, formData }) {
 
   if (viewMode === VIEW.DETAIL && detailRows.length > 0) {
     return (
-      <div className="slide slide-report">
+      <div className="slide slide-report slide-report--mobile-toolbar-row slide-report--ageing slide-report--ageing-detail">
         <SessionInfoLine formData={formData} helpReportId="ageing" />
         <div className="report-toolbar">
           <h2>{mlb === 'B' ? 'Pending bill entries' : 'Pending ledger entries'}</h2>
           <div className="toolbar-actions">
-            
-            <button type="button" className="btn btn-toolbar-back" onClick={() => setViewMode(VIEW.REPORT)}>
-              ← Back to ageing
+            <button
+              type="button"
+              className="btn btn-toolbar-back"
+              aria-label="Back to ageing"
+              onClick={() => setViewMode(VIEW.REPORT)}
+            >
+              <span className="report-toolbar-back-full">← Back to ageing</span>
+              <span className="report-toolbar-back-short" aria-hidden="true">
+                ←
+              </span>
             </button>
             <button
               type="button"
@@ -243,14 +250,21 @@ export default function Slide12({ apiBase, onPrev, onReset, formData }) {
 
   if (viewMode === VIEW.REPORT && reportData.length > 0) {
     return (
-      <div className="slide slide-report">
+      <div className="slide slide-report slide-report--mobile-toolbar-row slide-report--ageing">
         <SessionInfoLine formData={formData} helpReportId="ageing" />
         <div className="report-toolbar">
           <h2>Ageing report</h2>
           <div className="toolbar-actions">
-            
-            <button type="button" className="btn btn-toolbar-back" onClick={() => setViewMode(VIEW.FORM)}>
-              ← Back
+            <button
+              type="button"
+              className="btn btn-toolbar-back"
+              aria-label="Back"
+              onClick={() => setViewMode(VIEW.FORM)}
+            >
+              <span className="report-toolbar-back-full">← Back</span>
+              <span className="report-toolbar-back-short" aria-hidden="true">
+                ←
+              </span>
             </button>
             <button
               type="button"

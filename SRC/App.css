@@ -2218,6 +2218,50 @@ body {
     white-space: nowrap;
   }
 
+  .report-toolbar-back-short {
+    display: none;
+  }
+
+  /* Bill ledger / Broker OS: Back + Pdf + Excel + WhatsApp on one row */
+  .slide-report--mobile-toolbar-row .toolbar-actions {
+    display: grid;
+    grid-template-columns: minmax(2.35rem, 0.42fr) repeat(3, minmax(0, 1fr));
+    gap: 0.28rem;
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
+
+  .slide-report--mobile-toolbar-row .report-toolbar-back-full {
+    display: none;
+  }
+
+  .slide-report--mobile-toolbar-row .report-toolbar-back-short {
+    display: inline;
+  }
+
+  .slide-report--mobile-toolbar-row .toolbar-actions .btn-report-help,
+  .slide-report--mobile-toolbar-row .toolbar-actions .btn-toolbar-back {
+    flex: none;
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+    padding: 0.34rem 0.2rem !important;
+    font-size: 0.62rem !important;
+  }
+
+  .slide-report--mobile-toolbar-row .toolbar-actions .btn {
+    min-width: 0 !important;
+    width: 100%;
+    max-width: none;
+    padding: 0.34rem 0.16rem !important;
+    font-size: 0.62rem !important;
+    line-height: 1.1;
+  }
+
+  .slide-report--ageing-detail .toolbar-actions {
+    grid-template-columns: minmax(2.35rem, 0.42fr) minmax(0, 1fr);
+  }
+
   .report-help-dialog {
     width: 100%;
     max-height: min(88vh, 640px);
@@ -2263,6 +2307,17 @@ body {
 
 .form-input:focus {
   border-color: #4c51bf;
+}
+
+.account-search-input-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.45rem;
+}
+
+.account-search-input-row__field {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .account-search-group .account-selected-hint {
@@ -2598,6 +2653,74 @@ body {
   gap: 1rem;
 }
 
+.form-row-broker--dates {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.slide-7-broker-os {
+  max-width: min(920px, 100%);
+  max-height: calc(100dvh - 5.5rem);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.slide-7-broker-os .report-toolbar--broker-os {
+  flex-shrink: 0;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.slide-7-broker-os .session-info-line {
+  flex-shrink: 0;
+}
+
+.slide-7-broker-os .form-api-error {
+  flex-shrink: 0;
+}
+
+.slide-7-broker-os .report-form--broker-os {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding-right: 0.15rem;
+}
+
+.slide-6-ledger-form {
+  max-width: min(920px, 100%);
+  max-height: calc(100dvh - 5.5rem);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.slide-6-ledger-form .report-toolbar--ledger-form {
+  flex-shrink: 0;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.slide-6-ledger-form .session-info-line {
+  flex-shrink: 0;
+}
+
+.slide-6-ledger-form .report-form--ledger {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding-right: 0.15rem;
+}
+
 .form-row-ageing-meta {
   margin-bottom: 0.5rem;
 }
@@ -2653,6 +2776,12 @@ body {
   border-radius: 12px;
   background: #fff;
   box-shadow: 0 4px 12px rgba(76, 81, 191, 0.06);
+}
+
+@media (max-width: 720px) {
+  .form-row-broker--dates {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 560px) {

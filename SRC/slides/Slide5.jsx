@@ -8,6 +8,7 @@ import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, formatCurBal, getCurBal } from '../utils/dateFormat';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
 import SessionInfoLine from '../components/SessionInfoLine';
+import VoiceSearchButton from '../components/VoiceSearchButton';
 import { filterAccountRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
 
 function highlightMatch(text, q) {
@@ -134,6 +135,15 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
     setSelectedAccount(String(account.CODE));
     setAccountSearch('');
     focusStartDate();
+  };
+
+  const applyAccountVoiceSearch = (text) => {
+    const q = String(text ?? '').trim();
+    if (!q) return;
+    setSelectedAccount('');
+    setAccountSearch(q);
+    setListHighlight(0);
+    window.setTimeout(() => accountSearchInputRef.current?.focus(), 0);
   };
 
   const handleSubmit = async (e) => {
@@ -467,15 +477,16 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
         </div>
         <div className="form-group account-search-group">
           <label htmlFor="account-search">Search account:</label>
-          <input
-            id="account-search"
-            ref={accountSearchInputRef}
-            type="search"
-            autoComplete="off"
-            placeholder="Type code, name, or city… (↑↓ Enter)"
-            value={accountSearch}
-            onChange={(e) => setAccountSearch(e.target.value)}
-            onKeyDown={(e) => {
+          <div className="account-search-input-row">
+            <input
+              id="account-search"
+              ref={accountSearchInputRef}
+              type="search"
+              autoComplete="off"
+              placeholder="Type code, name, or city… (↑↓ Enter)"
+              value={accountSearch}
+              onChange={(e) => setAccountSearch(e.target.value)}
+              onKeyDown={(e) => {
               if (selectedAccount) return;
               const max = Math.max(0, filteredAccounts.length - 1);
               if (e.key === 'ArrowDown') {
@@ -492,9 +503,15 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
                   selectAccount(acc);
                 }
               }
-            }}
-            className="form-input"
-          />
+              }}
+              className="form-input account-search-input-row__field"
+            />
+            <VoiceSearchButton
+              disabled={!!selectedAccount}
+              title="Speak party name to search"
+              onTranscript={applyAccountVoiceSearch}
+            />
+          </div>
           {selectedAccount ? (
             <p className="account-selected-hint">
               Selected: <strong>{accounts.find((a) => String(a.CODE) === String(selectedAccount))?.NAME ?? '—'}</strong>

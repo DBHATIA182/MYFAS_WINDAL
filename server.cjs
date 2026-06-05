@@ -11629,9 +11629,9 @@ app.get('/api/voucher-entry-lookups', async (req, res) => {
       WHERE COMP_CODE = :comp_code AND ROUND(NVL(SCHEDULE, 0), 2) = 9.1
       ORDER BY NAME, CODE`;
     const bankSql = `
-      SELECT CODE, NAME, CITY, NVL(AC_TYPE, '') AS AC_TYPE
+      SELECT CODE, NAME, CITY
       FROM MASTER
-      WHERE COMP_CODE = :comp_code AND UPPER(TRIM(NVL(AC_TYPE, ''))) = 'B'
+      WHERE COMP_CODE = :comp_code AND ROUND(NVL(SCHEDULE, 0), 2) = 9.2
       ORDER BY NAME, CODE`;
     const [parties, cashAccounts, bankAccounts] = await Promise.all([
       runQuery(partySql, { comp_code }, comp_uid),

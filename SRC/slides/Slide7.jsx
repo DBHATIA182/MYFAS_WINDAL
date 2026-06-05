@@ -7,7 +7,13 @@ import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFor
 import { formatApiOrigin } from '../utils/apiLabel';
 import { filterBrokerOsRawRowsByMinClosingAbs, parseBrokerOsRangeForUi } from '../utils/brokerOsDisplay';
 import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
+import VoiceSearchButton from '../components/VoiceSearchButton';
 import { filterCodeNameCityRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
+import {
+  advanceReportFormOnEnter,
+  focusNextReportField,
+  handleReportDateEnter,
+} from '../utils/reportFormFocus';
 
 const DEFAULT_HISTORY_START_DATE = '2001-04-01';
 
@@ -49,6 +55,7 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
   const [loading, setLoading] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [lookupError, setLookupError] = useState('');
+  const formRef = useRef(null);
   const dateStartRef = useRef(null);
   const partySearchRef = useRef(null);
   const brokerSearchRef = useRef(null);
@@ -171,6 +178,14 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
     setBrokerSearch('');
     setBrokerListHighlight(0);
     focusDates();
+  };
+
+  const applyBrokerVoiceSearch = (text) => {
+    const q = String(text ?? '').trim();
+    if (!q) return;
+    setBrokerSearch(q);
+    setBrokerListHighlight(0);
+    window.setTimeout(() => brokerSearchRef.current?.focus(), 0);
   };
 
   const selectedPartyRow = parties.find((p) => String(p.CODE ?? p.code) === String(selectedParty));
@@ -301,14 +316,21 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
 
     if (brokerOsFilteredReportData.length === 0) {
       return (
-        <div className="slide slide-report">
+        <div className="slide slide-report slide-report--mobile-toolbar-row slide-report--broker-os">
           <SessionInfoLine formData={formData} helpReportId="broker-os" />
           <div className="report-toolbar">
             <h2>Broker outstanding</h2>
             <div className="toolbar-actions">
-            
-              <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
-                ← Back
+              <button
+                type="button"
+                className="btn btn-toolbar-back"
+                aria-label="Back"
+                onClick={() => setShowReport(false)}
+              >
+                <span className="report-toolbar-back-full">← Back</span>
+                <span className="report-toolbar-back-short" aria-hidden="true">
+                  ←
+                </span>
               </button>
             </div>
           </div>
@@ -330,14 +352,21 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
     }
 
     return (
-      <div className="slide slide-report">
+      <div className="slide slide-report slide-report--mobile-toolbar-row slide-report--broker-os">
         <SessionInfoLine formData={formData} helpReportId="broker-os" />
         <div className="report-toolbar">
           <h2>Broker outstanding</h2>
           <div className="toolbar-actions">
-            
-            <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
-              ← Back
+            <button
+              type="button"
+              className="btn btn-toolbar-back"
+              aria-label="Back"
+              onClick={() => setShowReport(false)}
+            >
+              <span className="report-toolbar-back-full">← Back</span>
+              <span className="report-toolbar-back-short" aria-hidden="true">
+                ←
+              </span>
             </button>
             <button
               type="button"
@@ -409,18 +438,29 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
     );
   }
 
-  return (
-    <div className="slide slide-7">
-      <h2>Broker outstanding (BrokerOs)</h2>
+  const onFormFieldEnter = (e) => advanceReportFormOnEnter(e, formRef.current);
+  const onDateEnter = (e) => handleReportDateEnter(e, formRef.current);
 
-      <SessionInfoLine formData={formData} helpReportId="broker-os">
-        <br />
-        <span className="compdet-date-hint">
-          Each included bill has at least one <strong>BILLS</strong> line with numeric <strong>b_code</strong> (column{' '}
-          <strong>B_CODE</strong>) in your broker range and <strong>VR_TYPE</strong> in <strong>S</strong>, SE, or PU — not SL.
-          Credits after the payment ending date are ignored in balances.
-        </span>
-      </SessionInfoLine>
+  return (
+    <div className="slide slide-7 slide-7-broker-os">
+      <div className="report-toolbar report-toolbar--broker-os">
+        <h2>Broker outstanding (BrokerOs)</h2>
+        <div className="toolbar-actions">
+          <button type="button" onClick={onPrev} className="btn btn-secondary btn-toolbar-back">
+            ← Back
+          </button>
+          <button
+            type="submit"
+            form="broker-os-form"
+            className="btn btn-primary"
+            disabled={loading}
+          >
+            {loading ? 'Loading...' : 'Run'}
+          </button>
+        </div>
+      </div>
+
+      <SessionInfoLine formData={formData} helpReportId="broker-os" />
 
       {lookupError ? (
         <div className="form-api-error" role="alert">
@@ -428,27 +468,26 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
         </div>
       ) : null}
 
-      <form onSubmit={handleSubmit} className="report-form" autoComplete="off">
-        <div className="button-group button-group--form-top">
-          <button type="button" onClick={onPrev} className="btn btn-secondary">
-            ← Back
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Loading...' : 'Run'}
-          </button>
-        </div>
-
+      <form
+        id="broker-os-form"
+        ref={formRef}
+        onSubmit={handleSubmit}
+        className="report-form report-form--broker-os"
+        autoComplete="off"
+        onKeyDown={onFormFieldEnter}
+      >
         <div className="form-group account-search-group">
           <label htmlFor="bo-broker-search">Broker name or code (help — pick one broker)</label>
-          <input
-            id="bo-broker-search"
-            ref={brokerSearchRef}
-            type="search"
-            autoComplete="off"
-            placeholder="Search broker name or code… (↑↓ Enter)"
-            value={brokerSearch}
-            onChange={(e) => setBrokerSearch(e.target.value)}
-            onKeyDown={(e) => {
+          <div className="account-search-input-row">
+            <input
+              id="bo-broker-search"
+              ref={brokerSearchRef}
+              type="search"
+              autoComplete="off"
+              placeholder="Search broker name or code… (↑↓ Enter)"
+              value={brokerSearch}
+              onChange={(e) => setBrokerSearch(e.target.value)}
+              onKeyDown={(e) => {
               const max = Math.max(0, filteredBrokers.length - 1);
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
@@ -459,14 +498,24 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
                 setBrokerListHighlight((h) => Math.max(0, h - 1));
               } else if (e.key === 'Enter') {
                 const row = filteredBrokers[safeBrokerHi];
-                if (row) {
+                if (brokerSearch.trim() && row) {
                   e.preventDefault();
+                  e.stopPropagation();
                   selectBrokerRow(row);
+                  return;
                 }
+                e.preventDefault();
+                e.stopPropagation();
+                focusNextReportField(formRef.current, e.target);
               }
-            }}
-            className="form-input"
-          />
+              }}
+              className="form-input account-search-input-row__field"
+            />
+            <VoiceSearchButton
+              title="Speak broker name to search"
+              onTranscript={applyBrokerVoiceSearch}
+            />
+          </div>
           {singleBrokerRow ? (
             <p className="account-selected-hint">
               Single broker: <strong>{singleBrokerRow.NAME ?? singleBrokerRow.name ?? '—'}</strong> (
@@ -536,6 +585,7 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
               className="form-input"
               value={brokStart}
               onChange={(e) => setBrokStart(e.target.value)}
+              onKeyDown={onFormFieldEnter}
               autoComplete="off"
               spellCheck={false}
               placeholder={BROKER_OS_RANGE_START}
@@ -551,9 +601,50 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
               className="form-input"
               value={brokEnd}
               onChange={(e) => setBrokEnd(e.target.value)}
+              onKeyDown={onFormFieldEnter}
               autoComplete="off"
               spellCheck={false}
               placeholder={BROKER_OS_RANGE_END}
+            />
+          </div>
+        </div>
+
+        <div className="form-row-broker form-row-broker--dates">
+          <div className="form-group">
+            <label htmlFor="bo-start">Bill start date</label>
+            <input
+              id="bo-start"
+              ref={dateStartRef}
+              type="date"
+              lang="en-GB"
+              className="form-input"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              onKeyDown={onDateEnter}
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="bo-end">Bill end date</label>
+            <input
+              id="bo-end"
+              type="date"
+              lang="en-GB"
+              className="form-input"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              onKeyDown={onDateEnter}
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="bo-pedt">Payment ending date</label>
+            <input
+              id="bo-pedt"
+              type="date"
+              lang="en-GB"
+              className="form-input"
+              value={payEndDate}
+              onChange={(e) => setPayEndDate(e.target.value)}
+              onKeyDown={onDateEnter}
             />
           </div>
         </div>
@@ -580,10 +671,15 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
                 setListHighlight((h) => Math.max(0, h - 1));
               } else if (e.key === 'Enter') {
                 const row = filteredParties[safePartyHi];
-                if (row) {
+                if (!selectedParty && partySearch.trim() && row) {
                   e.preventDefault();
+                  e.stopPropagation();
                   selectPartyRow(row);
+                  return;
                 }
+                e.preventDefault();
+                e.stopPropagation();
+                focusNextReportField(formRef.current, e.target);
               }
             }}
             className="form-input"
@@ -660,14 +756,11 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
             style={{ maxWidth: '10rem' }}
             value={brokerOsSchedule}
             onChange={(e) => setBrokerOsSchedule(e.target.value)}
+            onKeyDown={onFormFieldEnter}
             autoComplete="off"
             spellCheck={false}
             placeholder="e.g. 11.10"
           />
-          <p className="form-hint" style={{ marginTop: '0.35rem' }}>
-            Leave blank or any value except <strong>11.10</strong>: <strong>Dr</strong> then <strong>Cr</strong>. Enter{' '}
-            <strong>11.10</strong> for creditors style: <strong>Cr</strong> then <strong>Dr</strong>.
-          </p>
         </div>
 
         <div className="form-group">
@@ -695,54 +788,11 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
             style={{ maxWidth: '12rem' }}
             value={brokerOsMinIgnore}
             onChange={(e) => setBrokerOsMinIgnore(e.target.value)}
+            onKeyDown={onFormFieldEnter}
             autoComplete="off"
             spellCheck={false}
             placeholder="e.g. 100"
           />
-          <p className="form-hint" style={{ marginTop: '0.35rem' }}>
-            Bills whose <strong>final balance</strong> (closing total for the bill — same as the <strong>Final bal</strong>{' '}
-            column) has absolute value <strong>strictly below</strong> this amount are omitted from the on-screen list, PDF,
-            and Excel. Leave blank for no extra filter.
-          </p>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="bo-start">Starting date (bill date range)</label>
-          <input
-            id="bo-start"
-            ref={dateStartRef}
-            type="date"
-            lang="en-GB"
-            className="form-input"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="bo-end">Ending date</label>
-          <input id="bo-end" type="date" lang="en-GB" className="form-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="bo-pedt">Payment ending date (credits after this date → 0 in report)</label>
-          <input
-            id="bo-pedt"
-            type="date"
-            lang="en-GB"
-            className="form-input"
-            value={payEndDate}
-            onChange={(e) => setPayEndDate(e.target.value)}
-          />
-        </div>
-
-        <div className="button-group">
-          <button type="button" className="btn btn-secondary" onClick={onPrev}>
-            ← Back
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? '⏳ Loading…' : 'Run'}
-          </button>
         </div>
       </form>
     </div>

@@ -406,11 +406,9 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
   if (showReport && reportData.length > 0) {
     const saleSortLabel =
       saleSortMode === 'party' ? 'Party-wise' : saleSortMode === 'item' ? 'Item-wise' : saleSortMode === 'broker' ? 'Broker-wise' : 'Date-wise';
+    const listCaption = `${compName || 'Company'} Sale list from ${toDisplayDate(startDate)} to ${toDisplayDate(endDate)}`;
     return (
-      <div
-        className="slide slide-report"
-        style={{ width: '100%', maxWidth: '100%', minWidth: 0, flex: '1 1 auto', alignSelf: 'stretch' }}
-      >
+      <div className="slide slide-report slide-8 list-report-screen slide-report--mobile-toolbar-row">
         <SaleBillPrintModal
           open={billPrintOpen}
           onClose={() => {
@@ -423,14 +421,22 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
           billParams={billPrintParams}
           companyName={compName}
         />
-        <SessionInfoLine formData={formData} helpReportId="sale-list" />
-        <div className="report-toolbar">
-          <h2>Sale bill list</h2>
-          <div className="toolbar-actions">
-            
-            <button type="button" className="btn btn-toolbar-back" onClick={() => setShowReport(false)}>
-              ← Back
-            </button>
+        <div className="list-report-screen__chrome">
+          <SessionInfoLine formData={formData} helpReportId="sale-list" />
+          <div className="report-toolbar">
+            <h2>Sale bill list</h2>
+            <div className="toolbar-actions">
+              <button
+                type="button"
+                className="btn btn-toolbar-back"
+                aria-label="Back"
+                onClick={() => setShowReport(false)}
+              >
+                <span className="report-toolbar-back-full">← Back</span>
+                <span className="report-toolbar-back-short" aria-hidden="true">
+                  ←
+                </span>
+              </button>
             <button
               type="button"
               className="btn btn-export"
@@ -458,10 +464,10 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
             >
               💬 WhatsApp
             </button>
+            </div>
           </div>
-        </div>
 
-        <div className="report-sort-switch" role="group" aria-label="Sale list sort">
+          <div className="report-sort-switch" role="group" aria-label="Sale list sort">
           <span className="report-sort-switch__label">Sort:</span>
           <button
             type="button"
@@ -491,22 +497,19 @@ export default function Slide8({ apiBase, formData, onPrev, onReset }) {
           >
             Broker
           </button>
-        </div>
+          </div>
 
-        <div className="report-info">
-          <p>
-            <strong>Period</strong> {toDisplayDate(startDate)} – {toDisplayDate(endDate)}
-          </p>
+          <div className="report-info">
+            <p className="report-info__line report-info__line--full">
+              <strong>Period</strong> {toDisplayDate(startDate)} – {toDisplayDate(endDate)} · Current view:{' '}
+              <strong>{saleSortLabel}</strong>
+            </p>
+            <p className="report-info__line report-info__line--short">{listCaption}</p>
+          </div>
         </div>
 
         <div className="report-display">
           <ReportTable data={reportData} type="sale-list" onSaleBillClick={openSaleBill} saleListSortMode={saleSortMode} />
-        </div>
-
-        <div className="button-group">
-          <button type="button" className="btn btn-secondary" onClick={() => setShowReport(false)}>
-            ← Back
-          </button>
         </div>
       </div>
     );

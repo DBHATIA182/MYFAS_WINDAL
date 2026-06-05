@@ -45,6 +45,7 @@ import './styles/windalDashboard.css';
 import { getWindalDocumentTitle } from './utils/windalBrand';
 import './saleEntryDesktop.css';
 import './purchaseBillEntry.css';
+import './styles/saleListScreen.css';
 
 // Local: Vite dev uses '' so /api/* is proxied to port 5001 (see vite.config.js). Run `npm run server` in another terminal.
 // Vite preview / static file open on localhost still calls :5001 directly.

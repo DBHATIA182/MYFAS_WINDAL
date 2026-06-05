@@ -1014,6 +1014,7 @@ export default function Slide28VoucherEntry({ apiBase, formData, userName, onPre
               dataMpField="voucher-dc-code"
               panelVariant="voucherParty"
               showSearchIcon
+              showAllWhenEmpty
               searchBtnTabIndex={-1}
               getValue={(a) => String(a.CODE ?? a.code ?? '')}
               getLabel={acctLabel}
