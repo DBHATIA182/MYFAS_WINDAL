@@ -823,6 +823,11 @@ body,
   color: #fff;
 }
 
+.slide-3.fas-flow-host .report-bucket[data-category='gst-reports'] .report-bucket-head__index {
+  background: linear-gradient(135deg, #db2777, #ec4899);
+  color: #fff;
+}
+
 .slide-3.fas-flow-host .report-bucket[data-category='sales-module'] .report-bucket-head__index {
   background: linear-gradient(135deg, #7c3aed, #9f67fa);
   color: #fff;

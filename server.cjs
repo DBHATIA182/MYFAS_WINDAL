@@ -14067,6 +14067,392 @@ app.get('/api/hsn-sales-parties', async (req, res) => {
   }
 });
 
+function stateWiseGstPer(row) {
+  return +(hsnNum(row.CGST_PER) + hsnNum(row.SGST_PER) + hsnNum(row.IGST_PER)).toFixed(2);
+}
+
+function stateWiseSaleTypeNum(raw) {
+  const s = hsnTxt(raw);
+  if (!s) return NaN;
+  const n = parseInt(s, 10);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function stateWiseSaleRowAllowed(rawType) {
+  const n = stateWiseSaleTypeNum(rawType);
+  if (Number.isFinite(n)) return [0, 1, 3, 4, 7, 8].includes(n);
+  const u = hsnTxt(rawType).toUpperCase();
+  return ['SL', 'SE', 'CN', 'GN', 'CX'].includes(u);
+}
+
+function stateWiseSaleRowSign(rawType) {
+  const n = stateWiseSaleTypeNum(rawType);
+  if (Number.isFinite(n)) return n === 4 || n === 8 ? -1 : 1;
+  const u = hsnTxt(rawType).toUpperCase();
+  return ['CN', 'GN'].includes(u) ? -1 : 1;
+}
+
+async function buildStateWiseSalesLineRows({ comp_code, comp_uid, s_date, e_date, state_code }) {
+  const stateFilter = String(state_code ?? '').trim();
+  const stateSql = stateFilter ? "\n      AND TRIM(NVL(B.STATE_CODE,'')) = :state_code" : '';
+  const saleSql = `
+    SELECT
+      A.TYPE,
+      A.BILL_DATE,
+      A.BILL_NO,
+      NVL(A.B_TYPE, 'N') AS B_TYPE,
+      A.CODE,
+      NVL(B.NAME, '') AS NAME,
+      NVL(B.CITY, '') AS CITY,
+      NVL(B.STATE_CODE, '') AS STATE_CODE,
+      NVL(B.STATE, '') AS STATE,
+      NVL(A.TAXABLE, 0) AS TAXABLE,
+      NVL(A.CGST_AMT, 0) AS CGST_AMT,
+      NVL(A.SGST_AMT, 0) AS SGST_AMT,
+      NVL(A.IGST_AMT, 0) AS IGST_AMT,
+      NVL(A.CGST_PER, 0) AS CGST_PER,
+      NVL(A.SGST_PER, 0) AS SGST_PER,
+      NVL(A.IGST_PER, 0) AS IGST_PER,
+      NVL(A.QNTY, 0) AS QNTY,
+      NVL(A.WEIGHT, 0) AS WEIGHT
+    FROM SALE A
+    LEFT JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
+    WHERE A.COMP_CODE = :comp_code
+      AND A.BILL_DATE >= TO_DATE(:s_date,'DD-MM-YYYY')
+      AND A.BILL_DATE < TO_DATE(:e_date,'DD-MM-YYYY') + 1${stateSql}`;
+
+  const binds = { comp_code, s_date, e_date };
+  if (stateFilter) binds.state_code = stateFilter;
+  const saleRows = await runQuery(saleSql, binds, comp_uid);
+
+  return (saleRows || [])
+    .filter((r) => stateWiseSaleRowAllowed(r.TYPE))
+    .map((r) => {
+      const sign = stateWiseSaleRowSign(r.TYPE);
+      const dt = new Date(r.BILL_DATE);
+      return {
+        TYPE: hsnTxt(r.TYPE).toUpperCase(),
+        BILL_DATE: Number.isNaN(dt.getTime()) ? '' : hsnYmdLocal(dt),
+        BILL_NO: hsnTxt(r.BILL_NO),
+        B_TYPE: hsnTxt(r.B_TYPE || 'N'),
+        CODE: hsnTxt(r.CODE),
+        NAME: hsnTxt(r.NAME),
+        CITY: hsnTxt(r.CITY),
+        STATE_CODE: hsnTxt(r.STATE_CODE),
+        STATE: hsnTxt(r.STATE),
+        QNTY: sign * hsnNum(r.QNTY),
+        WEIGHT: sign * hsnNum(r.WEIGHT),
+        TAXABLE: sign * hsnNum(r.TAXABLE),
+        CGST_AMT: sign * hsnNum(r.CGST_AMT),
+        SGST_AMT: sign * hsnNum(r.SGST_AMT),
+        IGST_AMT: sign * hsnNum(r.IGST_AMT),
+        CGST_PER: hsnNum(r.CGST_PER),
+        SGST_PER: hsnNum(r.SGST_PER),
+        IGST_PER: hsnNum(r.IGST_PER),
+      };
+    });
+}
+
+function aggregateStateWiseSummaryRows(lines) {
+  const map = new Map();
+  for (const r of lines || []) {
+    const gstPer = stateWiseGstPer(r);
+    const key = `${hsnTxt(r.STATE_CODE)}|${hsnTxt(r.STATE)}|${gstPer.toFixed(2)}`;
+    const agg =
+      map.get(key) ||
+      {
+        STATE_CODE: hsnTxt(r.STATE_CODE),
+        STATE: hsnTxt(r.STATE),
+        GST_PER: gstPer,
+        QNTY: 0,
+        WEIGHT: 0,
+        TAXABLE: 0,
+        CGST_AMT: 0,
+        SGST_AMT: 0,
+        IGST_AMT: 0,
+      };
+    agg.QNTY += hsnNum(r.QNTY);
+    agg.WEIGHT += hsnNum(r.WEIGHT);
+    agg.TAXABLE += hsnNum(r.TAXABLE);
+    agg.CGST_AMT += hsnNum(r.CGST_AMT);
+    agg.SGST_AMT += hsnNum(r.SGST_AMT);
+    agg.IGST_AMT += hsnNum(r.IGST_AMT);
+    map.set(key, agg);
+  }
+  return Array.from(map.values())
+    .sort(
+      (a, b) =>
+        hsnFastCmp(a.STATE, b.STATE) ||
+        hsnFastCmp(a.STATE_CODE, b.STATE_CODE) ||
+        hsnNum(a.GST_PER) - hsnNum(b.GST_PER)
+    )
+    .map((r) => ({
+      STATE_CODE: hsnTxt(r.STATE_CODE),
+      STATE: hsnTxt(r.STATE),
+      GST_PER: +hsnNum(r.GST_PER).toFixed(2),
+      QNTY: +hsnNum(r.QNTY).toFixed(3),
+      WEIGHT: +hsnNum(r.WEIGHT).toFixed(3),
+      TAXABLE: +hsnNum(r.TAXABLE).toFixed(2),
+      CGST_AMT: +hsnNum(r.CGST_AMT).toFixed(2),
+      SGST_AMT: +hsnNum(r.SGST_AMT).toFixed(2),
+      IGST_AMT: +hsnNum(r.IGST_AMT).toFixed(2),
+    }));
+}
+
+function stateWiseRoundDetailRow(r) {
+  return {
+    BILL_DATE: hsnTxt(r.BILL_DATE),
+    BILL_NO: hsnTxt(r.BILL_NO),
+    B_TYPE: hsnTxt(r.B_TYPE),
+    TYPE: hsnTxt(r.TYPE),
+    CODE: hsnTxt(r.CODE),
+    NAME: hsnTxt(r.NAME),
+    CITY: hsnTxt(r.CITY),
+    STATE_CODE: hsnTxt(r.STATE_CODE),
+    STATE: hsnTxt(r.STATE),
+    QNTY: +hsnNum(r.QNTY).toFixed(3),
+    WEIGHT: +hsnNum(r.WEIGHT).toFixed(3),
+    TAXABLE: +hsnNum(r.TAXABLE).toFixed(2),
+    GST_PER: stateWiseGstPer(r),
+    CGST_AMT: +hsnNum(r.CGST_AMT).toFixed(2),
+    SGST_AMT: +hsnNum(r.SGST_AMT).toFixed(2),
+    IGST_AMT: +hsnNum(r.IGST_AMT).toFixed(2),
+  };
+}
+
+/** State lookup for State Wise Sales filter (MASTER / GST_STATE). */
+app.get('/api/state-wise-sales/states', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    if (!comp_code || !comp_uid) return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    const rows = await fetchMasterPartyStateRows(comp_uid, comp_code);
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ state-wise-sales states error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** State Wise Sales — summary by STATE_CODE, STATE, GST% (CGST+SGST+IGST). */
+app.get('/api/state-wise-sales', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, state_code } = req.query;
+    if (!comp_code || !comp_uid || !s_date || !e_date) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, s_date, e_date are required' });
+    }
+    const lines = await buildStateWiseSalesLineRows({ comp_code, comp_uid, s_date, e_date, state_code });
+    const rows = aggregateStateWiseSummaryRows(lines);
+    res.json({ ok: true, rows });
+  } catch (err) {
+    console.error('❌ state-wise-sales error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+async function buildStateWisePurchaseLineRows({ comp_code, comp_uid, s_date, e_date, state_code }) {
+  const stateFilter = String(state_code ?? '').trim();
+  const stateSql = stateFilter ? "\n      AND TRIM(NVL(B.STATE_CODE,'')) = :state_code" : '';
+  const purchaseSql = `
+    SELECT
+      A.TYPE,
+      A.R_DATE,
+      A.R_NO,
+      A.BILL_DATE,
+      A.BILL_NO,
+      A.CODE,
+      NVL(B.NAME, '') AS NAME,
+      NVL(B.CITY, '') AS CITY,
+      NVL(B.STATE_CODE, '') AS STATE_CODE,
+      NVL(B.STATE, '') AS STATE,
+      CAST(NULL AS VARCHAR2(1)) AS S_P,
+      NVL(A.TAXABLE, 0) AS TAXABLE,
+      NVL(A.CGST_AMT, 0) AS CGST_AMT,
+      NVL(A.SGST_AMT, 0) AS SGST_AMT,
+      NVL(A.IGST_AMT, 0) AS IGST_AMT,
+      NVL(A.CGST_PER, 0) AS CGST_PER,
+      NVL(A.SGST_PER, 0) AS SGST_PER,
+      NVL(A.IGST_PER, 0) AS IGST_PER,
+      NVL(A.QNTY, 0) AS QNTY,
+      NVL(A.WEIGHT, 0) AS WEIGHT
+    FROM PURCHASE A
+    LEFT JOIN MASTER B ON A.COMP_CODE = B.COMP_CODE AND A.CODE = B.CODE
+    WHERE A.COMP_CODE = :comp_code
+      AND A.R_DATE >= TO_DATE(:s_date,'DD-MM-YYYY')
+      AND A.R_DATE < TO_DATE(:e_date,'DD-MM-YYYY') + 1
+      AND (
+        UPPER(TRIM(A.TYPE)) = 'PU'
+        OR (UPPER(TRIM(A.TYPE)) = 'EV' AND NVL(A.INPUT_YN,'Y') = 'Y')
+        OR UPPER(TRIM(A.TYPE)) = 'DN'
+        OR (UPPER(TRIM(A.TYPE)) = 'DX' AND NVL(A.INPUT_YN,'Y') <> 'N')
+        OR (UPPER(TRIM(A.TYPE)) = 'CX' AND NVL(A.INPUT_YN,'Y') <> 'N')
+      )${stateSql}`;
+
+  const binds = { comp_code, s_date, e_date };
+  if (stateFilter) binds.state_code = stateFilter;
+  const purchaseRows = await runQuery(purchaseSql, binds, comp_uid);
+
+  return (purchaseRows || []).map((r) => {
+    const type = hsnTxt(r.TYPE).toUpperCase();
+    const sp = hsnTxt(r.S_P).toUpperCase();
+    const qtySign = type === 'DN' || type === 'DX' ? -1 : 1;
+    const taxableSign = (type !== 'DN' && type !== 'DX') || (type === 'CX' && sp === 'P') ? 1 : -1;
+    const rDt = new Date(r.R_DATE);
+    const billDt = new Date(r.BILL_DATE);
+    return {
+      TYPE: type,
+      R_DATE: Number.isNaN(rDt.getTime()) ? '' : hsnYmdLocal(rDt),
+      R_NO: hsnTxt(r.R_NO),
+      BILL_DATE: Number.isNaN(billDt.getTime()) ? '' : hsnYmdLocal(billDt),
+      BILL_NO: hsnTxt(r.BILL_NO),
+      B_TYPE: 'N',
+      CODE: hsnTxt(r.CODE),
+      NAME: hsnTxt(r.NAME),
+      CITY: hsnTxt(r.CITY),
+      STATE_CODE: hsnTxt(r.STATE_CODE),
+      STATE: hsnTxt(r.STATE),
+      QNTY: qtySign * hsnNum(r.QNTY),
+      WEIGHT: qtySign * hsnNum(r.WEIGHT),
+      TAXABLE: taxableSign * hsnNum(r.TAXABLE),
+      CGST_AMT: qtySign * hsnNum(r.CGST_AMT),
+      SGST_AMT: qtySign * hsnNum(r.SGST_AMT),
+      IGST_AMT: qtySign * hsnNum(r.IGST_AMT),
+      CGST_PER: hsnNum(r.CGST_PER),
+      SGST_PER: hsnNum(r.SGST_PER),
+      IGST_PER: hsnNum(r.IGST_PER),
+    };
+  });
+}
+
+function stateWiseRoundPurchaseDetailRow(r) {
+  return {
+    R_DATE: hsnTxt(r.R_DATE),
+    R_NO: hsnTxt(r.R_NO),
+    BILL_DATE: hsnTxt(r.BILL_DATE),
+    BILL_NO: hsnTxt(r.BILL_NO),
+    TYPE: hsnTxt(r.TYPE),
+    CODE: hsnTxt(r.CODE),
+    NAME: hsnTxt(r.NAME),
+    CITY: hsnTxt(r.CITY),
+    STATE_CODE: hsnTxt(r.STATE_CODE),
+    STATE: hsnTxt(r.STATE),
+    QNTY: +hsnNum(r.QNTY).toFixed(3),
+    WEIGHT: +hsnNum(r.WEIGHT).toFixed(3),
+    TAXABLE: +hsnNum(r.TAXABLE).toFixed(2),
+    GST_PER: stateWiseGstPer(r),
+    CGST_AMT: +hsnNum(r.CGST_AMT).toFixed(2),
+    SGST_AMT: +hsnNum(r.SGST_AMT).toFixed(2),
+    IGST_AMT: +hsnNum(r.IGST_AMT).toFixed(2),
+  };
+}
+
+/** State lookup for State Wise Purchase filter (MASTER / GST_STATE). */
+app.get('/api/state-wise-purchase/states', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    if (!comp_code || !comp_uid) return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    const rows = await fetchMasterPartyStateRows(comp_uid, comp_code);
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ state-wise-purchase states error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** State Wise Purchase — summary by STATE_CODE, STATE, GST% (CGST+SGST+IGST). */
+app.get('/api/state-wise-purchase', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, state_code } = req.query;
+    if (!comp_code || !comp_uid || !s_date || !e_date) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, s_date, e_date are required' });
+    }
+    const lines = await buildStateWisePurchaseLineRows({ comp_code, comp_uid, s_date, e_date, state_code });
+    const rows = aggregateStateWiseSummaryRows(lines);
+    res.json({ ok: true, rows });
+  } catch (err) {
+    console.error('❌ state-wise-purchase error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** State Wise Purchase — purchase lines for one state + GST% row (click drill-down). */
+app.get('/api/state-wise-purchase/detail', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, state_code, state, gst_per } = req.query;
+    if (!comp_code || !comp_uid || !s_date || !e_date) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, s_date, e_date are required' });
+    }
+    const wantStateCode = hsnTxt(state_code);
+    const wantState = hsnTxt(state);
+    const wantGst = hsnNum(gst_per);
+    const lines = await buildStateWisePurchaseLineRows({
+      comp_code,
+      comp_uid,
+      s_date,
+      e_date,
+      state_code: state_code || '',
+    });
+    const rows = lines
+      .filter(
+        (r) =>
+          hsnTxt(r.STATE_CODE) === wantStateCode &&
+          hsnTxt(r.STATE) === wantState &&
+          Math.abs(stateWiseGstPer(r) - wantGst) < 0.0001
+      )
+      .map(stateWiseRoundPurchaseDetailRow)
+      .sort(
+        (a, b) =>
+          hsnFastCmp(a.R_DATE, b.R_DATE) ||
+          hsnFastCmp(a.R_NO, b.R_NO) ||
+          hsnFastCmp(a.BILL_DATE, b.BILL_DATE) ||
+          hsnFastCmp(a.BILL_NO, b.BILL_NO) ||
+          hsnFastCmp(a.CODE, b.CODE)
+      );
+    res.json({ ok: true, rows });
+  } catch (err) {
+    console.error('❌ state-wise-purchase detail error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** State Wise Sales — bill lines for one state + GST% row (click drill-down). */
+app.get('/api/state-wise-sales/detail', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, state_code, state, gst_per } = req.query;
+    if (!comp_code || !comp_uid || !s_date || !e_date) {
+      return res.status(400).json({ error: 'comp_code, comp_uid, s_date, e_date are required' });
+    }
+    const wantStateCode = hsnTxt(state_code);
+    const wantState = hsnTxt(state);
+    const wantGst = hsnNum(gst_per);
+    const lines = await buildStateWiseSalesLineRows({
+      comp_code,
+      comp_uid,
+      s_date,
+      e_date,
+      state_code: state_code || '',
+    });
+    const rows = lines
+      .filter(
+        (r) =>
+          hsnTxt(r.STATE_CODE) === wantStateCode &&
+          hsnTxt(r.STATE) === wantState &&
+          Math.abs(stateWiseGstPer(r) - wantGst) < 0.0001
+      )
+      .map(stateWiseRoundDetailRow)
+      .sort(
+        (a, b) =>
+          hsnFastCmp(a.BILL_DATE, b.BILL_DATE) ||
+          hsnFastCmp(a.BILL_NO, b.BILL_NO) ||
+          hsnFastCmp(a.B_TYPE, b.B_TYPE) ||
+          hsnFastCmp(a.CODE, b.CODE)
+      );
+    res.json({ ok: true, rows });
+  } catch (err) {
+    console.error('❌ state-wise-sales detail error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 async function buildHsnPurchaseFullRows({ comp_code, comp_uid, s_date, e_date, code, m_r_u_c, schedule }) {
   const codePartyBind = parseMasterCodeForSql(code);
   const { sql: murcSchSql, scheduleBind } = hsnMurcScheduleSqlFragment({ m_r_u_c, schedule });

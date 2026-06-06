@@ -22,7 +22,7 @@ export const CLIENT_GUIDE_INTRO_SECTIONS = [
     'Select Company and Financial Year, then continue to the main menu.',
   ]),
   section('Step 2 — Open the reports menu', [
-    'After login you see numbered modules (1–8). Click a module title to expand it.',
+    'After login you see numbered modules (1–9). Click a module title to expand it.',
     'Click a report or entry name to open it immediately.',
     'Use ↑ / ↓ keys to move, Enter to open (desktop).',
     'Use ← Back to go to the previous screen; 🏠 Home returns to the menu.',
@@ -72,18 +72,20 @@ export const REPORT_HELP = {
     sections: [
       section('How to open a report', [
         'All modules start collapsed.',
-        'Click a module header (1–7) to expand it — only one module stays open at a time.',
+        'Click a module header (1–9) to expand it — only one module stays open at a time.',
         'Click a report name to open it immediately (Next is optional).',
         'Use ↑ / ↓ to highlight a report, then Enter to open it.',
       ]),
       section('Modules', [
         '1 Final Accounts — Trial Balance, Trading A/C, P&L, Balance Sheet',
         '2 Ledger — Account ledger, interest ledger, customer/supplier/broker, ageing',
-        '3 Stock — Stock sum, HSN sales/purchase (and Stock Lot on some installs)',
-        '4 Sales — Bill printing, sale list, GSTR-1',
-        '5 Sales Entry — Order, dispatch challan, sale bill (where enabled)',
-        '6 Purchase — Purchase list',
-        '7 Voucher — Cash / bank / journal voucher list',
+        '3 Stock — Stock summary',
+        '4 GST — GSTR-1, HSN sales/purchase, state wise sales',
+        '5 Sales — Orders, dispatch, sale bill entry, printing, sale list, sale chart',
+        '6 Purchase — PO, GRN, purchase bill, purchase list',
+        '7 Voucher — Cash / bank / journal entry and list',
+        '8 Production — Production entry',
+        '9 Master — Account master, item master',
       ]),
     ],
   },
@@ -295,6 +297,46 @@ export const REPORT_HELP = {
     ],
   },
 
+  'state-wise-sales': {
+    title: 'State Wise Sales',
+    summary: 'Sales totals grouped by party state (MASTER) and combined GST%.',
+    sections: [
+      section('Parameters', [
+        'Starting date and ending date (defaults from financial year).',
+        'Specific state — optional; leave as All states for every state.',
+      ]),
+      section('Summary', [
+        'Grouped by State Code, State, Gst% (CGST% + SGST% + IGST%).',
+        'Totals: Qty, Weight, Taxable, CGST, SGST, IGST with GRAND TOTAL row.',
+        'Click any state row to open all sale bills for that state and rate.',
+      ]),
+      section('Detail', [
+        'Bill date, bill no, type, party code/name, city, state, qty, weight, taxable, GST amounts.',
+        'Click any bill row to open the printable sale bill.',
+      ]),
+    ],
+  },
+
+  'state-wise-purchase': {
+    title: 'State Wise Purchase',
+    summary: 'Purchase totals grouped by supplier state (MASTER) and combined GST%.',
+    sections: [
+      section('Parameters', [
+        'Starting date and ending date (defaults from financial year).',
+        'Specific state — optional; leave as All states for every state.',
+      ]),
+      section('Summary', [
+        'Grouped by State Code, State, Gst% (CGST% + SGST% + IGST%).',
+        'Totals: Qty, Weight, Taxable, CGST, SGST, IGST with GRAND TOTAL row.',
+        'Click any state row to open all purchase bills for that state and rate.',
+      ]),
+      section('Detail', [
+        'R date, R no, bill date, bill no, type, party code/name, city, state, qty, weight, taxable, GST amounts.',
+        'Click any row to open the printable purchase bill.',
+      ]),
+    ],
+  },
+
   'sale-bill-printing': {
     title: 'Sale Bill Printing',
     summary: 'Find sale bills and open print layout.',
@@ -495,6 +537,8 @@ const PDF_ORDER = [
   'stock-lot',
   'hsn-sales',
   'hsn-purchase',
+  'state-wise-sales',
+  'state-wise-purchase',
   'sale-bill-printing',
   'sale-list',
   'gstr1',

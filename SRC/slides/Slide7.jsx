@@ -6,9 +6,11 @@ import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
 import { formatApiOrigin } from '../utils/apiLabel';
 import { filterBrokerOsRawRowsByMinClosingAbs, parseBrokerOsRangeForUi } from '../utils/brokerOsDisplay';
-import SessionInfoLine, { SessionLineText } from '../components/SessionInfoLine';
+import SessionInfoLine from '../components/SessionInfoLine';
+import SessionToolbarChrome from '../components/SessionToolbarChrome';
 import VoiceSearchButton from '../components/VoiceSearchButton';
-import { filterCodeNameCityRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
+import { filterCodeNameCityRowsSmart, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
+import { applyVoicePartyBrokerSearch } from '../utils/voiceSearchApply';
 import {
   advanceReportFormOnEnter,
   focusNextReportField,
@@ -131,12 +133,12 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
   }, [compCode, compUid]);
 
   const filteredParties = useMemo(
-    () => filterCodeNameCityRows(parties, partySearch, 50),
+    () => filterCodeNameCityRowsSmart(parties, partySearch, 50),
     [parties, partySearch]
   );
 
   const filteredBrokers = useMemo(
-    () => filterCodeNameCityRows(brokers, brokerSearch, 50),
+    () => filterCodeNameCityRowsSmart(brokers, brokerSearch, 50),
     [brokers, brokerSearch]
   );
 
@@ -180,12 +182,14 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
     focusDates();
   };
 
-  const applyBrokerVoiceSearch = (text) => {
-    const q = String(text ?? '').trim();
-    if (!q) return;
-    setBrokerSearch(q);
-    setBrokerListHighlight(0);
-    window.setTimeout(() => brokerSearchRef.current?.focus(), 0);
+  const applyBrokerVoiceSearch = (transcript) => {
+    applyVoicePartyBrokerSearch({
+      transcript,
+      rows: brokers,
+      setQuery: setBrokerSearch,
+      setHighlight: setBrokerListHighlight,
+      inputRef: brokerSearchRef,
+    });
   };
 
   const selectedPartyRow = parties.find((p) => String(p.CODE ?? p.code) === String(selectedParty));
@@ -317,7 +321,9 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
     if (brokerOsFilteredReportData.length === 0) {
       return (
         <div className="slide slide-report slide-report--mobile-toolbar-row slide-report--broker-os">
-          <SessionInfoLine formData={formData} helpReportId="broker-os" />
+          <div className="broker-os-form-chrome">
+            <SessionInfoLine formData={formData} helpReportId="broker-os" />
+          </div>
           <div className="report-toolbar">
             <h2>Broker outstanding</h2>
             <div className="toolbar-actions">
@@ -353,7 +359,9 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
 
     return (
       <div className="slide slide-report slide-report--mobile-toolbar-row slide-report--broker-os">
-        <SessionInfoLine formData={formData} helpReportId="broker-os" />
+        <div className="broker-os-form-chrome">
+          <SessionInfoLine formData={formData} helpReportId="broker-os" />
+        </div>
         <div className="report-toolbar">
           <h2>Broker outstanding</h2>
           <div className="toolbar-actions">
@@ -412,8 +420,6 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
             )}
           </p>
           <p>
-            <SessionLineText formData={formData} />
-            <br />
             Bills {toDisplayDate(startDate)} – {toDisplayDate(endDate)} · Payment cut-off {toDisplayDate(payEndDate)} ·{' '}
             {mco === 'O' ? 'Outstanding only' : 'All'}
             {minIgnoreActive ? (
@@ -443,24 +449,27 @@ export default function Slide7({ apiBase, onPrev, onReset, formData }) {
 
   return (
     <div className="slide slide-7 slide-7-broker-os">
-      <div className="report-toolbar report-toolbar--broker-os">
-        <h2>Broker outstanding (BrokerOs)</h2>
-        <div className="toolbar-actions">
-          <button type="button" onClick={onPrev} className="btn btn-secondary btn-toolbar-back">
-            ← Back
-          </button>
-          <button
-            type="submit"
-            form="broker-os-form"
-            className="btn btn-primary"
-            disabled={loading}
-          >
-            {loading ? 'Loading...' : 'Run'}
-          </button>
-        </div>
+      <div className="broker-os-form-chrome">
+        <SessionInfoLine
+          formData={formData}
+          actions={
+          <>
+            <SessionToolbarChrome helpReportId="broker-os" helpCompanyName={compName} />
+            <button type="button" onClick={onPrev} className="btn btn-secondary btn-toolbar-back">
+              ← Back
+            </button>
+            <button
+              type="submit"
+              form="broker-os-form"
+              className="btn btn-primary btn-toolbar-run"
+              disabled={loading}
+            >
+              {loading ? 'Loading...' : 'Run'}
+            </button>
+          </>
+          }
+        />
       </div>
-
-      <SessionInfoLine formData={formData} helpReportId="broker-os" />
 
       {lookupError ? (
         <div className="form-api-error" role="alert">

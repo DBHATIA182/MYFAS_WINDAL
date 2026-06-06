@@ -20,7 +20,7 @@ export function listenForSearchText(opts = {}) {
   const recognition = new SR();
   recognition.lang = lang;
   recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
+  recognition.maxAlternatives = 5;
   recognition.continuous = false;
 
   recognition.onstart = () => onStart?.();
@@ -30,8 +30,14 @@ export function listenForSearchText(opts = {}) {
     onError?.(String(event?.error || 'error'));
   };
   recognition.onresult = (event) => {
-    const transcript = String(event?.results?.[0]?.[0]?.transcript || '').trim();
-    if (transcript) onText?.(transcript);
+    const result = event?.results?.[0];
+    if (!result) return;
+    const alternatives = [];
+    for (let i = 0; i < result.length; i += 1) {
+      const transcript = String(result[i]?.transcript || '').trim();
+      if (transcript) alternatives.push(transcript);
+    }
+    if (alternatives.length) onText?.(alternatives);
   };
 
   try {

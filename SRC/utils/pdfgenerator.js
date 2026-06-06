@@ -4155,6 +4155,53 @@ function buildHsnSalesReportHtml(payload, metadata) {
   `;
 }
 
+function buildStateWiseSalesReportHtml(payload, metadata) {
+  const data = payload && typeof payload === 'object' ? payload : {};
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  const columns =
+    rows.length > 0
+      ? Object.keys(rows[0])
+      : ['State Code', 'State', 'Gst%', 'Qty.', 'Weight', 'Taxable', 'Cgst Amt.', 'Sgst Amt.', 'Igst Amt.'];
+  const company = escHtml(metadata?.companyName || '');
+  const fy = escHtml(metadata?.year || '');
+  const period = escHtml(metadata?.period || '');
+  const stateFilter = escHtml(metadata?.stateFilter || 'All states');
+  const title = escHtml(metadata?.reportTitle || 'State Wise Sales');
+  const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
+  const thead = columns.map((c) => `<th>${escHtml(c)}</th>`).join('');
+  const tbody = rows
+    .map((r) => {
+      const tds = columns
+        .map((c) => {
+          const v = r[c];
+          const isNum = typeof v === 'number';
+          return `<td class="${isNum ? 'amount' : ''}">${escHtml(v == null ? '' : String(v))}</td>`;
+        })
+        .join('');
+      return `<tr>${tds}</tr>`;
+    })
+    .join('');
+  return `
+    <div class="report-doc">
+      <style>${PDF_REPORT_STYLES}</style>
+      <div class="report-topbar">
+        <div class="kicker">${escHtml(String(metadata?.reportTitle || 'State Wise Sales').toUpperCase())}</div>
+        <h1>${title}</h1>
+        <div class="company">${company}</div>
+        <table class="report-grid">
+          <tr><td class="lbl">FY</td><td class="val">${fy}</td><td class="lbl">Period</td><td class="val">${period}</td></tr>
+          <tr><td class="lbl">State</td><td class="val" colspan="3">${stateFilter} (${rows.length} rows)</td></tr>
+        </table>
+        <div class="report-period">Generated: ${generated}</div>
+      </div>
+      <table class="table-report">
+        <thead><tr>${thead}</tr></thead>
+        <tbody>${tbody || '<tr><td>(No rows)</td></tr>'}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 function buildBalanceSheetReportHtml(data, metadata) {
   const rows = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : [];
   const company = escHtml(metadata.companyName || 'Company');
@@ -5894,6 +5941,7 @@ export function buildReportHtml(reportType, data, metadata) {
   if (reportType === 'gstr1') return buildGstr1ReportHtml(data, metadata);
   if (reportType === 'hsn-sales') return buildHsnSalesReportHtml(data, metadata);
   if (reportType === 'hsn-purchase') return buildHsnSalesReportHtml(data, metadata);
+  if (reportType === 'state-wise-sales' || reportType === 'state-wise-purchase') return buildStateWiseSalesReportHtml(data, metadata);
   if (reportType === 'balance-sheet') return buildBalanceSheetReportHtml(data, metadata);
   if (reportType === 'trading-account') return buildTradingAccountReportHtml(data, metadata);
   if (reportType === 'profit-loss') return buildProfitLossReportHtml(data, metadata);
@@ -5962,6 +6010,15 @@ function getPdfOptions(metadata, reportType, data) {
             scrollX: 0,
             scrollY: 0,
           }
+        : reportType === 'state-wise-sales' || reportType === 'state-wise-purchase'
+          ? {
+              scale: 1,
+              useCORS: true,
+              logging: false,
+              windowWidth: 1800,
+              scrollX: 0,
+              scrollY: 0,
+            }
         : reportType === 'balance-sheet'
           ? {
               scale: 1.35,
@@ -6266,6 +6323,10 @@ export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText
                           ? 'GSTR-1'
                           : reportType === 'hsn-sales'
                             ? 'HSN Sales'
+                            : reportType === 'state-wise-sales'
+                              ? 'State Wise Sales'
+                              : reportType === 'state-wise-purchase'
+                                ? 'State Wise Purchase'
                             : reportType === 'production-list'
                               ? 'Production list'
                               : reportType === 'production-print'

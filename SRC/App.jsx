@@ -22,6 +22,8 @@ import Slide13 from './slides/Slide13';
 import Slide14 from './slides/Slide14';
 import Slide15 from './slides/Slide15';
 import Slide16 from './slides/Slide16';
+import Slide35StateWiseSales from './slides/Slide35StateWiseSales';
+import Slide36StateWisePurchase from './slides/Slide36StateWisePurchase';
 import Slide17TradingAc from './slides/Slide17TradingAc';
 import Slide18PlProfitLoss from './slides/Slide18PlProfitLoss';
 import Slide19BalanceSheet from './slides/Slide19BalanceSheet';
@@ -574,6 +576,8 @@ function App() {
     else if (reportType === 'gstr1') setCurrentSlide(15);
     else if (reportType === 'hsn-sales') setCurrentSlide(16);
     else if (reportType === 'hsn-purchase') setCurrentSlide(17);
+    else if (reportType === 'state-wise-sales') setCurrentSlide(35);
+    else if (reportType === 'state-wise-purchase') setCurrentSlide(36);
     else if (reportType === 'trading-ac') setCurrentSlide(18);
     else if (reportType === 'pl-profit-loss') setCurrentSlide(19);
     else if (reportType === 'balance-sheet') setCurrentSlide(20);
@@ -757,6 +761,8 @@ function App() {
         { phrases: ['open gstr1', 'gstr1', 'open gstr 1', 'gstr 1'], reportType: 'gstr1', slideNo: 15, title: 'GSTR1' },
         { phrases: ['open hsn sales', 'hsn sales', 'open hsn sale', 'hsn sale'], reportType: 'hsn-sales', slideNo: 16, title: 'HSN Sales' },
         { phrases: ['open hsn purchase', 'hsn purchase', 'open hsn purchases', 'hsn purchases'], reportType: 'hsn-purchase', slideNo: 17, title: 'HSN Purchase' },
+        { phrases: ['open state wise sales', 'state wise sales', 'state sales', 'open state sales'], reportType: 'state-wise-sales', slideNo: 35, title: 'State Wise Sales' },
+        { phrases: ['open state wise purchase', 'state wise purchase', 'state purchase', 'open state purchase'], reportType: 'state-wise-purchase', slideNo: 36, title: 'State Wise Purchase' },
         { phrases: ['open trading account', 'trading account', 'open trading a c', 'trading a c'], reportType: 'trading-ac', slideNo: 18, title: 'Trading Account' },
         { phrases: ['open p and l', 'p and l', 'open profit and loss', 'profit and loss', 'open p l', 'p l'], reportType: 'pl-profit-loss', slideNo: 19, title: 'P&L' },
         { phrases: ['open balance sheet', 'balance sheet'], reportType: 'balance-sheet', slideNo: 20, title: 'Balance Sheet' },
@@ -1102,6 +1108,22 @@ function App() {
         )}
         {currentSlide === 17 && (
           <Slide16 apiBase={API_BASE} formData={formData} onPrev={() => setCurrentSlide(3)} onReset={handleReset} reportMode="purchase" />
+        )}
+        {currentSlide === 35 && (
+          <Slide35StateWiseSales
+            apiBase={API_BASE}
+            formData={formData}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+          />
+        )}
+        {currentSlide === 36 && (
+          <Slide36StateWisePurchase
+            apiBase={API_BASE}
+            formData={formData}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+          />
         )}
         {currentSlide === 18 && (
           <Slide17TradingAc apiBase={API_BASE} formData={formData} onPrev={() => setCurrentSlide(3)} onReset={handleReset} />

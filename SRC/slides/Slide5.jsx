@@ -9,7 +9,8 @@ import { toInputDateString, toOracleDate, toDisplayDate, formatCurBal, getCurBal
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
 import SessionInfoLine from '../components/SessionInfoLine';
 import VoiceSearchButton from '../components/VoiceSearchButton';
-import { filterAccountRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
+import { filterAccountRowsSmart, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
+import { applyVoiceAccountSearch } from '../utils/voiceSearchApply';
 
 function highlightMatch(text, q) {
   if (text == null) return null;
@@ -110,7 +111,7 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
   }, [apiBase, formData.comp_code, formData.COMP_CODE, formData.comp_uid, formData.COMP_UID]);
 
   const filteredAccounts = useMemo(
-    () => filterAccountRows(accounts, accountSearch, getCurBal, 50),
+    () => filterAccountRowsSmart(accounts, accountSearch, getCurBal, 50),
     [accounts, accountSearch]
   );
 
@@ -137,13 +138,16 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
     focusStartDate();
   };
 
-  const applyAccountVoiceSearch = (text) => {
-    const q = String(text ?? '').trim();
-    if (!q) return;
-    setSelectedAccount('');
-    setAccountSearch(q);
-    setListHighlight(0);
-    window.setTimeout(() => accountSearchInputRef.current?.focus(), 0);
+  const applyAccountVoiceSearch = (transcript) => {
+    applyVoiceAccountSearch({
+      transcript,
+      rows: accounts,
+      getCurBal,
+      setQuery: setAccountSearch,
+      setHighlight: setListHighlight,
+      clearSelection: () => setSelectedAccount(''),
+      inputRef: accountSearchInputRef,
+    });
   };
 
   const handleSubmit = async (e) => {

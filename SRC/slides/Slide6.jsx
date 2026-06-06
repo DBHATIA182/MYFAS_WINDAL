@@ -6,7 +6,8 @@ import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, getCurBal, formatCurBal } from '../utils/dateFormat';
 import SessionInfoLine from '../components/SessionInfoLine';
 import VoiceSearchButton from '../components/VoiceSearchButton';
-import { filterCodeNameCityRows, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
+import { filterCodeNameCityRowsSmart, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
+import { applyVoicePartyBrokerSearch } from '../utils/voiceSearchApply';
 import {
   advanceReportFormOnEnter,
   focusNextReportField,
@@ -139,7 +140,7 @@ export default function Slide6({ apiBase, onPrev, onReset, formData }) {
   }, [apiBase, compCode, compUid]);
 
   const filteredParties = useMemo(
-    () => filterCodeNameCityRows(parties, partySearch, 50),
+    () => filterCodeNameCityRowsSmart(parties, partySearch, 50),
     [parties, partySearch]
   );
 
@@ -166,13 +167,15 @@ export default function Slide6({ apiBase, onPrev, onReset, formData }) {
     focusBillStart();
   };
 
-  const applyPartyVoiceSearch = (text) => {
-    const q = String(text ?? '').trim();
-    if (!q) return;
-    setSelectedCode('');
-    setPartySearch(q);
-    setListHighlight(0);
-    window.setTimeout(() => partySearchInputRef.current?.focus(), 0);
+  const applyPartyVoiceSearch = (transcript) => {
+    applyVoicePartyBrokerSearch({
+      transcript,
+      rows: parties,
+      setQuery: setPartySearch,
+      setHighlight: setListHighlight,
+      clearSelection: () => setSelectedCode(''),
+      inputRef: partySearchInputRef,
+    });
   };
 
   const selectedPartyRow = parties.find((p) => String(p.CODE ?? p.code) === String(selectedCode));
