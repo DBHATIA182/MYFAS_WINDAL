@@ -4081,6 +4081,97 @@ function buildPendingOrderReportHtml(data, metadata) {
   `;
 }
 
+/** Pending dispatch challan list (ISSUE disp − SALE billed). */
+function buildPendingDispatchChallanReportHtml(data, metadata) {
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  const company = escHtml(metadata.companyName || '');
+  const title = escHtml(metadata?.reportTitle || 'Pending Challan');
+  const sdt = escHtml(metadata.startDate || '');
+  const edt = escHtml(metadata.endDate || '');
+  const party = escHtml(metadata.partyLabel || 'All codes');
+  const item = escHtml(metadata.itemLabel || 'All items');
+  const cp = escHtml(metadata.cpLabel || 'Pending only');
+  const plant = escHtml(metadata.plantLabel || 'All godowns');
+  const chType = escHtml(metadata.chTypeLabel || 'All challan types');
+  const rateChk = metadata.rateChkLabel ? escHtml(metadata.rateChkLabel) : '';
+  const markaChk = metadata.markaChkLabel ? escHtml(metadata.markaChkLabel) : '';
+  const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
+  const kicker = escHtml(String(metadata?.reportTitle || 'Pending Challan').toUpperCase());
+
+  let td = 0;
+  let tb = 0;
+  let tbal = 0;
+  let ta = 0;
+  let body = '';
+  rows.forEach((r) => {
+    const d = Number(r.D_QNTY) || 0;
+    const b = Number(r.B_QNTY) || 0;
+    const bal = Number(r.BQTY ?? r.BAL_QNTY) || 0;
+    const a = Number(r.AMOUNT) || 0;
+    td += d;
+    tb += b;
+    tbal += bal;
+    ta += a;
+    body += `<tr>
+      <td>${escHtml(String(r.CH_NO ?? ''))}</td>
+      <td>${escHtml(String(r.CH_DATE ?? ''))}</td>
+      <td>${escHtml(String(r.CH_TYPE ?? ''))}</td>
+      <td>${escHtml(String(r.CODE ?? ''))}</td>
+      <td class="col-name">${escHtml(String(r.NAME ?? ''))}</td>
+      <td>${escHtml(String(r.ITEM_CODE ?? ''))}</td>
+      <td class="col-name">${escHtml(String(r.ITEM_NAME ?? ''))}</td>
+      <td>${escHtml(String(r.MARKA ?? ''))}</td>
+      <td>${escHtml(String(r.STATUS ?? ''))}</td>
+      <td class="amount">${formatStockPdf(Number(r.RATE) || 0)}</td>
+      <td class="amount">${formatStockPdf(d, 3)}</td>
+      <td class="amount">${formatStockPdf(b, 3)}</td>
+      <td class="amount">${formatStockPdf(bal, 3)}</td>
+      <td class="amount">${formatStockPdf(a)}</td>
+      <td>${escHtml(String(r.PLANT_CODE ?? ''))}</td>
+    </tr>`;
+  });
+
+  const grand = `<tr class="report-grand-total">
+    <td colspan="10" class="lbl-total">Grand total (${rows.length} rows)</td>
+    <td class="amount">${formatStockPdf(td, 3)}</td>
+    <td class="amount">${formatStockPdf(tb, 3)}</td>
+    <td class="amount">${formatStockPdf(tbal, 3)}</td>
+    <td class="amount">${formatStockPdf(ta)}</td>
+    <td></td>
+  </tr>`;
+
+  const filterRows = `<tr><td class="lbl">Period</td><td class="val">${sdt} to ${edt}</td><td class="lbl">Status</td><td class="val">${cp}</td></tr>
+          <tr><td class="lbl">Code</td><td class="val">${party}</td><td class="lbl">Item</td><td class="val">${item}</td></tr>
+          <tr><td class="lbl">Godown</td><td class="val">${plant}</td><td class="lbl">Ch type</td><td class="val">${chType}</td></tr>
+          ${rateChk || markaChk ? `<tr><td class="lbl">Rate</td><td class="val">${rateChk || '—'}</td><td class="lbl">Marka</td><td class="val">${markaChk || '—'}</td></tr>` : ''}`;
+
+  return `
+    <div class="report-doc pending-order-pdf pending-dispatch-challan-pdf">
+      <style>${PDF_REPORT_STYLES}</style>
+      <div class="report-topbar">
+        <div class="kicker">${kicker}</div>
+        <h1>${title}</h1>
+        <div class="company">${company}</div>
+        <table class="report-grid">
+          ${filterRows}
+        </table>
+        <div class="report-period">Generated: ${generated}</div>
+      </div>
+      <table class="table-report">
+        <thead>
+          <tr>
+            <th>Ch no</th><th>Date</th><th>Tp</th><th>Code</th><th>Name</th><th>Item</th><th>Item name</th>
+            <th>Marka</th><th>St</th><th class="amount">Rate</th>
+            <th class="amount">Ch qty</th><th class="amount">Sl qty</th><th class="amount">Bal</th><th class="amount">Amount</th><th>Plant</th>
+          </tr>
+        </thead>
+        <tbody>${body || '<tr><td colspan="15">(No rows)</td></tr>'}${rows.length ? grand : ''}</tbody>
+      </table>
+      <div class="report-foot">Pending challan — dispatch qty (ISSUE) minus sale-billed qty (SALE).</div>
+    </div>
+  `;
+}
+
 /** Purchase list */
 function buildPurchaseListReportHtml(data, metadata) {
   const rows = Array.isArray(data?.rows) ? data.rows : [];
@@ -6101,6 +6192,9 @@ export function buildReportHtml(reportType, data, metadata) {
   if (reportType === 'pending-sales-order' || reportType === 'pending-purchase-order') {
     return buildPendingOrderReportHtml(data, metadata);
   }
+  if (reportType === 'pending-dispatch-challan') {
+    return buildPendingDispatchChallanReportHtml(data, metadata);
+  }
   if (reportType === 'sales-order-print') return buildSalesOrderPrintReportHtml(data, metadata);
   if (reportType === 'purchase-order-list') {
     return buildSalesOrderListReportHtml(data, {
@@ -6150,7 +6244,7 @@ function getPdfOptions(metadata, reportType, data) {
           scrollX: 0,
           scrollY: 0,
         }
-      : reportType === 'pending-sales-order' || reportType === 'pending-purchase-order'
+      : reportType === 'pending-sales-order' || reportType === 'pending-purchase-order' || reportType === 'pending-dispatch-challan'
         ? {
             scale: 1.75,
             useCORS: true,
@@ -6489,6 +6583,8 @@ export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText
                               ? 'Pending Sales Order'
                               : reportType === 'pending-purchase-order'
                                 ? 'Pending Purchase Order'
+                              : reportType === 'pending-dispatch-challan'
+                                ? 'Pending Dispatch Challan'
                             : reportType === 'production-list'
                               ? 'Production list'
                               : reportType === 'production-print'

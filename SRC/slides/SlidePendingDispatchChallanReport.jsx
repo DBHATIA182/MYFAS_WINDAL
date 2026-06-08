@@ -22,65 +22,42 @@ import {
 
 const reqOpts = { withCredentials: true, timeout: 120000 };
 
-const REPORT_CFG = {
-  sales: {
-    apiPath: 'pending-sales-order-report',
-    detailRtype: 'SO',
-    pdfType: 'pending-sales-order',
-    helpId: 'pending-sales-order',
-    title: 'Pending Sales Order',
-    partyLabel: 'Specific party',
-    showMcs: true,
-    excelName: 'PendingSalesOrder',
-  },
-  purchase: {
-    apiPath: 'pending-purchase-order-report',
-    detailRtype: 'PO',
-    pdfType: 'pending-purchase-order',
-    helpId: 'pending-purchase-order',
-    title: 'Pending Purchase Order',
-    partyLabel: 'Specific supplier',
-    showMcs: false,
-    excelName: 'PendingPurchaseOrder',
-  },
-};
-
 const COLUMNS = [
-  'SO_NO',
-  'SO_DATE',
+  'CH_NO',
+  'CH_DATE',
+  'CH_TYPE',
   'CODE',
   'NAME',
   'ITEM_CODE',
   'ITEM_NAME',
+  'MARKA',
   'STATUS',
   'RATE',
-  'MARKA',
-  'PO_NO',
-  'OQTY',
-  'RQTY',
+  'D_QNTY',
+  'B_QNTY',
   'BQTY',
   'AMOUNT',
-  'REMARKS',
+  'PLANT_CODE',
 ];
 
-const NUM_COLS = new Set(['RATE', 'OQTY', 'RQTY', 'BQTY', 'AMOUNT']);
+const NUM_COLS = new Set(['RATE', 'D_QNTY', 'B_QNTY', 'BQTY', 'AMOUNT']);
 
 const COL_LABELS = {
-  SO_NO: 'SO No',
-  SO_DATE: 'SO Date',
+  CH_NO: 'Ch no',
+  CH_DATE: 'Ch date',
+  CH_TYPE: 'Tp',
   CODE: 'Code',
   NAME: 'Name',
   ITEM_CODE: 'Item',
-  ITEM_NAME: 'Item Name',
+  ITEM_NAME: 'Item name',
+  MARKA: 'Marka',
   STATUS: 'St',
   RATE: 'Rate',
-  MARKA: 'Marka',
-  PO_NO: 'PO No',
-  OQTY: 'Oqty',
-  RQTY: 'Rqty',
-  BQTY: 'Bqty',
+  D_QNTY: 'Ch qty',
+  B_QNTY: 'Sl qty',
+  BQTY: 'Bal',
   AMOUNT: 'Amount',
-  REMARKS: 'Remarks',
+  PLANT_CODE: 'Plant',
 };
 
 function highlightMatch(text, q) {
@@ -106,44 +83,23 @@ function fmtNum(v, dec = 3) {
   return n.toLocaleString('en-IN', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
 
-function mapRow(r) {
-  return {
-    SO_NO: r.SO_NO ?? r.so_no ?? '',
-    SO_DATE: toDisplayDate(toInputDateString(r.SO_DATE ?? r.so_date)),
-    CODE: r.CODE ?? r.code ?? '',
-    NAME: r.NAME ?? r.name ?? '',
-    ITEM_CODE: r.ITEM_CODE ?? r.item_code ?? '',
-    ITEM_NAME: r.ITEM_NAME ?? r.item_name ?? '',
-    STATUS: r.STATUS ?? r.status ?? '',
-    RATE: Number(r.RATE ?? r.rate ?? 0),
-    MARKA: r.MARKA ?? r.marka ?? '',
-    PO_NO: r.PO_NO ?? r.po_no ?? '',
-    OQTY: Number(r.OQTY ?? r.oqty ?? 0),
-    RQTY: Number(r.RQTY ?? r.rqty ?? 0),
-    BQTY: Number(r.BQTY ?? r.bqty ?? 0),
-    AMOUNT: Number(r.AMOUNT ?? r.amount ?? 0),
-    REMARKS: r.REMARKS ?? r.remarks ?? '',
-  };
-}
-
-function PendingOrderDetailModal({ open, onClose, loading, err, detail, title }) {
+function PendingChallanDetailModal({ open, onClose, loading, err, detail, title, selectedRow }) {
   if (!open) return null;
   const sum = detail?.summary || {};
-  const orderLines = detail?.order_lines || [];
-  const fulfillLines = detail?.fulfill_lines || [];
-  const outLabel = detail?.fulfill_source === 'SALE' ? 'Sale bills (OUT)' : detail?.fulfill_source === 'ISSUE' ? 'Challans (OUT)' : 'Purchase / GRN (OUT)';
+  const challanLines = detail?.challan_lines || [];
+  const saleLines = detail?.sale_lines || [];
 
   return (
     <div className="pending-order-detail-backdrop" role="presentation" onClick={onClose}>
       <div
-        className="pending-order-detail-modal"
+        className="pending-order-detail-modal pending-order-detail-modal--challan"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="pending-order-detail-title"
+        aria-labelledby="pending-challan-detail-title"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="pending-order-detail-modal__head">
-          <h3 id="pending-order-detail-title">{title}</h3>
+          <h3 id="pending-challan-detail-title">{title}</h3>
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Close
           </button>
@@ -155,45 +111,66 @@ function PendingOrderDetailModal({ open, onClose, loading, err, detail, title })
         {!loading && !err && detail ? (
           <>
             <p className="pending-order-detail-modal__summary">
-              Oqty <strong>{fmtNum(sum.OQTY)}</strong> · Rqty <strong>{fmtNum(sum.RQTY)}</strong> · Bqty{' '}
+              {selectedRow ? (
+                <>
+                  Selected line ({selectedRow.ITEM_CODE}): Ch qty <strong>{fmtNum(selectedRow.D_QNTY)}</strong> · Sl qty{' '}
+                  <strong>{fmtNum(selectedRow.B_QNTY)}</strong> · Bal <strong>{fmtNum(selectedRow.BQTY)}</strong>
+                  <br />
+                </>
+              ) : null}
+              Challan total: Ch qty <strong>{fmtNum(sum.OQTY)}</strong> · Sl qty <strong>{fmtNum(sum.SQTY)}</strong> · Bal{' '}
               <strong>{fmtNum(sum.BQTY)}</strong>
             </p>
 
-            <h4 className="pending-order-detail-modal__section">Sales / purchase orders (IN)</h4>
-            <div className="table-responsive">
+            <h4 className="pending-order-detail-modal__section">Dispatch challan entries (IN)</h4>
+            <div className="table-responsive table-responsive--pending-challan-detail">
               <table className="report-table report-table--pending-order-detail">
                 <thead>
                   <tr>
-                    <th>Order no</th>
-                    <th>Order date</th>
                     <th>Line</th>
+                    <th>Ch no</th>
+                    <th>Date</th>
+                    <th>R no</th>
+                    <th>Tp</th>
+                    <th>Code</th>
+                    <th>Name</th>
                     <th>Item</th>
+                    <th>Item name</th>
                     <th>St</th>
                     <th className="text-right">Rate</th>
                     <th className="text-right">Qty</th>
+                    <th className="text-right">Weight</th>
+                    <th className="text-right">Amount</th>
                     <th>Marka</th>
-                    <th>PO No</th>
-                    <th>Remarks</th>
+                    <th>SO no</th>
+                    <th>Plant</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {orderLines.length === 0 ? (
+                  {challanLines.length === 0 ? (
                     <tr>
-                      <td colSpan={10}>No order lines.</td>
+                      <td colSpan={17}>No dispatch challan lines.</td>
                     </tr>
                   ) : (
-                    orderLines.map((r, i) => (
-                      <tr key={`in-${i}`}>
-                        <td>{r.SO_NO}</td>
-                        <td>{toDisplayDate(toInputDateString(r.SO_DATE ?? r.DOC_DATE))}</td>
-                        <td>{r.TRN_NO || r.DOC_NO}</td>
+                    challanLines.map((r, i) => (
+                      <tr key={`in-${i}`} className={r.HIGHLIGHT ? 'pending-challan-detail-row--highlight' : undefined}>
+                        <td>{r.TRN_NO || i + 1}</td>
+                        <td>{r.CH_NO}</td>
+                        <td>{toDisplayDate(toInputDateString(r.DOC_DATE))}</td>
+                        <td>{r.DOC_NO}</td>
+                        <td>{r.TYPE}</td>
+                        <td>{r.CODE}</td>
+                        <td>{r.NAME}</td>
                         <td>{r.ITEM_CODE}</td>
+                        <td>{r.ITEM_NAME}</td>
                         <td>{r.STATUS}</td>
                         <td className="text-right">{fmtNum(r.RATE, 2)}</td>
                         <td className="text-right">{fmtNum(r.QNTY)}</td>
+                        <td className="text-right">{fmtNum(r.WEIGHT)}</td>
+                        <td className="text-right">{fmtNum(r.AMOUNT, 2)}</td>
                         <td>{r.MARKA}</td>
-                        <td>{r.PO_NO}</td>
-                        <td>{r.REMARKS}</td>
+                        <td>{r.SO_NO || ''}</td>
+                        <td>{r.PLANT_CODE}</td>
                       </tr>
                     ))
                   )}
@@ -201,37 +178,47 @@ function PendingOrderDetailModal({ open, onClose, loading, err, detail, title })
               </table>
             </div>
 
-            <h4 className="pending-order-detail-modal__section">{outLabel}</h4>
-            <div className="table-responsive">
+            <h4 className="pending-order-detail-modal__section">Sale bills (OUT)</h4>
+            <div className="table-responsive table-responsive--pending-challan-detail">
               <table className="report-table report-table--pending-order-detail">
                 <thead>
                   <tr>
-                    <th>Order no</th>
-                    <th>Date</th>
-                    <th>Doc no</th>
+                    <th>Line</th>
+                    <th>Ch no</th>
+                    <th>Bill date</th>
+                    <th>Bill no</th>
+                    <th>B type</th>
                     <th>Type</th>
                     <th>Item</th>
+                    <th>Item name</th>
                     <th>St</th>
                     <th className="text-right">Rate</th>
                     <th className="text-right">Qty</th>
+                    <th>Marka</th>
+                    <th>Plant</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {fulfillLines.length === 0 ? (
+                  {saleLines.length === 0 ? (
                     <tr>
-                      <td colSpan={8}>No billed / challan / purchase lines.</td>
+                      <td colSpan={13}>No sale bill lines against this challan.</td>
                     </tr>
                   ) : (
-                    fulfillLines.map((r, i) => (
-                      <tr key={`out-${i}`}>
-                        <td>{r.SO_NO}</td>
+                    saleLines.map((r, i) => (
+                      <tr key={`out-${i}`} className={r.HIGHLIGHT ? 'pending-challan-detail-row--highlight' : undefined}>
+                        <td>{r.TRN_NO || i + 1}</td>
+                        <td>{r.CH_NO}</td>
                         <td>{toDisplayDate(toInputDateString(r.DOC_DATE))}</td>
-                        <td>{r.BILL_NO || r.DOC_NO}</td>
+                        <td>{r.DOC_NO}</td>
+                        <td>{r.B_TYPE}</td>
                         <td>{r.TYPE}</td>
                         <td>{r.ITEM_CODE}</td>
+                        <td>{r.ITEM_NAME}</td>
                         <td>{r.STATUS}</td>
                         <td className="text-right">{fmtNum(r.RATE, 2)}</td>
                         <td className="text-right">{fmtNum(r.QNTY)}</td>
+                        <td>{r.MARKA}</td>
+                        <td>{r.PLANT_CODE}</td>
                       </tr>
                     ))
                   )}
@@ -245,22 +232,39 @@ function PendingOrderDetailModal({ open, onClose, loading, err, detail, title })
   );
 }
 
-export default function SlidePendingOrderReport({
+function mapRow(r) {
+  return {
+    CH_NO: r.CH_NO ?? r.ch_no ?? '',
+    CH_DATE: toDisplayDate(toInputDateString(r.CH_DATE ?? r.ch_date)),
+    CH_TYPE: r.CH_TYPE ?? r.ch_type ?? '',
+    CODE: r.CODE ?? r.code ?? '',
+    NAME: r.NAME ?? r.name ?? '',
+    ITEM_CODE: r.ITEM_CODE ?? r.item_code ?? '',
+    ITEM_NAME: r.ITEM_NAME ?? r.item_name ?? '',
+    MARKA: r.MARKA ?? r.marka ?? '',
+    STATUS: r.STATUS ?? r.status ?? '',
+    RATE: Number(r.RATE ?? r.rate ?? 0),
+    D_QNTY: Number(r.D_QNTY ?? r.d_qnty ?? 0),
+    B_QNTY: Number(r.B_QNTY ?? r.b_qnty ?? 0),
+    BQTY: Number(r.BQTY ?? r.bqty ?? r.BAL_QNTY ?? 0),
+    AMOUNT: Number(r.AMOUNT ?? r.amount ?? 0),
+    PLANT_CODE: r.PLANT_CODE ?? r.plant_code ?? '',
+  };
+}
+
+export default function SlidePendingDispatchChallanReport({
   apiBase,
   formData,
   onPrev,
   onReset,
-  reportMode = 'sales',
-  slideClass = 'slide-37-pending-sales-order',
+  slideClass = 'slide-39-pending-dispatch-challan',
 }) {
-  const cfg = REPORT_CFG[reportMode] || REPORT_CFG.sales;
   const compCode = formData.comp_code ?? formData.COMP_CODE;
   const compUid = formData.comp_uid ?? formData.COMP_UID;
   const compName = formData.comp_name ?? formData.COMP_NAME ?? '';
 
   const [sDate, setSDate] = useState(() => toInputDateString(formData.comp_s_dt ?? formData.COMP_S_DT));
   const [eDate, setEDate] = useState(() => toInputDateString(formData.comp_e_dt ?? formData.COMP_E_DT));
-  const [mcs, setMcs] = useState('S');
   const [cp, setCp] = useState('P');
   const [partyCode, setPartyCode] = useState('');
   const [partySearch, setPartySearch] = useState('');
@@ -268,11 +272,15 @@ export default function SlidePendingOrderReport({
   const [itemCode, setItemCode] = useState('');
   const [itemSearch, setItemSearch] = useState('');
   const [itemHi, setItemHi] = useState(0);
+  const [plantCode, setPlantCode] = useState('');
+  const [chType, setChType] = useState('');
 
   const [parties, setParties] = useState([]);
   const [items, setItems] = useState([]);
+  const [plants, setPlants] = useState([]);
   const [rows, setRows] = useState([]);
   const [rateChk, setRateChk] = useState('N');
+  const [markaChk, setMarkaChk] = useState('N');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [showReport, setShowReport] = useState(false);
@@ -282,11 +290,10 @@ export default function SlidePendingOrderReport({
   const [detailErr, setDetailErr] = useState('');
   const [detail, setDetail] = useState(null);
   const [detailTitle, setDetailTitle] = useState('');
+  const [detailRow, setDetailRow] = useState(null);
 
   const formRef = useRef(null);
   const sDateInputRef = useRef(null);
-
-  const itemsApi = reportMode === 'sales' ? 'salelist-items' : 'purchaselist-items';
 
   const focusStartDate = () => {
     setTimeout(() => {
@@ -308,14 +315,16 @@ export default function SlidePendingOrderReport({
     const params = { comp_code: compCode, comp_uid: compUid };
     Promise.all([
       axios.get(`${apiBase}/api/pending-order-parties`, { params, ...reqOpts }),
-      axios.get(`${apiBase}/api/${itemsApi}`, { params, ...reqOpts }),
+      axios.get(`${apiBase}/api/salelist-items`, { params, ...reqOpts }),
+      axios.get(`${apiBase}/api/salelist-plants`, { params, ...reqOpts }),
     ])
-      .then(([pRes, iRes]) => {
+      .then(([pRes, iRes, plRes]) => {
         setParties(Array.isArray(pRes.data) ? pRes.data : []);
         setItems(Array.isArray(iRes.data) ? iRes.data : []);
+        setPlants(Array.isArray(plRes.data) ? plRes.data : []);
       })
       .catch(() => {});
-  }, [apiBase, compCode, compUid, itemsApi]);
+  }, [apiBase, compCode, compUid]);
 
   const filteredParties = useMemo(
     () => filterCodeNameCityRows(parties, partySearch, 50),
@@ -329,37 +338,37 @@ export default function SlidePendingOrderReport({
   const safePartyHi = Math.min(partyHi, Math.max(0, filteredParties.length - 1));
   const safeItemHi = Math.min(itemHi, Math.max(0, filteredItems.length - 1));
 
-  const reportRows = useMemo(() => {
-    const mapped = rows.map(mapRow);
-    return mapped.sort((a, b) => {
-      const da = toInputDateString(a.SO_DATE) || '';
-      const db = toInputDateString(b.SO_DATE) || '';
-      if (da !== db) return da.localeCompare(db);
-      const sn = Number(a.SO_NO) - Number(b.SO_NO);
-      if (sn !== 0) return sn;
-      return String(a.ITEM_CODE).localeCompare(String(b.ITEM_CODE));
-    });
-  }, [rows]);
+  const reportRows = useMemo(() => rows.map(mapRow), [rows]);
 
   const totals = useMemo(() => {
-    let o = 0;
-    let r = 0;
+    let d = 0;
     let b = 0;
+    let bal = 0;
     let a = 0;
     for (const row of reportRows) {
-      o += row.OQTY;
-      r += row.RQTY;
-      b += row.BQTY;
+      d += row.D_QNTY;
+      b += row.B_QNTY;
+      bal += row.BQTY;
       a += row.AMOUNT;
     }
-    return { oqty: o, rqty: r, bqty: b, amount: a };
+    return { dqty: d, bqty: b, bal, amount: a };
   }, [reportRows]);
 
   const partyLabel = useMemo(() => {
-    if (!partyCode) return 'All parties';
+    if (!partyCode) return 'All codes';
     const p = parties.find((x) => String(x.CODE ?? x.code) === String(partyCode));
     return p ? `[${partyCode}] ${p.NAME ?? p.name}` : String(partyCode);
   }, [partyCode, parties]);
+
+  const plantLabel = useMemo(() => {
+    if (!plantCode.trim()) return 'All godowns';
+    const pl = plants.find((x) => String(x.PLANT_CODE ?? x.plant_code).trim() === plantCode.trim());
+    return pl
+      ? `[${plantCode.trim()}] ${pl.PLANT_NAME ?? pl.plant_name ?? ''}`.trim()
+      : plantCode.trim();
+  }, [plantCode, plants]);
+
+  const chTypeLabel = chType.trim() ? `Type ${chType.trim()}` : 'All challan types';
 
   const itemLabel = useMemo(() => {
     if (!itemCode) return 'All items';
@@ -372,36 +381,38 @@ export default function SlidePendingOrderReport({
   const pdfMeta = useMemo(
     () => ({
       companyName: compName,
-      reportTitle: cfg.title,
+      reportTitle: 'Pending Challan',
       startDate: toDisplayDate(sDate),
       endDate: toDisplayDate(eDate),
-      partyLabel,
+      partyLabel: partyLabel,
       itemLabel,
       cpLabel,
-      mcsLabel: cfg.showMcs ? (mcs === 'C' ? 'Challan (ISSUE)' : 'Sale Bill (SALE)') : '',
+      plantLabel,
+      chTypeLabel,
       rateChkLabel: rateChk === 'Y' ? 'Rate check: Yes' : 'Rate check: No',
+      markaChkLabel: markaChk === 'Y' ? 'Marka check: Yes' : 'Marka check: No',
     }),
-    [compName, cfg, sDate, eDate, partyLabel, itemLabel, cp, mcs, rateChk]
+    [compName, sDate, eDate, partyLabel, itemLabel, cp, plantLabel, chTypeLabel, rateChk, markaChk]
   );
 
   const excelRows = useMemo(
     () =>
       reportRows.map((r) => ({
-        'SO No': r.SO_NO,
-        'SO Date': r.SO_DATE,
+        'Ch No': r.CH_NO,
+        'Ch Date': r.CH_DATE,
+        Tp: r.CH_TYPE,
         Code: r.CODE,
         Name: r.NAME,
         Item: r.ITEM_CODE,
         'Item Name': r.ITEM_NAME,
+        Marka: r.MARKA,
         Status: r.STATUS,
         Rate: r.RATE,
-        Marka: r.MARKA,
-        'PO No': r.PO_NO,
-        Oqty: r.OQTY,
-        Rqty: r.RQTY,
-        Bqty: r.BQTY,
+        'Ch Qty': r.D_QNTY,
+        'Sl Qty': r.B_QNTY,
+        Bal: r.BQTY,
         Amount: r.AMOUNT,
-        Remarks: r.REMARKS,
+        Plant: r.PLANT_CODE,
       })),
     [reportRows]
   );
@@ -440,10 +451,12 @@ export default function SlidePendingOrderReport({
       };
       if (partyCode) params.code = partyCode;
       if (itemCode.trim()) params.item_code = itemCode.trim();
-      if (cfg.showMcs) params.mcs = mcs;
-      const { data } = await axios.get(`${apiBase}/api/${cfg.apiPath}`, { params, ...reqOpts });
+      if (plantCode.trim()) params.plant_code = plantCode.trim();
+      if (chType.trim()) params.ch_type = chType.trim().slice(0, 1);
+      const { data } = await axios.get(`${apiBase}/api/pending-dispatch-challan-report`, { params, ...reqOpts });
       setRows(Array.isArray(data?.rows) ? data.rows : []);
       setRateChk(String(data?.rate_chk ?? 'N').toUpperCase());
+      setMarkaChk(String(data?.marka_chk ?? 'N').toUpperCase());
       setShowReport(true);
     } catch (e) {
       setErr(e?.response?.data?.error || e.message || 'Report failed');
@@ -465,23 +478,19 @@ export default function SlidePendingOrderReport({
     setDetailLoading(true);
     setDetailErr('');
     setDetail(null);
-    setDetailTitle(
-      `SO ${row.SO_NO} · ${row.ITEM_CODE} · St ${row.STATUS} · Rate ${fmtNum(row.RATE, 2)} — ${row.NAME}`
-    );
+    setDetailRow(row);
+    setDetailTitle(`Challan ${row.CH_NO} · Type ${row.CH_TYPE} — ${row.NAME || 'All entries'}`);
     try {
       const params = {
         comp_code: compCode,
         comp_uid: compUid,
-        s_date: toOracleDate(sDate),
         e_date: toOracleDate(eDate),
-        rtype: cfg.detailRtype,
-        so_no: row.SO_NO,
-        item_code: row.ITEM_CODE,
-        status: row.STATUS,
-        rate: row.RATE,
+        ch_no: row.CH_NO,
+        ch_type: row.CH_TYPE,
+        highlight_item: row.ITEM_CODE,
       };
-      if (cfg.showMcs) params.mcs = mcs;
-      const { data } = await axios.get(`${apiBase}/api/pending-order-detail`, { params, ...reqOpts });
+      if (plantCode.trim()) params.plant_code = plantCode.trim();
+      const { data } = await axios.get(`${apiBase}/api/pending-challan-detail`, { params, ...reqOpts });
       setDetail(data);
     } catch (e) {
       setDetailErr(e?.response?.data?.error || e.message || 'Detail failed');
@@ -490,7 +499,7 @@ export default function SlidePendingOrderReport({
     }
   };
 
-  const shareText = `${compName}\n${cfg.title}\n${toDisplayDate(sDate)} to ${toDisplayDate(eDate)}`;
+  const shareText = `${compName}\nPending Challan\n${toDisplayDate(sDate)} to ${toDisplayDate(eDate)}`;
 
   const toolbar = (
     <div className="toolbar-actions">
@@ -504,7 +513,9 @@ export default function SlidePendingOrderReport({
             className="btn btn-export"
             disabled={!reportRows.length}
             onClick={() =>
-              generatePDF(cfg.pdfType, { rows: reportRows }, pdfMeta).catch((e) => alert(e?.message || String(e)))
+              generatePDF('pending-dispatch-challan', { rows: reportRows }, pdfMeta).catch((e) =>
+                alert(e?.message || String(e))
+              )
             }
           >
             Pdf
@@ -514,8 +525,8 @@ export default function SlidePendingOrderReport({
             className="btn btn-secondary"
             disabled={!reportRows.length}
             onClick={() => {
-              const html = buildReportHtml(cfg.pdfType, { rows: reportRows }, pdfMeta);
-              printHtmlDocument(html, cfg.title);
+              const html = buildReportHtml('pending-dispatch-challan', { rows: reportRows }, pdfMeta);
+              printHtmlDocument(html, 'Pending Challan');
             }}
           >
             Print
@@ -524,7 +535,7 @@ export default function SlidePendingOrderReport({
             type="button"
             className="btn btn-excel"
             disabled={!reportRows.length}
-            onClick={() => downloadExcelRows(excelRows, cfg.excelName, `${compName}_${cfg.excelName}`)}
+            onClick={() => downloadExcelRows(excelRows, 'PendingDispatchChallan', `${compName}_PendingDispatchChallan`)}
           >
             Excel
           </button>
@@ -533,7 +544,7 @@ export default function SlidePendingOrderReport({
             className="btn btn-whatsapp"
             disabled={!reportRows.length}
             onClick={() =>
-              sharePdfWithWhatsApp(cfg.pdfType, { rows: reportRows }, pdfMeta, shareText).catch((e) =>
+              sharePdfWithWhatsApp('pending-dispatch-challan', { rows: reportRows }, pdfMeta, shareText).catch((e) =>
                 alert(e?.message || String(e))
               )
             }
@@ -550,18 +561,18 @@ export default function SlidePendingOrderReport({
 
   return (
     <div className={`slide slide-report ${slideClass}`}>
-      <SessionInfoLine>
+      <SessionInfoLine helpReportId="pending-dispatch-challan">
         <SessionLineText formData={formData} />
       </SessionInfoLine>
 
       <div className="report-toolbar">
-        <h2>{cfg.title}</h2>
+        <h2>Pending Challan</h2>
         {toolbar}
       </div>
 
       {!showReport ? (
         <form
-          id="pending-order-form"
+          id="pending-dispatch-challan-form"
           ref={formRef}
           className="report-form report-form--pending-order"
           autoComplete="off"
@@ -570,9 +581,9 @@ export default function SlidePendingOrderReport({
         >
           <div className="form-row-broker form-row-broker--dates">
             <div className="form-group">
-              <label htmlFor="pending-s-date">Starting date</label>
+              <label htmlFor="pdc-s-date">Starting date</label>
               <input
-                id="pending-s-date"
+                id="pdc-s-date"
                 ref={sDateInputRef}
                 type="date"
                 lang="en-GB"
@@ -583,9 +594,9 @@ export default function SlidePendingOrderReport({
               />
             </div>
             <div className="form-group">
-              <label htmlFor="pending-e-date">Ending date</label>
+              <label htmlFor="pdc-e-date">Ending date</label>
               <input
-                id="pending-e-date"
+                id="pdc-e-date"
                 type="date"
                 lang="en-GB"
                 className="form-input"
@@ -594,28 +605,12 @@ export default function SlidePendingOrderReport({
                 onKeyDown={onDateEnter}
               />
             </div>
-            {cfg.showMcs ? (
-              <div className="form-group">
-                <label>Link Challan / Sale Bill</label>
-                <select className="form-input" value={mcs} onChange={(e) => setMcs(e.target.value)}>
-                  <option value="S">S — Sale Bill</option>
-                  <option value="C">C — Challan (Issue)</option>
-                </select>
-              </div>
-            ) : null}
-            <div className="form-group">
-              <label>Complete / Pending</label>
-              <select className="form-input" value={cp} onChange={(e) => setCp(e.target.value)}>
-                <option value="P">P — Pending (Bqty &gt; 0)</option>
-                <option value="C">C — Complete (all incl. fulfilled)</option>
-              </select>
-            </div>
           </div>
 
           <div className="form-group account-search-group">
-            <label>{cfg.partyLabel}</label>
+            <label>Specific code</label>
             <input
-              id="pending-party-search"
+              id="pdc-party-search"
               type="text"
               className="form-input"
               autoComplete="off"
@@ -709,7 +704,7 @@ export default function SlidePendingOrderReport({
           <div className="form-group account-search-group">
             <label>Specific item</label>
             <input
-              id="pending-item-search"
+              id="pdc-item-search"
               type="text"
               className="form-input"
               autoComplete="off"
@@ -794,6 +789,49 @@ export default function SlidePendingOrderReport({
             )}
           </div>
 
+          <div className="form-row-broker form-row-broker--dates">
+            <div className="form-group">
+              <label htmlFor="pdc-pc">Pending / Complete (P/C)</label>
+              <select id="pdc-pc" className="form-input" value={cp} onChange={(e) => setCp(e.target.value)}>
+                <option value="P">P — Pending (Bal &gt; 0)</option>
+                <option value="C">C — Complete (all incl. billed)</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label htmlFor="pdc-godown">Godown</label>
+              <input
+                id="pdc-godown"
+                list="pdc-godown-list"
+                className="form-input"
+                value={plantCode}
+                onChange={(e) => setPlantCode(e.target.value)}
+                placeholder="Plant / godown code"
+              />
+              <datalist id="pdc-godown-list">
+                {plants.map((g) => (
+                  <option
+                    key={String(g.PLANT_CODE ?? g.plant_code)}
+                    value={String(g.PLANT_CODE ?? g.plant_code).trim()}
+                  >
+                    {String(g.PLANT_NAME ?? g.plant_name ?? '')}
+                  </option>
+                ))}
+              </datalist>
+            </div>
+            <div className="form-group">
+              <label htmlFor="pdc-ch-type">Specific challan type</label>
+              <input
+                id="pdc-ch-type"
+                type="text"
+                className="form-input"
+                maxLength={1}
+                value={chType}
+                onChange={(e) => setChType(e.target.value.slice(0, 1))}
+                placeholder="e.g. D"
+              />
+            </div>
+          </div>
+
           {err ? <p className="form-api-error">{err}</p> : null}
 
           <div className="form-actions">
@@ -809,17 +847,16 @@ export default function SlidePendingOrderReport({
         <>
           <div className="report-info">
             <p>
-              Period: {toDisplayDate(sDate)} to {toDisplayDate(eDate)}
-              {cfg.showMcs ? ` · Link: ${mcs === 'C' ? 'Challan' : 'Sale Bill'}` : ''}
-              {' · '}
-              {cpLabel} · {partyLabel} · {itemLabel}
+              Period: {toDisplayDate(sDate)} to {toDisplayDate(eDate)} · {cpLabel} · {partyLabel} · {itemLabel} ·{' '}
+              {plantLabel} · {chTypeLabel}
               {rateChk === 'Y' ? ' · Rate check on' : ''}
+              {markaChk === 'Y' ? ' · Marka check on' : ''}
             </p>
             <p>
-              {reportRows.length} line(s) · Oqty {fmtNum(totals.oqty)} · Rqty {fmtNum(totals.rqty)} · Bqty{' '}
-              {fmtNum(totals.bqty)} · Amount {fmtNum(totals.amount, 2)}
+              {reportRows.length} line(s) · Ch qty {fmtNum(totals.dqty)} · Sl qty {fmtNum(totals.bqty)} · Bal{' '}
+              {fmtNum(totals.bal)} · Amount {fmtNum(totals.amount, 2)}
             </p>
-            <p className="sale-bill-section__hint">Click any row for complete IN (order) / OUT (billed) detail.</p>
+            <p className="sale-bill-section__hint">Click any row to see all line entries for that challan.</p>
           </div>
 
           {err ? <p className="form-api-error">{err}</p> : null}
@@ -844,9 +881,9 @@ export default function SlidePendingOrderReport({
                   ) : (
                     reportRows.map((r, i) => (
                       <tr
-                        key={`${r.SO_NO}-${r.ITEM_CODE}-${r.STATUS}-${r.RATE}-${i}`}
+                        key={`${r.CH_NO}-${r.ITEM_CODE}-${r.STATUS}-${r.RATE}-${i}`}
                         className="sale-list-row-clickable"
-                        title="Click for IN/OUT detail"
+                        title="Click for challan / sale bill detail"
                         onClick={() => void openDetail(r)}
                       >
                         {COLUMNS.map((col) => {
@@ -859,7 +896,6 @@ export default function SlidePendingOrderReport({
                               </td>
                             );
                           }
-                          if (col === 'SO_DATE') return <td key={col}>{val}</td>;
                           return <td key={col}>{val == null ? '' : String(val)}</td>;
                         })}
                       </tr>
@@ -873,13 +909,13 @@ export default function SlidePendingOrderReport({
                         <strong>GRAND TOTAL</strong>
                       </td>
                       <td className="text-right">
-                        <strong>{fmtNum(totals.oqty)}</strong>
-                      </td>
-                      <td className="text-right">
-                        <strong>{fmtNum(totals.rqty)}</strong>
+                        <strong>{fmtNum(totals.dqty)}</strong>
                       </td>
                       <td className="text-right">
                         <strong>{fmtNum(totals.bqty)}</strong>
+                      </td>
+                      <td className="text-right">
+                        <strong>{fmtNum(totals.bal)}</strong>
                       </td>
                       <td className="text-right">
                         <strong>{fmtNum(totals.amount, 2)}</strong>
@@ -900,16 +936,17 @@ export default function SlidePendingOrderReport({
         </>
       )}
 
-      {loading && !showReport ? <p className="loading-msg">Loading…</p> : null}
-
-      <PendingOrderDetailModal
+      <PendingChallanDetailModal
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
         loading={detailLoading}
         err={detailErr}
         detail={detail}
         title={detailTitle}
+        selectedRow={detailRow}
       />
+
+      {loading && !showReport ? <p className="loading-msg">Loading…</p> : null}
     </div>
   );
 }

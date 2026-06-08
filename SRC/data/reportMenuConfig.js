@@ -84,6 +84,7 @@ export const REPORT_MENU = [
       { id: 'sale-bill-printing', title: 'Sale Bill Printing', shortTitle: 'Sale Print', description: 'Print sale bills' },
       { id: 'sale-list', title: 'Sale Bill List', shortTitle: 'Sale List', description: 'List & filters' },
       { id: 'pending-sales-order', title: 'Pending Sales Order', shortTitle: 'Pending SO', description: 'Open SO qty vs billed/challan' },
+      { id: 'pending-dispatch-challan', title: 'Pending Dispatch Challan', shortTitle: 'Pending Ch', description: 'Challan qty not yet sale-billed' },
       { id: 'sale-chart', title: 'Sale Chart', shortTitle: 'Sale Chart', description: 'Month-wise weight & amount by item' },
     ],
   },

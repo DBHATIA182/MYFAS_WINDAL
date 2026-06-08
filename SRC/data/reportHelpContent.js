@@ -381,6 +381,22 @@ export const REPORT_HELP = {
     ],
   },
 
+  'pending-dispatch-challan': {
+    title: 'Pending Dispatch Challan',
+    summary: 'Dispatch challan quantity (ISSUE) minus quantity already sale-billed (SALE CH_NO link).',
+    sections: [
+      section('Parameters', [
+        'Starting and ending date on challan date (ISSUE R_DATE).',
+        'Complete / Pending — P shows balance qty > 0 only; C includes fully billed challans.',
+        'Optional broker and item filters.',
+        'Press Enter to run; cursor starts on starting date.',
+      ]),
+      section('Sale bill', [
+        'In Sale Bill entry, Ch no Pick (F1) uses the same logic with Pending / Complete toggle.',
+      ]),
+    ],
+  },
+
   'sale-list': {
     title: 'Sale Bill List',
     summary: 'Filtered list of sale bills (VFP-style filters).',
@@ -576,6 +592,7 @@ const PDF_ORDER = [
   'sale-list',
   'pending-sales-order',
   'pending-purchase-order',
+  'pending-dispatch-challan',
   'gstr1',
   'sales-order-entry',
   'purchase-order-entry',

@@ -238,7 +238,7 @@ function formatPickDate(d) {
   return toDisplayDate(toInputDateString(d));
 }
 
-function SaleBillLinePickModal({ open, title, hint, emptyMessage, loading, rows, columns, hi, onHi, onClose, onPick }) {
+function SaleBillLinePickModal({ open, title, hint, emptyMessage, loading, rows, columns, hi, onHi, onClose, onPick, filterBar }) {
   const cardRef = useRef(null);
   const rowRefs = useRef([]);
 
@@ -313,6 +313,7 @@ function SaleBillLinePickModal({ open, title, hint, emptyMessage, loading, rows,
         <header className="sale-bill-pick-card__head">
           <h3 id="sale-bill-pick-title">{title}</h3>
           {hint ? <p className="sale-bill-pick-card__hint">{hint}</p> : null}
+          {filterBar ? <div className="sale-bill-pick-card__filter">{filterBar}</div> : null}
           <button type="button" className="btn btn-secondary sale-bill-pick-card__close" onClick={onClose}>
             Close
           </button>
@@ -519,7 +520,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
   const [pickListBillNo, setPickListBillNo] = useState('');
   const [printOpen, setPrintOpen] = useState(false);
   const [billPrintParams, setBillPrintParams] = useState(null);
-  const [challanPick, setChallanPick] = useState({ open: false, lineIdx: -1, rows: [], loading: false, hi: 0 });
+  const [challanPick, setChallanPick] = useState({ open: false, lineIdx: -1, rows: [], loading: false, hi: 0, cp: 'P' });
   const [soPick, setSoPick] = useState({ open: false, lineIdx: -1, rows: [], loading: false, hi: 0, brokerMode: '' });
 
   const billDateOracle = useMemo(() => toOracleDate(billDateYmd), [billDateYmd]);
@@ -1068,6 +1069,11 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
 
   const applyChallanPick = useCallback(
     (lineIdx, row) => {
+      const bal = Number(row.BAL_QNTY ?? row.BQTY ?? 0) || 0;
+      if (bal <= 0) {
+        setErr('Challan has no pending balance — switch to Pending view or pick another row.');
+        return;
+      }
       const ic = String(row.ITEM_CODE ?? '').trim();
       applyItemToLine(lineIdx, ic);
       window.setTimeout(() => {
@@ -1116,27 +1122,34 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
     [ctx?.G_AMT_CAL, compGst, lookups.items, partyGst]
   );
 
-  const openChallanPick = useCallback(
-    async (lineIdx) => {
-      if (!canEditLines) return;
+  const fetchChallanPickRows = useCallback(
+    async (lineIdx, cp) => {
       const bc = String(bCode ?? '').trim();
       if (!bc) {
         setErr('Select broker (B code) before pending challan (F1).');
         return;
       }
-      setChallanPick({ open: true, lineIdx, rows: [], loading: true, hi: 0 });
+      setChallanPick((p) => ({ ...p, open: true, lineIdx, cp, loading: true, hi: 0 }));
       try {
         const { data } = await axios.get(`${apiBase}/api/sale-bill-pending-challans`, {
-          params: { comp_code: compCode, comp_uid: compUid, b_code: bc },
+          params: { comp_code: compCode, comp_uid: compUid, b_code: bc, cp: cp || 'P' },
           ...reqOpts,
         });
-        setChallanPick((p) => ({ ...p, rows: Array.isArray(data) ? data : [], loading: false }));
+        setChallanPick((p) => ({ ...p, rows: Array.isArray(data) ? data : [], loading: false, cp: cp || 'P' }));
       } catch (e) {
         setChallanPick((p) => ({ ...p, open: false, loading: false }));
         setErr(e?.response?.data?.error || e.message || 'Pending challan load failed');
       }
     },
-    [apiBase, bCode, canEditLines, compCode, compUid]
+    [apiBase, bCode, compCode, compUid]
+  );
+
+  const openChallanPick = useCallback(
+    async (lineIdx) => {
+      if (!canEditLines) return;
+      await fetchChallanPickRows(lineIdx, challanPick.cp || 'P');
+    },
+    [canEditLines, challanPick.cp, fetchChallanPickRows]
   );
 
   const openSoPick = useCallback(
@@ -2951,7 +2964,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
       </footer>
       <SaleBillLinePickModal
         open={challanPick.open}
-        title="Pending challans"
+        title={challanPick.cp === 'C' ? 'Dispatch challans (all)' : 'Pending challans'}
         hint="Broker challan balance (ISSUE disp − SALE billed). Tap Pick beside Ch no (mobile) or F1 on PC."
         loading={challanPick.loading}
         rows={challanPick.rows}
@@ -2960,6 +2973,25 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         onHi={(i) => setChallanPick((p) => ({ ...p, hi: i }))}
         onClose={() => setChallanPick((p) => ({ ...p, open: false }))}
         onPick={(row) => applyChallanPick(challanPick.lineIdx, row)}
+        filterBar={
+          <label className="sale-bill-pick-filter">
+            <span>Show</span>
+            <select
+              className="form-input"
+              value={challanPick.cp || 'P'}
+              disabled={challanPick.loading}
+              onChange={(e) => void fetchChallanPickRows(challanPick.lineIdx, e.target.value)}
+            >
+              <option value="P">Pending (Bal &gt; 0)</option>
+              <option value="C">Complete (all)</option>
+            </select>
+          </label>
+        }
+        emptyMessage={
+          challanPick.cp === 'C'
+            ? 'No challan rows for this broker.'
+            : 'No pending challan balance for this broker.'
+        }
       />
       <SaleBillLinePickModal
         open={soPick.open}

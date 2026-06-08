@@ -6436,67 +6436,112 @@ function compdetYn(row, key) {
   return String(rowValueCI(row, key) ?? '').trim().toUpperCase() === 'Y';
 }
 
-/** Fox MYCUR → x3 pending challan rows for sale bill line F1 (ISSUE disp vs SALE billed). */
-async function fetchSaleBillPendingChallans(comp_code, comp_uid, b_code, rateChk, markaChk) {
-  const bc = parseMasterCodeForSql(b_code);
-  if (bc === undefined) return [];
-  const binds = { comp_code, b_code: bc };
+/**
+ * Fox MYCUR — ISSUE dispatch qty vs SALE billed against challan (REF_NO / CH_NO).
+ * @param {object} opts — b_code, s_date/e_date (issue only), item_code, plant_code, cp P|C
+ */
+async function aggregatePendingChallanRows(comp_code, comp_uid, opts = {}) {
+  const cpMode = String(opts.cp || 'P').trim().toUpperCase() === 'C' ? 'C' : 'P';
+  const rateChk = !!opts.rateChk;
+  const markaChk = !!opts.markaChk;
+  const requireBroker = !!opts.requireBroker;
+
+  const issueBinds = { comp_code };
+  const saleBinds = { comp_code };
+  let issueExtra = '';
+  let saleExtra = '';
+
+  const bc =
+    opts.b_code != null && String(opts.b_code).trim() !== '' && String(opts.b_code).trim() !== '0'
+      ? parseMasterCodeForSql(opts.b_code)
+      : undefined;
+  if (requireBroker && bc === undefined) return [];
+  if (bc !== undefined) {
+    issueBinds.b_code = bc;
+    saleBinds.b_code = bc;
+    issueExtra += ' AND TRIM(TO_CHAR(CODE)) = TRIM(TO_CHAR(:b_code))';
+    saleExtra += ' AND TRIM(TO_CHAR(B_CODE)) = TRIM(TO_CHAR(:b_code))';
+  }
+
+  if (opts.s_date && opts.e_date) {
+    issueBinds.s_date = String(opts.s_date).trim();
+    issueBinds.e_date = String(opts.e_date).trim();
+    issueExtra += ` AND TRUNC(R_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))`;
+  }
+
+  const itemTrim = opts.item_code != null ? String(opts.item_code).trim() : '';
+  if (itemTrim) {
+    issueBinds.item_code = itemTrim;
+    saleBinds.item_code = itemTrim;
+    issueExtra += ' AND TRIM(ITEM_CODE) = TRIM(:item_code)';
+    saleExtra += ' AND TRIM(ITEM_CODE) = TRIM(:item_code)';
+  }
+
+  const plantTrim = opts.plant_code != null ? String(opts.plant_code).trim() : '';
+  if (plantTrim) {
+    issueBinds.plant_code = plantTrim;
+    saleBinds.plant_code = plantTrim;
+    issueExtra += " AND TRIM(NVL(PLANT_CODE, ' ')) = TRIM(:plant_code)";
+    saleExtra += " AND TRIM(NVL(PLANT_CODE, ' ')) = TRIM(:plant_code)";
+  }
+
   let x1;
   if (rateChk) {
     const sql = `
-      SELECT REF_NO AS CH_NO, NVL(REF_CH_TYPE, ' ') AS CH_TYPE, R_DATE AS CH_DATE, ITEM_CODE, MARKA, STATUS, RATE,
+      SELECT REF_NO AS CH_NO, NVL(REF_CH_TYPE, ' ') AS CH_TYPE, R_DATE AS CH_DATE, CODE, ITEM_CODE, MARKA, STATUS, RATE,
         MAX(PLANT_CODE) AS PLANT_CODE,
         SUM(CASE WHEN TRIM(TO_CHAR(TYPE)) IN ('S','R') THEN NVL(QNTY,0) ELSE NVL(QNTY,0) * -1 END) AS D_QNTY
       FROM ISSUE
-      WHERE COMP_CODE = :comp_code AND TRIM(TO_CHAR(TYPE)) IN ('S','R','Y') AND CODE = :b_code
-      GROUP BY REF_NO, REF_CH_TYPE, R_DATE, ITEM_CODE, MARKA, STATUS, RATE`;
-    x1 = await runQuery(sql, binds, comp_uid);
+      WHERE COMP_CODE = :comp_code AND TRIM(TO_CHAR(TYPE)) IN ('S','R','Y') ${issueExtra}
+      GROUP BY REF_NO, REF_CH_TYPE, R_DATE, CODE, ITEM_CODE, MARKA, STATUS, RATE`;
+    x1 = await runQuery(sql, issueBinds, comp_uid);
   } else {
     const sql = `
-      SELECT REF_NO AS CH_NO, NVL(REF_CH_TYPE, ' ') AS CH_TYPE, R_DATE AS CH_DATE, ITEM_CODE, MARKA, STATUS,
+      SELECT REF_NO AS CH_NO, NVL(REF_CH_TYPE, ' ') AS CH_TYPE, R_DATE AS CH_DATE, CODE, ITEM_CODE, MARKA, STATUS,
         MAX(RATE) AS RATE, MAX(PLANT_CODE) AS PLANT_CODE,
         SUM(CASE WHEN TRIM(TO_CHAR(TYPE)) IN ('S','R') THEN NVL(QNTY,0) ELSE NVL(QNTY,0) * -1 END) AS D_QNTY
       FROM ISSUE
-      WHERE COMP_CODE = :comp_code AND TRIM(TO_CHAR(TYPE)) IN ('S','R','Y') AND CODE = :b_code
-      GROUP BY REF_NO, REF_CH_TYPE, R_DATE, ITEM_CODE, MARKA, STATUS`;
-    x1 = await runQuery(sql, binds, comp_uid);
+      WHERE COMP_CODE = :comp_code AND TRIM(TO_CHAR(TYPE)) IN ('S','R','Y') ${issueExtra}
+      GROUP BY REF_NO, REF_CH_TYPE, R_DATE, CODE, ITEM_CODE, MARKA, STATUS`;
+    x1 = await runQuery(sql, issueBinds, comp_uid);
   }
 
   let x2;
   if (rateChk) {
     const sqlPap = `
-      SELECT CH_NO, NVL(CH_TYPE, ' ') AS CH_TYPE, ITEM_CODE, MARKA, STATUS,
+      SELECT CH_NO, NVL(CH_TYPE, ' ') AS CH_TYPE, B_CODE, ITEM_CODE, MARKA, STATUS,
         NVL(RATE,0) - NVL(PAPLOO,0) AS RATE, MAX(PLANT_CODE) AS PLANT_CODE,
         SUM(CASE WHEN TO_NUMBER(TRIM(TO_CHAR(TYPE))) IN (4,5) THEN NVL(QNTY,0) * -1 ELSE NVL(QNTY,0) END) AS B_QNTY
       FROM SALE
-      WHERE COMP_CODE = :comp_code AND B_CODE = :b_code AND NVL(CH_NO,0) <> 0
-      GROUP BY CH_NO, CH_TYPE, ITEM_CODE, MARKA, STATUS, NVL(RATE,0) - NVL(PAPLOO,0)`;
+      WHERE COMP_CODE = :comp_code AND NVL(CH_NO,0) <> 0 ${saleExtra}
+      GROUP BY CH_NO, CH_TYPE, B_CODE, ITEM_CODE, MARKA, STATUS, NVL(RATE,0) - NVL(PAPLOO,0)`;
     try {
-      x2 = await runQuery(sqlPap, binds, comp_uid);
+      x2 = await runQuery(sqlPap, saleBinds, comp_uid);
     } catch (e) {
       if (!String(e?.message || '').includes('ORA-00904')) throw e;
       const sql = `
-        SELECT CH_NO, NVL(CH_TYPE, ' ') AS CH_TYPE, ITEM_CODE, MARKA, STATUS, RATE,
+        SELECT CH_NO, NVL(CH_TYPE, ' ') AS CH_TYPE, B_CODE, ITEM_CODE, MARKA, STATUS, RATE,
           MAX(PLANT_CODE) AS PLANT_CODE,
           SUM(CASE WHEN TO_NUMBER(TRIM(TO_CHAR(TYPE))) IN (4,5) THEN NVL(QNTY,0) * -1 ELSE NVL(QNTY,0) END) AS B_QNTY
         FROM SALE
-        WHERE COMP_CODE = :comp_code AND B_CODE = :b_code AND NVL(CH_NO,0) <> 0
-        GROUP BY CH_NO, CH_TYPE, ITEM_CODE, MARKA, STATUS, RATE`;
-      x2 = await runQuery(sql, binds, comp_uid);
+        WHERE COMP_CODE = :comp_code AND NVL(CH_NO,0) <> 0 ${saleExtra}
+        GROUP BY CH_NO, CH_TYPE, B_CODE, ITEM_CODE, MARKA, STATUS, RATE`;
+      x2 = await runQuery(sql, saleBinds, comp_uid);
     }
   } else {
     const sql = `
-      SELECT CH_NO, NVL(CH_TYPE, ' ') AS CH_TYPE, ITEM_CODE, MARKA, STATUS, MAX(RATE) AS RATE,
+      SELECT CH_NO, NVL(CH_TYPE, ' ') AS CH_TYPE, B_CODE, ITEM_CODE, MARKA, STATUS, MAX(RATE) AS RATE,
         SUM(NVL(QNTY,0)) AS B_QNTY, MAX(PLANT_CODE) AS PLANT_CODE
       FROM SALE
-      WHERE COMP_CODE = :comp_code AND B_CODE = :b_code AND NVL(CH_NO,0) <> 0
-      GROUP BY CH_NO, CH_TYPE, ITEM_CODE, MARKA, STATUS`;
-    x2 = await runQuery(sql, binds, comp_uid);
+      WHERE COMP_CODE = :comp_code AND NVL(CH_NO,0) <> 0 ${saleExtra}
+      GROUP BY CH_NO, CH_TYPE, B_CODE, ITEM_CODE, MARKA, STATUS`;
+    x2 = await runQuery(sql, saleBinds, comp_uid);
   }
 
   const mycur = [];
   for (const r of x1 || []) {
     mycur.push({
+      code: numVal(r.CODE ?? r.code),
       ch_no: numVal(r.CH_NO ?? r.ch_no),
       ch_type: String(r.CH_TYPE ?? r.ch_type ?? '').trim().slice(0, 1),
       ch_date: r.CH_DATE ?? r.ch_date,
@@ -6511,6 +6556,7 @@ async function fetchSaleBillPendingChallans(comp_code, comp_uid, b_code, rateChk
   }
   for (const r of x2 || []) {
     mycur.push({
+      code: numVal(r.B_CODE ?? r.b_code),
       ch_no: numVal(r.CH_NO ?? r.ch_no),
       ch_type: String(r.CH_TYPE ?? r.ch_type ?? '').trim().slice(0, 1),
       ch_date: null,
@@ -6525,7 +6571,7 @@ async function fetchSaleBillPendingChallans(comp_code, comp_uid, b_code, rateChk
   }
 
   const groupKey = (row) => {
-    const base = `${row.ch_no}|${row.ch_type}|${row.item_code}|${row.status}`;
+    const base = `${row.code}|${row.ch_no}|${row.ch_type}|${row.item_code}|${row.status}`;
     if (markaChk) return `${base}|${row.marka}|${rateChk ? row.rate : ''}`;
     return `${base}|${rateChk ? row.rate : ''}`;
   };
@@ -6536,6 +6582,7 @@ async function fetchSaleBillPendingChallans(comp_code, comp_uid, b_code, rateChk
     let g = agg.get(k);
     if (!g) {
       g = {
+        CODE: row.code,
         CH_NO: row.ch_no,
         CH_TYPE: row.ch_type,
         CH_DATE: row.ch_date,
@@ -6556,12 +6603,13 @@ async function fetchSaleBillPendingChallans(comp_code, comp_uid, b_code, rateChk
     if (!markaChk && row.marka) g._markaParts.push(row.marka);
     if (row.ch_date) g._dateParts.push(row.ch_date);
     if (row.plant_code) g.PLANT_CODE = row.plant_code;
+    if (row.code) g.CODE = row.code;
   }
 
   const out = [];
   for (const g of agg.values()) {
-    const bal = g.D_QNTY - g.B_QNTY;
-    if (bal <= 0) continue;
+    const bal = Math.round((g.D_QNTY - g.B_QNTY) * 1000) / 1000;
+    if (cpMode === 'P' && bal <= 0) continue;
     let chDate = g.CH_DATE;
     if (g._dateParts.length) {
       const best = g._dateParts.reduce((a, b) => {
@@ -6573,22 +6621,540 @@ async function fetchSaleBillPendingChallans(comp_code, comp_uid, b_code, rateChk
       });
       chDate = best;
     }
+    const rate = Math.round(numVal(g.RATE) * 100) / 100;
     out.push({
+      CODE: g.CODE,
       CH_NO: g.CH_NO,
       CH_TYPE: g.CH_TYPE,
       CH_DATE: chDate,
       ITEM_CODE: g.ITEM_CODE,
-      MARKA: markaChk ? g.MARKA : (g._markaParts.sort().pop() || ''),
+      MARKA: markaChk ? g.MARKA : g._markaParts.sort().pop() || '',
       STATUS: g.STATUS,
-      RATE: Math.round(g.RATE * 100) / 100,
-      D_QNTY: g.D_QNTY,
-      B_QNTY: g.B_QNTY,
+      RATE: rate,
+      D_QNTY: Math.round(g.D_QNTY * 1000) / 1000,
+      B_QNTY: Math.round(g.B_QNTY * 1000) / 1000,
       BAL_QNTY: bal,
+      BQTY: bal,
       PLANT_CODE: g.PLANT_CODE,
+      AMOUNT: rate !== 0 && bal !== 0 ? Math.round((bal * rate) / 100 * 100) / 100 : 0,
     });
   }
-  out.sort((a, b) => numVal(a.CH_NO) - numVal(b.CH_NO));
+  out.sort((a, b) => {
+    const da = parseDateOnly(a.CH_DATE);
+    const db = parseDateOnly(b.CH_DATE);
+    const ta = da ? da.getTime() : 0;
+    const tb = db ? db.getTime() : 0;
+    if (ta !== tb) return ta - tb;
+    return numVal(a.CH_NO) - numVal(b.CH_NO);
+  });
   return out;
+}
+
+/** Fox MYCUR → pending challan rows for sale bill line F1 (ISSUE disp vs SALE billed). */
+async function fetchSaleBillPendingChallans(comp_code, comp_uid, b_code, rateChk, markaChk, cp = 'P') {
+  return aggregatePendingChallanRows(comp_code, comp_uid, {
+    b_code,
+    rateChk,
+    markaChk,
+    cp,
+    requireBroker: true,
+  });
+}
+
+function pndChlnRound3(n) {
+  return Math.round(numVal(n) * 1000) / 1000;
+}
+
+function pndChlnRoundRate(n) {
+  return Math.round(numVal(n) * 100) / 100;
+}
+
+function pndChlnX2Key(r, rateChk, markaChk) {
+  const parts = [
+    String(r.REF_CH_TYPE ?? '').trim().slice(0, 1),
+    numVal(r.SO_NO),
+    numVal(r.CODE),
+    String(r.ITEM_CODE ?? '').trim(),
+  ];
+  if (markaChk) parts.push(String(r.MARKA ?? '').trim());
+  if (rateChk) parts.push(pndChlnRoundRate(r.RATE));
+  return parts.join('|');
+}
+
+function pndChlnX5Key(r, rateChk, markaChk) {
+  const parts = [
+    r.REF_CH_TYPE,
+    r.SO_NO,
+    pendingOrderYmd(r.SO_DATE) || '',
+    r.CODE,
+    r.NAME,
+    r.ITEM_CODE,
+    r.ITEM_NAME,
+  ];
+  if (markaChk) parts.push(r.MARKA);
+  if (rateChk) parts.push(pndChlnRoundRate(r.RATE));
+  parts.push(r.STATUS);
+  return parts.join('|');
+}
+
+function pndChlnX8Key(r, rateChk, markaChk) {
+  const parts = [r.REF_CH_TYPE, r.SO_NO, r.ITEM_CODE];
+  if (markaChk) parts.push(r.MARKA);
+  if (rateChk) parts.push(pndChlnRoundRate(r.RATE));
+  return parts.join('|');
+}
+
+/** Fox PNDCHLN — pending challan list (ISSUE dispatch vs SALE billed). */
+async function buildPndChlnReportRows({
+  comp_code,
+  comp_uid,
+  s_date,
+  e_date,
+  code,
+  item_code,
+  cp,
+  plant_code,
+  ch_type,
+  compdet,
+}) {
+  const rateChk = compdetYn(compdet, 'rate_chk');
+  const markaChk = compdetYn(compdet, 'marka_chk_in_disp_challan');
+  const mpc = String(cp || 'P').trim().toUpperCase() === 'C' ? 'C' : 'P';
+  const chTypeTrim = ch_type != null ? String(ch_type).trim().slice(0, 1) : '';
+  const itemTrim = item_code != null ? String(item_code).trim() : '';
+  const plantTrim = plant_code != null ? String(plant_code).trim() : '';
+  const headName = 'PENDING CHALLAN LIST';
+
+  const issueBinds = { comp_code, s_date: String(s_date).trim(), e_date: String(e_date).trim() };
+  let issueWhere = `
+    A.COMP_CODE = :comp_code
+    AND TRIM(TO_CHAR(A.TYPE)) IN ('S','R')
+    AND TRUNC(A.R_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))`;
+
+  const partyCode =
+    code != null && String(code).trim() !== '' && String(code).trim() !== '0'
+      ? parseMasterCodeForSql(code)
+      : undefined;
+  if (partyCode !== undefined) {
+    issueBinds.party_code = partyCode;
+    issueWhere += ' AND TRIM(TO_CHAR(A.CODE)) = TRIM(TO_CHAR(:party_code))';
+  }
+  if (itemTrim) {
+    issueBinds.item_code = itemTrim;
+    issueWhere += ' AND TRIM(A.ITEM_CODE) = TRIM(:item_code)';
+  }
+  if (plantTrim) {
+    issueBinds.plant_code = plantTrim;
+    issueWhere += " AND TRIM(NVL(A.PLANT_CODE, ' ')) = TRIM(:plant_code)";
+  }
+
+  const issueSql = `
+    SELECT A.REF_NO AS SO_NO, NVL(A.REF_CH_TYPE, ' ') AS REF_CH_TYPE, A.R_DATE AS SO_DATE,
+           A.CODE, NVL(C.NAME, ' ') AS NAME, A.ITEM_CODE, NVL(B.ITEM_NAME, ' ') AS ITEM_NAME,
+           NVL(A.MARKA, ' ') AS MARKA, NVL(A.RATE, 0) AS RATE, NVL(A.STATUS, ' ') AS STATUS,
+           NVL(A.PLANT_CODE, ' ') AS PLANT_CODE,
+           CASE WHEN TRIM(TO_CHAR(A.TYPE)) = 'S' THEN NVL(A.QNTY, 0) ELSE NVL(A.QNTY, 0) * -1 END AS QNTY
+    FROM ISSUE A
+    LEFT JOIN ITEMMAST B ON A.COMP_CODE = B.COMP_CODE AND A.ITEM_CODE = B.ITEM_CODE
+    LEFT JOIN MASTER C ON A.COMP_CODE = C.COMP_CODE AND A.CODE = C.CODE
+    WHERE ${issueWhere}`;
+
+  const x0issue = await runQuery(issueSql, issueBinds, comp_uid);
+
+  let po = (x0issue || []).map((r) => ({
+    REF_CH_TYPE: String(r.REF_CH_TYPE ?? '').trim().slice(0, 1),
+    SO_NO: numVal(r.SO_NO),
+    SO_DATE: r.SO_DATE,
+    CODE: numVal(r.CODE),
+    NAME: String(r.NAME ?? '').trim(),
+    ITEM_CODE: String(r.ITEM_CODE ?? '').trim(),
+    ITEM_NAME: String(r.ITEM_NAME ?? '').trim(),
+    MARKA: String(r.MARKA ?? '').trim(),
+    RATE: pndChlnRoundRate(r.RATE),
+    STATUS: String(r.STATUS ?? '').trim().slice(0, 1),
+    PLANT_CODE: String(r.PLANT_CODE ?? '').trim(),
+    CH_QTY: pndChlnRound3(r.QNTY),
+    SL_QTY: 0,
+  }));
+
+  const saleBinds = { comp_code, e_date: String(e_date).trim() };
+  let saleWhere = `
+    A.COMP_CODE = :comp_code AND NVL(A.CH_NO, 0) <> 0
+    AND TRUNC(A.BILL_DATE) <= TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))`;
+  if (plantTrim) {
+    saleBinds.plant_code = plantTrim;
+    saleWhere += " AND TRIM(NVL(A.PLANT_CODE, ' ')) = TRIM(:plant_code)";
+  }
+
+  let saleRaw;
+  const saleSqlPap = `
+    SELECT NVL(A.CH_TYPE, ' ') AS REF_CH_TYPE, A.CH_NO AS SO_NO, A.BILL_DATE AS SO_DATE, A.B_CODE AS CODE,
+           A.ITEM_CODE, NVL(A.MARKA, ' ') AS MARKA, NVL(A.RATE, 0) - NVL(A.PAPLOO, 0) AS RATE,
+           A.QNTY, A.TYPE, NVL(A.STATUS, ' ') AS STATUS
+    FROM SALE A WHERE ${saleWhere}`;
+  try {
+    saleRaw = await runQuery(saleSqlPap, saleBinds, comp_uid);
+  } catch (e) {
+    if (!String(e?.message || '').includes('ORA-00904')) throw e;
+    saleRaw = await runQuery(
+      `SELECT NVL(A.CH_TYPE, ' ') AS REF_CH_TYPE, A.CH_NO AS SO_NO, A.BILL_DATE AS SO_DATE, A.B_CODE AS CODE,
+              A.ITEM_CODE, NVL(A.MARKA, ' ') AS MARKA, A.RATE, A.QNTY, A.TYPE, NVL(A.STATUS, ' ') AS STATUS
+       FROM SALE A WHERE ${saleWhere}`,
+      saleBinds,
+      comp_uid
+    );
+  }
+
+  const x2Map = new Map();
+  for (const r of saleRaw || []) {
+    const refType = String(r.REF_CH_TYPE ?? '').trim().slice(0, 1);
+    const row = {
+      REF_CH_TYPE: refType,
+      SO_NO: numVal(r.SO_NO),
+      SO_DATE: r.SO_DATE,
+      CODE: numVal(r.CODE),
+      ITEM_CODE: String(r.ITEM_CODE ?? '').trim(),
+      MARKA: String(r.MARKA ?? '').trim(),
+      RATE: rateChk ? pndChlnRoundRate(r.RATE) : 0,
+      STATUS: String(r.STATUS ?? '').trim().slice(0, 1),
+    };
+    const k = pndChlnX2Key(row, rateChk, markaChk);
+    let g = x2Map.get(k);
+    if (!g) {
+      g = {
+        ...row,
+        SL_QTY: 0,
+        _dates: [],
+        _marka: markaChk ? [] : [row.MARKA],
+        _rates: rateChk ? [] : [pndChlnRoundRate(r.RATE)],
+      };
+      x2Map.set(k, g);
+    }
+    g.SL_QTY += numVal(r.QNTY) * pendingOrderSaleQtySign(r.TYPE);
+    if (r.SO_DATE) g._dates.push(r.SO_DATE);
+    if (!markaChk && row.MARKA) g._marka.push(row.MARKA);
+    if (!rateChk) g._rates.push(pndChlnRoundRate(r.RATE));
+  }
+  for (const g of x2Map.values()) {
+    if (g._dates.length) g.SO_DATE = g._dates.reduce((a, b) => {
+      const da = parseDateOnly(a);
+      const db = parseDateOnly(b);
+      if (!da) return b;
+      if (!db) return a;
+      return da > db ? a : b;
+    });
+    if (!markaChk && g._marka.length) g.MARKA = g._marka.sort().pop();
+    if (!rateChk && g._rates.length) g.RATE = Math.max(...g._rates);
+    g.SL_QTY = pndChlnRound3(g.SL_QTY);
+  }
+
+  const issueKeys = new Set(po.map((r) => `${r.REF_CH_TYPE}|${r.SO_NO}`));
+  const x3 = [...x2Map.values()].filter((r) => issueKeys.has(`${r.REF_CH_TYPE}|${r.SO_NO}`));
+
+  for (const s of x3) {
+    po.push({
+      REF_CH_TYPE: s.REF_CH_TYPE,
+      SO_NO: s.SO_NO,
+      SO_DATE: s.SO_DATE,
+      CODE: s.CODE,
+      NAME: '',
+      ITEM_CODE: s.ITEM_CODE,
+      ITEM_NAME: '',
+      MARKA: s.MARKA,
+      RATE: s.RATE,
+      STATUS: s.STATUS,
+      PLANT_CODE: plantTrim,
+      CH_QTY: 0,
+      SL_QTY: s.SL_QTY,
+    });
+  }
+
+  const x5Map = new Map();
+  for (const r of po) {
+    const k = pndChlnX5Key(r, rateChk, markaChk);
+    let g = x5Map.get(k);
+    if (!g) {
+      g = { ...r, CH_QTY: 0, SL_QTY: 0, _marka: markaChk ? [] : [r.MARKA] };
+      x5Map.set(k, g);
+    }
+    g.CH_QTY += numVal(r.CH_QTY);
+    g.SL_QTY += numVal(r.SL_QTY);
+    if (!markaChk && r.MARKA) g._marka.push(r.MARKA);
+  }
+  for (const g of x5Map.values()) {
+    if (!markaChk && g._marka.length) g.MARKA = g._marka.sort().pop();
+    g.CH_QTY = pndChlnRound3(g.CH_QTY);
+    g.SL_QTY = pndChlnRound3(g.SL_QTY);
+  }
+  po = [...x5Map.values()];
+
+  const x8Map = new Map();
+  for (const r of po) {
+    const k = pndChlnX8Key(r, rateChk, markaChk);
+    let g = x8Map.get(k);
+    if (!g) {
+      g = {
+        REF_CH_TYPE: r.REF_CH_TYPE,
+        SO_NO: r.SO_NO,
+        SO_DATE: r.SO_DATE,
+        CODE: r.CODE,
+        NAME: r.NAME,
+        ITEM_CODE: r.ITEM_CODE,
+        ITEM_NAME: r.ITEM_NAME,
+        MARKA: r.MARKA,
+        RATE: rateChk ? pndChlnRoundRate(r.RATE) : 0,
+        STATUS: r.STATUS,
+        PLANT_CODE: r.PLANT_CODE || plantTrim,
+        OQTY: 0,
+        SQTY: 0,
+        _dates: [],
+        _marka: [],
+        _rates: [],
+        _names: [],
+        _itemNames: [],
+        _codes: [],
+        _statuses: [],
+      };
+      x8Map.set(k, g);
+    }
+    g.OQTY += numVal(r.CH_QTY);
+    g.SQTY += numVal(r.SL_QTY);
+    if (r.SO_DATE) g._dates.push(r.SO_DATE);
+    if (r.MARKA) g._marka.push(r.MARKA);
+    if (!rateChk) g._rates.push(pndChlnRoundRate(r.RATE));
+    if (r.NAME) g._names.push(r.NAME);
+    if (r.ITEM_NAME) g._itemNames.push(r.ITEM_NAME);
+    g._codes.push(r.CODE);
+    if (r.STATUS) g._statuses.push(r.STATUS);
+  }
+
+  let rows = [];
+  for (const g of x8Map.values()) {
+    g.SO_DATE = pendingOrderMinDate(g._dates) || g.SO_DATE;
+    if (!markaChk && g._marka.length) g.MARKA = g._marka.sort().pop();
+    if (!rateChk && g._rates.length) g.RATE = Math.max(...g._rates);
+    g.NAME = g._names.sort().pop() || g.NAME;
+    g.ITEM_NAME = g._itemNames.sort().pop() || g.ITEM_NAME;
+    g.CODE = Math.max(...g._codes.map(numVal), 0) || g.CODE;
+    g.STATUS = g._statuses.sort().pop() || g.STATUS;
+    g.OQTY = pndChlnRound3(g.OQTY);
+    g.SQTY = pndChlnRound3(g.SQTY);
+    g.BQTY = pndChlnRound3(g.OQTY - g.SQTY);
+    rows.push(g);
+  }
+
+  rows = rows.filter((r) => numVal(r.SO_NO) > 0 && (r.OQTY !== 0 || r.SQTY !== 0));
+  if (mpc === 'P') rows = rows.filter((r) => r.BQTY > 0);
+  if (chTypeTrim) rows = rows.filter((r) => String(r.REF_CH_TYPE).trim() === chTypeTrim);
+
+  rows.sort((a, b) => {
+    if (numVal(a.CODE) !== numVal(b.CODE)) return numVal(a.CODE) - numVal(b.CODE);
+    const tc = String(a.REF_CH_TYPE).localeCompare(String(b.REF_CH_TYPE));
+    if (tc !== 0) return tc;
+    if (numVal(a.SO_NO) !== numVal(b.SO_NO)) return numVal(a.SO_NO) - numVal(b.SO_NO);
+    return String(a.ITEM_CODE).localeCompare(String(b.ITEM_CODE));
+  });
+
+  const out = rows.map((r) => {
+    const bqty = pndChlnRound3(r.BQTY);
+    const rate = pndChlnRoundRate(r.RATE);
+    return {
+      CH_NO: r.SO_NO,
+      CH_DATE: pendingOrderYmd(r.SO_DATE),
+      CH_TYPE: r.REF_CH_TYPE,
+      CODE: r.CODE,
+      NAME: r.NAME,
+      ITEM_CODE: r.ITEM_CODE,
+      ITEM_NAME: r.ITEM_NAME,
+      MARKA: r.MARKA,
+      STATUS: r.STATUS,
+      RATE: rate,
+      D_QNTY: pndChlnRound3(r.OQTY),
+      B_QNTY: pndChlnRound3(r.SQTY),
+      BQTY: bqty,
+      BAL_QNTY: bqty,
+      PLANT_CODE: r.PLANT_CODE || plantTrim,
+      AMOUNT: rate !== 0 && bqty !== 0 ? Math.round((bqty * rate) / 100 * 100) / 100 : 0,
+      HEAD_NAME: headName,
+    };
+  });
+
+  return {
+    rows: out,
+    rate_chk: rateChk ? 'Y' : 'N',
+    marka_chk: markaChk ? 'Y' : 'N',
+    cp: mpc,
+    head_name: headName,
+  };
+}
+
+/** Pending dispatch challan report — Fox PNDCHLN. */
+async function buildPendingDispatchChallanReportRows(opts) {
+  return buildPndChlnReportRows(opts);
+}
+
+/** Drill-down — all ISSUE dispatch lines vs SALE billed for one challan (ch_no + ch_type). */
+async function buildPendingChallanDetail({
+  comp_code,
+  comp_uid,
+  e_date,
+  ch_no,
+  ch_type,
+  plant_code,
+  highlight_item,
+}) {
+  const chNo = numVal(ch_no);
+  const chTypeTrim = String(ch_type ?? '').trim().slice(0, 1);
+  const plantTrim = plant_code != null ? String(plant_code).trim() : '';
+  const highlightTrim = highlight_item != null ? String(highlight_item).trim() : '';
+
+  const issueBinds = { comp_code, ch_no: chNo, ch_type: chTypeTrim };
+  let issueExtra = '';
+  if (plantTrim) {
+    issueBinds.plant_code = plantTrim;
+    issueExtra += " AND TRIM(NVL(A.PLANT_CODE, ' ')) = TRIM(:plant_code)";
+  }
+
+  const issueSql = `
+    SELECT A.R_NO, A.R_DATE, A.TYPE, NVL(A.TRN_NO, 0) AS TRN_NO, NVL(A.SO_NO, 0) AS SO_NO,
+           NVL(A.REF_NO, A.R_NO) AS CH_NO,
+           NVL(NULLIF(TRIM(A.REF_CH_TYPE), ' '), TRIM(NVL(A.CH_TYPE, ' '))) AS CH_TYPE,
+           A.CODE, NVL(C.NAME, ' ') AS NAME, A.ITEM_CODE, NVL(B.ITEM_NAME, ' ') AS ITEM_NAME,
+           NVL(A.MARKA, ' ') AS MARKA, NVL(A.RATE, 0) AS RATE, A.QNTY,
+           NVL(A.WEIGHT, 0) AS WEIGHT, NVL(A.AMOUNT, 0) AS AMOUNT,
+           NVL(A.STATUS, ' ') AS STATUS, NVL(A.PLANT_CODE, ' ') AS PLANT_CODE,
+           CASE WHEN TRIM(TO_CHAR(A.TYPE)) = 'S' THEN NVL(A.QNTY, 0) ELSE NVL(A.QNTY, 0) * -1 END AS SIGNED_QTY
+    FROM ISSUE A
+    LEFT JOIN ITEMMAST B ON A.COMP_CODE = B.COMP_CODE AND A.ITEM_CODE = B.ITEM_CODE
+    LEFT JOIN MASTER C ON A.COMP_CODE = C.COMP_CODE AND A.CODE = C.CODE
+    WHERE A.COMP_CODE = :comp_code
+      AND (
+        (NVL(A.REF_NO, 0) = :ch_no AND TRIM(NVL(A.REF_CH_TYPE, ' ')) = TRIM(:ch_type))
+        OR (NVL(A.R_NO, 0) = :ch_no AND TRIM(NVL(A.CH_TYPE, ' ')) = TRIM(:ch_type))
+      )
+      AND TRIM(TO_CHAR(A.TYPE)) IN ('S','R')
+      ${issueExtra}
+    ORDER BY A.R_DATE, A.R_NO, NVL(A.TRN_NO, 0)`;
+
+  const saleBinds = { comp_code, ch_no: chNo, ch_type: chTypeTrim };
+  let saleExtra = '';
+  if (e_date) {
+    saleBinds.e_date = String(e_date).trim();
+    saleExtra += ` AND TRUNC(A.BILL_DATE) <= TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))`;
+  }
+  if (plantTrim) {
+    saleBinds.plant_code = plantTrim;
+    saleExtra += " AND TRIM(NVL(A.PLANT_CODE, ' ')) = TRIM(:plant_code)";
+  }
+
+  let issueRows;
+  let saleRows;
+  const saleSqlPap = `
+    SELECT A.BILL_NO, A.BILL_DATE, NVL(A.B_TYPE, ' ') AS B_TYPE, NVL(A.TRN_NO, 0) AS TRN_NO,
+           A.TYPE, A.CH_NO, NVL(A.CH_TYPE, ' ') AS CH_TYPE, A.B_CODE AS CODE,
+           A.ITEM_CODE, NVL(B.ITEM_NAME, ' ') AS ITEM_NAME, NVL(A.MARKA, ' ') AS MARKA,
+           NVL(A.RATE, 0) - NVL(A.PAPLOO, 0) AS RATE, A.QNTY, NVL(A.STATUS, ' ') AS STATUS,
+           NVL(A.PLANT_CODE, ' ') AS PLANT_CODE
+    FROM SALE A
+    LEFT JOIN ITEMMAST B ON A.COMP_CODE = B.COMP_CODE AND A.ITEM_CODE = B.ITEM_CODE
+    WHERE A.COMP_CODE = :comp_code AND NVL(A.CH_NO, 0) <> 0
+      AND A.CH_NO = :ch_no
+      AND TRIM(NVL(A.CH_TYPE, ' ')) = TRIM(:ch_type)
+      ${saleExtra}
+    ORDER BY A.BILL_DATE, A.BILL_NO, NVL(A.TRN_NO, 0)`;
+
+  issueRows = await runQuery(issueSql, issueBinds, comp_uid);
+  try {
+    saleRows = await runQuery(saleSqlPap, saleBinds, comp_uid);
+  } catch (e) {
+    if (!String(e?.message || '').includes('ORA-00904')) throw e;
+    const saleSql = `
+      SELECT A.BILL_NO, A.BILL_DATE, NVL(A.B_TYPE, ' ') AS B_TYPE, NVL(A.TRN_NO, 0) AS TRN_NO,
+             A.TYPE, A.CH_NO, NVL(A.CH_TYPE, ' ') AS CH_TYPE, A.B_CODE AS CODE,
+             A.ITEM_CODE, NVL(B.ITEM_NAME, ' ') AS ITEM_NAME, NVL(A.MARKA, ' ') AS MARKA,
+             A.RATE, A.QNTY, NVL(A.STATUS, ' ') AS STATUS, NVL(A.PLANT_CODE, ' ') AS PLANT_CODE
+      FROM SALE A
+      LEFT JOIN ITEMMAST B ON A.COMP_CODE = B.COMP_CODE AND A.ITEM_CODE = B.ITEM_CODE
+      WHERE A.COMP_CODE = :comp_code AND NVL(A.CH_NO, 0) <> 0
+        AND A.CH_NO = :ch_no
+        AND TRIM(NVL(A.CH_TYPE, ' ')) = TRIM(:ch_type)
+        ${saleExtra}
+      ORDER BY A.BILL_DATE, A.BILL_NO, NVL(A.TRN_NO, 0)`;
+    saleRows = await runQuery(saleSql, saleBinds, comp_uid);
+  }
+
+  const challanLines = (issueRows || []).map((r) => {
+    const qty = pndChlnRound3(r.SIGNED_QTY ?? r.signed_qty ?? r.QNTY);
+    const itemCode = String(r.ITEM_CODE ?? '').trim();
+    return {
+      IO: 'IN',
+      SOURCE: 'ISSUE',
+      CH_NO: numVal(r.CH_NO ?? r.REF_NO ?? r.ref_no),
+      CH_TYPE: String(r.CH_TYPE ?? '').trim().slice(0, 1),
+      DOC_NO: numVal(r.R_NO ?? r.r_no),
+      TRN_NO: numVal(r.TRN_NO ?? r.trn_no),
+      SO_NO: numVal(r.SO_NO ?? r.so_no),
+      DOC_DATE: pendingOrderYmd(r.R_DATE ?? r.r_date),
+      TYPE: String(r.TYPE ?? '').trim(),
+      CODE: numVal(r.CODE),
+      NAME: String(r.NAME ?? '').trim(),
+      ITEM_CODE: itemCode,
+      ITEM_NAME: String(r.ITEM_NAME ?? '').trim(),
+      MARKA: String(r.MARKA ?? '').trim(),
+      STATUS: String(r.STATUS ?? '').trim(),
+      RATE: pndChlnRoundRate(r.RATE),
+      QNTY: qty,
+      WEIGHT: pndChlnRound3(r.WEIGHT),
+      AMOUNT: pndChlnRoundRate(r.AMOUNT),
+      PLANT_CODE: String(r.PLANT_CODE ?? '').trim(),
+      HIGHLIGHT: highlightTrim !== '' && itemCode === highlightTrim,
+    };
+  });
+
+  let oqty = 0;
+  for (const r of challanLines) oqty += numVal(r.QNTY);
+
+  const saleLines = (saleRows || []).map((r) => {
+    const rawQty = numVal(r.QNTY);
+    const qty = pndChlnRound3(rawQty * pendingOrderSaleQtySign(r.TYPE));
+    const itemCode = String(r.ITEM_CODE ?? '').trim();
+    return {
+      IO: 'OUT',
+      SOURCE: 'SALE',
+      CH_NO: numVal(r.CH_NO),
+      CH_TYPE: String(r.CH_TYPE ?? '').trim().slice(0, 1),
+      DOC_NO: String(r.BILL_NO ?? r.bill_no ?? ''),
+      TRN_NO: numVal(r.TRN_NO ?? r.trn_no),
+      B_TYPE: String(r.B_TYPE ?? r.b_type ?? '').trim(),
+      DOC_DATE: pendingOrderYmd(r.BILL_DATE ?? r.bill_date),
+      TYPE: String(r.TYPE ?? '').trim(),
+      CODE: numVal(r.CODE),
+      ITEM_CODE: itemCode,
+      ITEM_NAME: String(r.ITEM_NAME ?? '').trim(),
+      MARKA: String(r.MARKA ?? '').trim(),
+      STATUS: String(r.STATUS ?? '').trim(),
+      RATE: pndChlnRoundRate(r.RATE),
+      QNTY: qty,
+      PLANT_CODE: String(r.PLANT_CODE ?? '').trim(),
+      HIGHLIGHT: highlightTrim !== '' && itemCode === highlightTrim,
+    };
+  });
+
+  let sqty = 0;
+  for (const r of saleLines) sqty += numVal(r.QNTY);
+
+  return {
+    ch_no: chNo,
+    ch_type: chTypeTrim,
+    highlight_item: highlightTrim,
+    challan_lines: challanLines,
+    sale_lines: saleLines,
+    summary: {
+      OQTY: pndChlnRound3(oqty),
+      SQTY: pndChlnRound3(sqty),
+      BQTY: pndChlnRound3(oqty - sqty),
+    },
+  };
 }
 
 /** SO_CODE_BROKER from COMPDET (Fox G_SO_CODE_BROKER). */
@@ -6836,7 +7402,8 @@ app.get('/api/sale-bill-pending-challans', async (req, res) => {
     const compdet = await runCompdetHeaderRow(comp_code, comp_uid);
     const rateChk = compdetYn(compdet, 'rate_chk');
     const markaChk = compdetYn(compdet, 'marka_chk_in_disp_challan');
-    const rows = await fetchSaleBillPendingChallans(comp_code, comp_uid, b_code, rateChk, markaChk);
+    const cp = String(req.query.cp || 'P').trim().toUpperCase() === 'C' ? 'C' : 'P';
+    const rows = await fetchSaleBillPendingChallans(comp_code, comp_uid, b_code, rateChk, markaChk, cp);
     res.json(rows);
   } catch (err) {
     console.error('❌ sale-bill-pending-challans error:', err.message);
@@ -9116,6 +9683,61 @@ app.get('/api/pending-purchase-order-report', async (req, res) => {
     res.json({ ok: true, ...result });
   } catch (err) {
     console.error('❌ pending-purchase-order-report error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/pending-dispatch-challan-report', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, code, item_code, cp, plant_code, ch_type } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (!s_date || !e_date) {
+      return res.status(400).json({ error: 's_date and e_date (DD-MM-YYYY) are required' });
+    }
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid);
+    if (!compdet) return res.status(404).json({ error: 'compdet not found' });
+    const result = await buildPendingDispatchChallanReportRows({
+      comp_code,
+      comp_uid,
+      s_date,
+      e_date,
+      code,
+      item_code,
+      cp,
+      plant_code,
+      ch_type,
+      compdet,
+    });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('❌ pending-dispatch-challan-report error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/pending-challan-detail', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, e_date, ch_no, ch_type, plant_code, highlight_item } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (ch_no == null || !ch_type) {
+      return res.status(400).json({ error: 'ch_no and ch_type are required' });
+    }
+    const detail = await buildPendingChallanDetail({
+      comp_code,
+      comp_uid,
+      e_date,
+      ch_no,
+      ch_type,
+      plant_code,
+      highlight_item,
+    });
+    res.json({ ok: true, ...detail });
+  } catch (err) {
+    console.error('❌ pending-challan-detail error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

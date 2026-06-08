@@ -45,6 +45,27 @@ export function advanceReportFormOnEnter(e, rootEl) {
   return focusNextReportField(rootEl, t);
 }
 
+/** Scroll focused field into view after mobile keyboard opens. */
+export function scrollReportFieldIntoView(el) {
+  if (!el) return;
+  setTimeout(() => {
+    try {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    } catch (_) {
+      try {
+        el.scrollIntoView();
+      } catch (_) {}
+    }
+  }, 300);
+}
+
+/** Touch-safe pick from account-search dropdown (works on iOS). */
+export function pickSearchResult(e, handler) {
+  e.preventDefault();
+  e.stopPropagation();
+  handler();
+}
+
 /** Date inputs often swallow Enter — attach directly on each date field. */
 export function handleReportDateEnter(e, rootEl) {
   if (e.key !== 'Enter') return;
