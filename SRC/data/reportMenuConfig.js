@@ -83,6 +83,7 @@ export const REPORT_MENU = [
       { id: 'sale-bill-entry', title: 'Sale Bill', shortTitle: 'Sale Bill', description: 'Sale bill entry' },
       { id: 'sale-bill-printing', title: 'Sale Bill Printing', shortTitle: 'Sale Print', description: 'Print sale bills' },
       { id: 'sale-list', title: 'Sale Bill List', shortTitle: 'Sale List', description: 'List & filters' },
+      { id: 'pending-sales-order', title: 'Pending Sales Order', shortTitle: 'Pending SO', description: 'Open SO qty vs billed/challan' },
       { id: 'sale-chart', title: 'Sale Chart', shortTitle: 'Sale Chart', description: 'Month-wise weight & amount by item' },
     ],
   },
@@ -99,6 +100,7 @@ export const REPORT_MENU = [
       { id: 'grn-entry', title: 'Goods Receipt Note', shortTitle: 'GRN', description: 'GRN entry' },
       { id: 'purchase-bill-entry', title: 'Purchase Bill', shortTitle: 'Purchase Bill', description: 'Purchase bill entry' },
       { id: 'purchase-list', title: 'Purchase List', shortTitle: 'Purchase List', description: 'List & filters' },
+      { id: 'pending-purchase-order', title: 'Pending Purchase Order', shortTitle: 'Pending PO', description: 'Open PO qty vs GRN/bill' },
     ],
   },
   {

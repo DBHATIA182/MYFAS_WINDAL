@@ -1321,16 +1321,20 @@ body,
 .app--fas-flow .slide.slide-8 > h2,
 .app--fas-flow .slide.slide-8 > .company-info,
 .app--fas-flow .slide.slide-8 > .form-api-error,
+.app--fas-flow .slide.slide-report > .session-info-line,
 .app--fas-flow .slide.slide-report > .report-toolbar,
 .app--fas-flow .slide.slide-report > .report-sort-switch,
 .app--fas-flow .slide.slide-report > .report-info,
-.app--fas-flow .slide.slide-report > .button-group {
+.app--fas-flow .slide.slide-report > .button-group,
+.app--fas-flow .slide.slide-report > .form-actions,
+.app--fas-flow .slide.slide-report > .loading-msg {
   flex-shrink: 0;
   min-width: 0;
   max-width: 100%;
 }
 
-.app--fas-flow .slide.slide-8 > .report-form {
+.app--fas-flow .slide.slide-8 > .report-form,
+.app--fas-flow .slide.slide-report > .report-form {
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
@@ -1339,6 +1343,8 @@ body,
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .app--fas-flow .slide.slide-8 .form-group,

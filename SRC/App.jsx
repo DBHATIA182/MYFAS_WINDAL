@@ -24,6 +24,8 @@ import Slide15 from './slides/Slide15';
 import Slide16 from './slides/Slide16';
 import Slide35StateWiseSales from './slides/Slide35StateWiseSales';
 import Slide36StateWisePurchase from './slides/Slide36StateWisePurchase';
+import Slide37PendingSalesOrder from './slides/Slide37PendingSalesOrder';
+import Slide38PendingPurchaseOrder from './slides/Slide38PendingPurchaseOrder';
 import Slide17TradingAc from './slides/Slide17TradingAc';
 import Slide18PlProfitLoss from './slides/Slide18PlProfitLoss';
 import Slide19BalanceSheet from './slides/Slide19BalanceSheet';
@@ -578,6 +580,8 @@ function App() {
     else if (reportType === 'hsn-purchase') setCurrentSlide(17);
     else if (reportType === 'state-wise-sales') setCurrentSlide(35);
     else if (reportType === 'state-wise-purchase') setCurrentSlide(36);
+    else if (reportType === 'pending-sales-order') setCurrentSlide(37);
+    else if (reportType === 'pending-purchase-order') setCurrentSlide(38);
     else if (reportType === 'trading-ac') setCurrentSlide(18);
     else if (reportType === 'pl-profit-loss') setCurrentSlide(19);
     else if (reportType === 'balance-sheet') setCurrentSlide(20);
@@ -761,6 +765,8 @@ function App() {
         { phrases: ['open gstr1', 'gstr1', 'open gstr 1', 'gstr 1'], reportType: 'gstr1', slideNo: 15, title: 'GSTR1' },
         { phrases: ['open hsn sales', 'hsn sales', 'open hsn sale', 'hsn sale'], reportType: 'hsn-sales', slideNo: 16, title: 'HSN Sales' },
         { phrases: ['open hsn purchase', 'hsn purchase', 'open hsn purchases', 'hsn purchases'], reportType: 'hsn-purchase', slideNo: 17, title: 'HSN Purchase' },
+        { phrases: ['open pending sales order', 'pending sales order', 'pending sale order'], reportType: 'pending-sales-order', slideNo: 37, title: 'Pending Sales Order' },
+        { phrases: ['open pending purchase order', 'pending purchase order', 'pending po'], reportType: 'pending-purchase-order', slideNo: 38, title: 'Pending Purchase Order' },
         { phrases: ['open state wise sales', 'state wise sales', 'state sales', 'open state sales'], reportType: 'state-wise-sales', slideNo: 35, title: 'State Wise Sales' },
         { phrases: ['open state wise purchase', 'state wise purchase', 'state purchase', 'open state purchase'], reportType: 'state-wise-purchase', slideNo: 36, title: 'State Wise Purchase' },
         { phrases: ['open trading account', 'trading account', 'open trading a c', 'trading a c'], reportType: 'trading-ac', slideNo: 18, title: 'Trading Account' },
@@ -1119,6 +1125,22 @@ function App() {
         )}
         {currentSlide === 36 && (
           <Slide36StateWisePurchase
+            apiBase={API_BASE}
+            formData={formData}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+          />
+        )}
+        {currentSlide === 37 && (
+          <Slide37PendingSalesOrder
+            apiBase={API_BASE}
+            formData={formData}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+          />
+        )}
+        {currentSlide === 38 && (
+          <Slide38PendingPurchaseOrder
             apiBase={API_BASE}
             formData={formData}
             onPrev={() => setCurrentSlide(3)}

@@ -348,6 +348,39 @@ export const REPORT_HELP = {
     ],
   },
 
+  'pending-sales-order': {
+    title: 'Pending Sales Order',
+    summary: 'Open sales order quantity minus billed (sale bill) or challan (issue), per Fox sopnd.',
+    sections: [
+      section('Parameters', [
+        'Starting and ending date on SO date.',
+        'Complete / Pending — P shows Bqty>0 only; C includes fully fulfilled lines.',
+        'Link S = deduct SALE bills; C = deduct ISSUE challans.',
+        'Optional party (code, name, city, GST, PAN search) and item filters.',
+        'Press Enter to run; arrow keys + Enter in party/item search.',
+      ]),
+      section('Detail', [
+        'Click any summary row for IN (order lines) and OUT (billed/challan) detail.',
+      ]),
+    ],
+  },
+
+  'pending-purchase-order': {
+    title: 'Pending Purchase Order',
+    summary: 'Open purchase order quantity minus PURCHASE/GRN billed qty.',
+    sections: [
+      section('Parameters', [
+        'Starting and ending date on PO date.',
+        'Complete / Pending — P shows Bqty>0 only; C includes fully fulfilled lines.',
+        'Optional supplier (GST/PAN search) and item filters.',
+        'Press Enter to run report.',
+      ]),
+      section('Detail', [
+        'Click any row for IN (PO lines) and OUT (purchase/GRN) detail.',
+      ]),
+    ],
+  },
+
   'sale-list': {
     title: 'Sale Bill List',
     summary: 'Filtered list of sale bills (VFP-style filters).',
@@ -541,6 +574,8 @@ const PDF_ORDER = [
   'state-wise-purchase',
   'sale-bill-printing',
   'sale-list',
+  'pending-sales-order',
+  'pending-purchase-order',
   'gstr1',
   'sales-order-entry',
   'purchase-order-entry',

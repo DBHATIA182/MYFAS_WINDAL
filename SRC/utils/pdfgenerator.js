@@ -431,6 +431,60 @@ const PDF_REPORT_STYLES = `
           max-width: none;
         }
         .purchase-list-pdf { overflow: visible !important; max-width: none !important; width: 100%; }
+        /* Pending SO/PO: 15 columns, landscape-friendly compact layout */
+        .pending-order-pdf.report-doc { font-size: 7px; overflow: visible !important; max-width: none !important; width: 100%; }
+        .pending-order-pdf table.table-report { table-layout: fixed; width: 100%; }
+        .pending-order-pdf table.table-report thead th {
+          font-size: 6px;
+          padding: 4px 2px;
+          letter-spacing: 0;
+          word-break: break-word;
+          hyphens: auto;
+        }
+        .pending-order-pdf table.table-report tbody td {
+          font-size: 6px;
+          padding: 2px 2px;
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+        }
+        .pending-order-pdf table.table-report td.amount {
+          font-size: 6px;
+          padding: 2px 2px;
+        }
+        .pending-order-pdf table.table-report .col-name {
+          min-width: 0;
+          max-width: none;
+        }
+        .pending-order-pdf table.table-report th:nth-child(1),
+        .pending-order-pdf table.table-report td:nth-child(1) { width: 5%; }
+        .pending-order-pdf table.table-report th:nth-child(2),
+        .pending-order-pdf table.table-report td:nth-child(2) { width: 6%; }
+        .pending-order-pdf table.table-report th:nth-child(3),
+        .pending-order-pdf table.table-report td:nth-child(3) { width: 5%; }
+        .pending-order-pdf table.table-report th:nth-child(4),
+        .pending-order-pdf table.table-report td:nth-child(4) { width: 11%; }
+        .pending-order-pdf table.table-report th:nth-child(5),
+        .pending-order-pdf table.table-report td:nth-child(5) { width: 5%; }
+        .pending-order-pdf table.table-report th:nth-child(6),
+        .pending-order-pdf table.table-report td:nth-child(6) { width: 11%; }
+        .pending-order-pdf table.table-report th:nth-child(7),
+        .pending-order-pdf table.table-report td:nth-child(7) { width: 3%; }
+        .pending-order-pdf table.table-report th:nth-child(8),
+        .pending-order-pdf table.table-report td:nth-child(8) { width: 6%; }
+        .pending-order-pdf table.table-report th:nth-child(9),
+        .pending-order-pdf table.table-report td:nth-child(9) { width: 5%; }
+        .pending-order-pdf table.table-report th:nth-child(10),
+        .pending-order-pdf table.table-report td:nth-child(10) { width: 6%; }
+        .pending-order-pdf table.table-report th:nth-child(11),
+        .pending-order-pdf table.table-report td:nth-child(11),
+        .pending-order-pdf table.table-report th:nth-child(12),
+        .pending-order-pdf table.table-report td:nth-child(12),
+        .pending-order-pdf table.table-report th:nth-child(13),
+        .pending-order-pdf table.table-report td:nth-child(13) { width: 5%; }
+        .pending-order-pdf table.table-report th:nth-child(14),
+        .pending-order-pdf table.table-report td:nth-child(14) { width: 7%; }
+        .pending-order-pdf table.table-report th:nth-child(15),
+        .pending-order-pdf table.table-report td:nth-child(15) { width: 9%; }
         /* Wide voucher list: fixed columns, compact cells */
         .voucher-list-pdf.report-doc { font-size: 7px; overflow: visible !important; max-width: none !important; width: 100%; }
         .voucher-list-pdf table.table-report { table-layout: fixed; width: 100%; }
@@ -3935,6 +3989,98 @@ function buildSalesOrderListReportHtml(data, metadata) {
   `;
 }
 
+/** Pending SO/PO list (Fox sopnd). */
+function buildPendingOrderReportHtml(data, metadata) {
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  const company = escHtml(metadata.companyName || '');
+  const title = escHtml(metadata?.reportTitle || 'Pending order list');
+  const sdt = escHtml(metadata.startDate || '');
+  const edt = escHtml(metadata.endDate || '');
+  const party = escHtml(metadata.partyLabel || 'All parties');
+  const item = escHtml(metadata.itemLabel || 'All items');
+  const cp = escHtml(metadata.cpLabel || 'Pending only');
+  const mcs = metadata.mcsLabel ? escHtml(metadata.mcsLabel) : '';
+  const rateChk = metadata.rateChkLabel ? escHtml(metadata.rateChkLabel) : '';
+  const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
+  const kicker = escHtml(String(metadata?.reportTitle || 'Pending order').toUpperCase());
+
+  let to = 0;
+  let tr = 0;
+  let tb = 0;
+  let ta = 0;
+  let body = '';
+  rows.forEach((r) => {
+    const o = Number(r.OQTY) || 0;
+    const rq = Number(r.RQTY) || 0;
+    const b = Number(r.BQTY) || 0;
+    const a = Number(r.AMOUNT) || 0;
+    to += o;
+    tr += rq;
+    tb += b;
+    ta += a;
+    body += `<tr>
+      <td>${escHtml(String(r.SO_NO ?? ''))}</td>
+      <td>${escHtml(String(r.SO_DATE ?? ''))}</td>
+      <td>${escHtml(String(r.CODE ?? ''))}</td>
+      <td class="col-name">${escHtml(String(r.NAME ?? ''))}</td>
+      <td>${escHtml(String(r.ITEM_CODE ?? ''))}</td>
+      <td class="col-name">${escHtml(String(r.ITEM_NAME ?? ''))}</td>
+      <td>${escHtml(String(r.STATUS ?? ''))}</td>
+      <td class="amount">${formatStockPdf(Number(r.RATE) || 0)}</td>
+      <td>${escHtml(String(r.MARKA ?? ''))}</td>
+      <td>${escHtml(String(r.PO_NO ?? ''))}</td>
+      <td class="amount">${formatStockPdf(o, 3)}</td>
+      <td class="amount">${formatStockPdf(rq, 3)}</td>
+      <td class="amount">${formatStockPdf(b, 3)}</td>
+      <td class="amount">${formatStockPdf(a)}</td>
+      <td>${escHtml(String(r.REMARKS ?? ''))}</td>
+    </tr>`;
+  });
+
+  const grand = `<tr class="report-grand-total">
+    <td colspan="10" class="lbl-total">Grand total (${rows.length} rows)</td>
+    <td class="amount">${formatStockPdf(to, 3)}</td>
+    <td class="amount">${formatStockPdf(tr, 3)}</td>
+    <td class="amount">${formatStockPdf(tb, 3)}</td>
+    <td class="amount">${formatStockPdf(ta)}</td>
+    <td></td>
+  </tr>`;
+
+  const filterRows = mcs
+    ? `<tr><td class="lbl">Period</td><td class="val">${sdt} to ${edt}</td><td class="lbl">Status</td><td class="val">${cp}</td></tr>
+          <tr><td class="lbl">Party</td><td class="val">${party}</td><td class="lbl">Item</td><td class="val">${item}</td></tr>
+          <tr><td class="lbl">Fulfillment</td><td class="val">${mcs}</td><td class="lbl">Rate</td><td class="val">${rateChk || '—'}</td></tr>`
+    : `<tr><td class="lbl">Period</td><td class="val">${sdt} to ${edt}</td><td class="lbl">Status</td><td class="val">${cp}</td></tr>
+          <tr><td class="lbl">Party</td><td class="val">${party}</td><td class="lbl">Item</td><td class="val">${item}</td></tr>
+          ${rateChk ? `<tr><td class="lbl">Rate</td><td class="val" colspan="3">${rateChk}</td></tr>` : ''}`;
+
+  return `
+    <div class="report-doc pending-order-pdf">
+      <style>${PDF_REPORT_STYLES}</style>
+      <div class="report-topbar">
+        <div class="kicker">${kicker}</div>
+        <h1>${title}</h1>
+        <div class="company">${company}</div>
+        <table class="report-grid">
+          ${filterRows}
+        </table>
+        <div class="report-period">Generated: ${generated}</div>
+      </div>
+      <table class="table-report">
+        <thead>
+          <tr>
+            <th>SO no</th><th>Date</th><th>Code</th><th>Name</th><th>Item</th><th>Item name</th>
+            <th>St</th><th class="amount">Rate</th><th>Marka</th><th>PO no</th>
+            <th class="amount">Oqty</th><th class="amount">Rqty</th><th class="amount">Bqty</th><th class="amount">Amount</th><th>Remarks</th>
+          </tr>
+        </thead>
+        <tbody>${body || '<tr><td colspan="15">(No rows)</td></tr>'}${rows.length ? grand : ''}</tbody>
+      </table>
+      <div class="report-foot">Pending order report — sorted by order date and order number.</div>
+    </div>
+  `;
+}
+
 /** Purchase list */
 function buildPurchaseListReportHtml(data, metadata) {
   const rows = Array.isArray(data?.rows) ? data.rows : [];
@@ -5952,6 +6098,9 @@ export function buildReportHtml(reportType, data, metadata) {
   if (reportType === 'dispatch-challan-print') return buildDispatchChallanPrintReportHtml(data, metadata);
   if (reportType === 'grn-print') return buildGrnPrintReportHtml(data, metadata);
   if (reportType === 'sales-order-list') return buildSalesOrderListReportHtml(data, metadata);
+  if (reportType === 'pending-sales-order' || reportType === 'pending-purchase-order') {
+    return buildPendingOrderReportHtml(data, metadata);
+  }
   if (reportType === 'sales-order-print') return buildSalesOrderPrintReportHtml(data, metadata);
   if (reportType === 'purchase-order-list') {
     return buildSalesOrderListReportHtml(data, {
@@ -6001,6 +6150,15 @@ function getPdfOptions(metadata, reportType, data) {
           scrollX: 0,
           scrollY: 0,
         }
+      : reportType === 'pending-sales-order' || reportType === 'pending-purchase-order'
+        ? {
+            scale: 1.75,
+            useCORS: true,
+            logging: false,
+            windowWidth: 2200,
+            scrollX: 0,
+            scrollY: 0,
+          }
       : reportType === 'hsn-sales'
         ? {
             scale: 1,
@@ -6327,6 +6485,10 @@ export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText
                               ? 'State Wise Sales'
                               : reportType === 'state-wise-purchase'
                                 ? 'State Wise Purchase'
+                            : reportType === 'pending-sales-order'
+                              ? 'Pending Sales Order'
+                              : reportType === 'pending-purchase-order'
+                                ? 'Pending Purchase Order'
                             : reportType === 'production-list'
                               ? 'Production list'
                               : reportType === 'production-print'

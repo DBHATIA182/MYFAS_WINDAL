@@ -87,7 +87,9 @@ function rowHaystack(row) {
   const code = String(row.CODE ?? row.code ?? '').toLowerCase();
   const name = String(row.NAME ?? row.name ?? '').toLowerCase();
   const city = String(row.CITY ?? row.city ?? '').toLowerCase();
-  return `${code} ${name} ${city}`;
+  const gst = String(row.GST_NO ?? row.gst_no ?? '').toLowerCase();
+  const pan = String(row.PAN ?? row.pan ?? '').toLowerCase();
+  return `${code} ${name} ${city} ${gst} ${pan}`;
 }
 
 function rowMatchesAllTokens(row, tokens) {
@@ -224,7 +226,9 @@ export function filterCodeNameCityRows(rows, query, max = 50) {
       const code = String(row.CODE ?? row.code ?? '').toLowerCase();
       const name = String(row.NAME ?? row.name ?? '').toLowerCase();
       const city = String(row.CITY ?? row.city ?? '').toLowerCase();
-      return code.includes(q) || name.includes(q) || city.includes(q);
+      const gst = String(row.GST_NO ?? row.gst_no ?? '').toLowerCase();
+      const pan = String(row.PAN ?? row.pan ?? '').toLowerCase();
+      return code.includes(q) || name.includes(q) || city.includes(q) || gst.includes(q) || pan.includes(q);
     })
     .slice(0, max);
 }

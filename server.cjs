@@ -8521,6 +8521,605 @@ app.get('/api/sales-order-print', async (req, res) => {
   }
 });
 
+/** Fox sopnd.scx — qty sign for SALE billed against SO (MCS=S). */
+function pendingOrderSaleQtySign(typeRaw) {
+  const tp = numVal(typeRaw);
+  return tp === 1 || tp === 2 || tp === 3 ? 1 : -1;
+}
+
+function pendingOrderYmd(d) {
+  if (!d) return '';
+  const dt = parseDateOnly(d);
+  if (!dt) return '';
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function pendingOrderMinDate(parts) {
+  if (!parts?.length) return null;
+  return parts.reduce((a, b) => {
+    const da = parseDateOnly(a);
+    const db = parseDateOnly(b);
+    if (!da) return b;
+    if (!db) return a;
+    return da < db ? a : b;
+  });
+}
+
+/**
+ * Fox sopnd.scx pending order list — SORDER in date range minus billed (SALE/ISSUE/PURCHASE).
+ * @param {object} opts — rtype SO|PO, mcs S|SALE or C|CHALLAN (sales only)
+ */
+async function buildPendingOrderReportRows({
+  comp_code,
+  comp_uid,
+  s_date,
+  e_date,
+  code,
+  item_code,
+  rtype,
+  mcs,
+  cp,
+  compdet,
+}) {
+  const rateChk = compdetYn(compdet, 'rate_chk');
+  const orderType = String(rtype || 'SO').trim().toUpperCase() === 'PO' ? 'PO' : 'SO';
+  const mcsMode = String(mcs || 'S').trim().toUpperCase() === 'C' ? 'C' : 'S';
+  const cpMode = String(cp || 'P').trim().toUpperCase() === 'C' ? 'C' : 'P';
+  const headName = orderType === 'SO' ? 'PENDING SALES ORDER LIST' : 'PENDING PURCHASE ORDER LIST';
+
+  const orderBinds = { comp_code, s_date: String(s_date).trim(), e_date: String(e_date).trim() };
+  let orderExtra = '';
+  const partyCode =
+    code != null && String(code).trim() !== '' && String(code).trim() !== '0'
+      ? parseMasterCodeForSql(code)
+      : undefined;
+  if (partyCode !== undefined) {
+    orderBinds.party_code = partyCode;
+    orderExtra += ' AND TRIM(TO_CHAR(A.CODE)) = TRIM(TO_CHAR(:party_code))';
+  }
+  const itemTrim = item_code != null ? String(item_code).trim() : '';
+  if (itemTrim) {
+    orderBinds.item_code = itemTrim;
+    orderExtra += ' AND TRIM(A.ITEM_CODE) = TRIM(:item_code)';
+  }
+
+  const orderSql = `
+    SELECT A.SO_NO, A.SO_DATE, A.PO_NO, A.ITEM_CODE, NVL(A.MARKA, ' ') AS MARKA,
+           A.STATUS, A.QNTY, A.RATE, A.CODE,
+           NVL(B.ITEM_NAME, ' ') AS ITEM_NAME, NVL(C.NAME, ' ') AS NAME,
+           NVL(A.REMARKS, ' ') AS REMARKS
+    FROM SORDER A
+    LEFT JOIN ITEMMAST B ON A.COMP_CODE = B.COMP_CODE AND A.ITEM_CODE = B.ITEM_CODE
+    LEFT JOIN MASTER C ON A.COMP_CODE = C.COMP_CODE AND A.CODE = C.CODE
+    WHERE A.COMP_CODE = :comp_code
+      AND TRIM(UPPER(NVL(TO_CHAR(A.TYPE), '${orderType}'))) = '${orderType}'
+      AND TRUNC(A.SO_DATE) BETWEEN TRUNC(TO_DATE(:s_date, 'DD-MM-YYYY')) AND TRUNC(TO_DATE(:e_date, 'DD-MM-YYYY'))
+      ${orderExtra}
+    ORDER BY A.ITEM_CODE, A.RATE`;
+
+  const orderLines = await runQuery(orderSql, orderBinds, comp_uid);
+
+  const fulfillBinds = { comp_code };
+  let fulfillRows;
+  if (orderType === 'SO') {
+    if (mcsMode === 'S') {
+      const saleSqlPap = `
+        SELECT A.SO_NO, A.BILL_DATE AS SO_DATE, A.ITEM_CODE, A.STATUS,
+               NVL(A.RATE, 0) - NVL(A.PAPLOO, 0) AS RATE, A.QNTY, A.TYPE
+        FROM SALE A
+        WHERE A.COMP_CODE = :comp_code AND NVL(A.SO_NO, 0) <> 0`;
+      try {
+        fulfillRows = await runQuery(saleSqlPap, fulfillBinds, comp_uid);
+      } catch (e) {
+        if (!String(e?.message || '').includes('ORA-00904')) throw e;
+        fulfillRows = await runQuery(
+          `SELECT A.SO_NO, A.BILL_DATE AS SO_DATE, A.ITEM_CODE, A.STATUS, A.RATE, A.QNTY, A.TYPE
+           FROM SALE A WHERE A.COMP_CODE = :comp_code AND NVL(A.SO_NO, 0) <> 0`,
+          fulfillBinds,
+          comp_uid
+        );
+      }
+    } else {
+      fulfillRows = await runQuery(
+        `SELECT A.SO_NO, A.R_DATE AS SO_DATE, A.ITEM_CODE, A.STATUS, A.RATE, A.QNTY, A.TYPE
+         FROM ISSUE A WHERE A.COMP_CODE = :comp_code AND NVL(A.SO_NO, 0) <> 0`,
+        fulfillBinds,
+        comp_uid
+      );
+    }
+  } else {
+    fulfillRows = await runQuery(
+      `SELECT A.SO_NO, A.R_DATE AS SO_DATE, A.ITEM_CODE, A.STATUS, A.RATE, A.QNTY, A.TYPE
+       FROM PURCHASE A WHERE A.COMP_CODE = :comp_code AND NVL(A.SO_NO, 0) <> 0`,
+      fulfillBinds,
+      comp_uid
+    );
+  }
+
+  const lineKey = (so, ic, st, rt) => {
+    const base = `${numVal(so)}|${String(ic ?? '').trim()}|${String(st ?? '').trim()}`;
+    return rateChk ? `${base}|${Math.round(numVal(rt) * 100) / 100}` : base;
+  };
+
+  const puMap = new Map();
+  for (const r of fulfillRows || []) {
+    const rt = rateChk ? Math.round(numVal(r.RATE ?? r.rate) * 100) / 100 : 0;
+    const k = lineKey(r.SO_NO, r.ITEM_CODE, r.STATUS, rt);
+    let g = puMap.get(k);
+    if (!g) {
+      g = {
+        SO_NO: numVal(r.SO_NO),
+        ITEM_CODE: String(r.ITEM_CODE ?? '').trim(),
+        STATUS: String(r.STATUS ?? '').trim(),
+        RATE: rateChk ? rt : 0,
+        SL_WGT: 0,
+        _maxRate: 0,
+      };
+      puMap.set(k, g);
+    }
+    let qty = numVal(r.QNTY ?? r.qnty);
+    if (orderType === 'SO' && mcsMode === 'S') qty *= pendingOrderSaleQtySign(r.TYPE ?? r.type);
+    g.SL_WGT += qty;
+    if (!rateChk) g._maxRate = Math.max(g._maxRate, numVal(r.RATE ?? r.rate));
+  }
+  if (!rateChk) {
+    for (const g of puMap.values()) g.RATE = Math.round(g._maxRate * 100) / 100;
+  }
+
+  const poLines = (orderLines || []).map((r) => ({
+    SO_NO: numVal(r.SO_NO ?? r.so_no),
+    SO_DATE: r.SO_DATE ?? r.so_date,
+    PO_NO: String(r.PO_NO ?? r.po_no ?? '').trim(),
+    ITEM_CODE: String(r.ITEM_CODE ?? r.item_code ?? '').trim(),
+    MARKA: String(r.MARKA ?? r.marka ?? '').trim(),
+    STATUS: String(r.STATUS ?? r.status ?? '').trim(),
+    RATE: Math.round(numVal(r.RATE ?? r.rate) * 100) / 100,
+    SO_WGT: numVal(r.QNTY ?? r.qnty),
+    CODE: numVal(r.CODE ?? r.code),
+    NAME: String(r.NAME ?? r.name ?? '').trim(),
+    ITEM_NAME: String(r.ITEM_NAME ?? r.item_name ?? '').trim(),
+    REMARKS: String(r.REMARKS ?? r.remarks ?? '').trim(),
+  }));
+
+  const poGroupKey = (r) => {
+    const d = pendingOrderYmd(r.SO_DATE);
+    if (rateChk) {
+      return `${r.SO_NO}|${d}|${r.CODE}|${r.NAME}|${r.ITEM_CODE}|${r.ITEM_NAME}|${r.STATUS}|${r.RATE}`;
+    }
+    return `${r.SO_NO}|${d}|${r.CODE}|${r.NAME}|${r.ITEM_CODE}|${r.ITEM_NAME}|${r.STATUS}`;
+  };
+
+  const x5Map = new Map();
+  for (const r of poLines) {
+    const k = poGroupKey(r);
+    let g = x5Map.get(k);
+    if (!g) {
+      g = { ...r, SO_WGT: 0, _marka: [], _po: [], _remarks: [] };
+      if (!rateChk) g.RATE = 0;
+      x5Map.set(k, g);
+    }
+    g.SO_WGT += r.SO_WGT;
+    if (r.MARKA) g._marka.push(r.MARKA);
+    if (r.PO_NO) g._po.push(r.PO_NO);
+    if (r.REMARKS) g._remarks.push(r.REMARKS);
+    if (!rateChk) g.RATE = Math.max(g.RATE, r.RATE);
+  }
+  for (const g of x5Map.values()) {
+    if (g._marka.length) g.MARKA = g._marka.sort().pop();
+    if (g._po.length) g.PO_NO = g._po.sort().pop();
+    if (g._remarks.length) g.REMARKS = g._remarks.sort().pop();
+  }
+
+  const x6Map = new Map();
+  for (const g of x5Map.values()) {
+    const jk = lineKey(g.SO_NO, g.ITEM_CODE, g.STATUS, g.RATE);
+    const pu = puMap.get(jk);
+    const rowId = `${jk}|${g.CODE}|${g.NAME}|${pendingOrderYmd(g.SO_DATE)}`;
+    x6Map.set(rowId, { ...g, SL_WGT: pu?.SL_WGT || 0, _dateParts: g.SO_DATE ? [g.SO_DATE] : [] });
+  }
+  for (const [jk, pu] of puMap) {
+    const hasOrder = [...x6Map.keys()].some((id) => id.startsWith(`${jk}|`));
+    if (hasOrder) continue;
+    x6Map.set(`${jk}|fulfill`, {
+      SO_NO: pu.SO_NO,
+      SO_DATE: null,
+      PO_NO: '',
+      ITEM_CODE: pu.ITEM_CODE,
+      MARKA: '',
+      STATUS: pu.STATUS,
+      RATE: pu.RATE,
+      SO_WGT: 0,
+      CODE: 0,
+      NAME: '',
+      ITEM_NAME: '',
+      REMARKS: '',
+      SL_WGT: pu.SL_WGT,
+      _dateParts: [],
+    });
+  }
+
+  const x8Key = (r) => {
+    if (rateChk) {
+      return `${r.SO_NO}|${r.ITEM_CODE}|${r.STATUS}|${r.RATE}|${r.CODE}|${r.NAME}|${r.ITEM_NAME}`;
+    }
+    return `${r.SO_NO}|${r.ITEM_CODE}|${r.STATUS}|${r.CODE}|${r.NAME}|${r.ITEM_NAME}`;
+  };
+
+  const x8Map = new Map();
+  for (const r of x6Map.values()) {
+    const k = x8Key(r);
+    let g = x8Map.get(k);
+    if (!g) {
+      g = {
+        SO_NO: r.SO_NO,
+        SO_DATE: r.SO_DATE,
+        ITEM_CODE: r.ITEM_CODE,
+        STATUS: r.STATUS,
+        RATE: rateChk ? r.RATE : 0,
+        CODE: r.CODE,
+        NAME: r.NAME,
+        ITEM_NAME: r.ITEM_NAME,
+        OQTY: 0,
+        RQTY: 0,
+        _dateParts: [],
+        _marka: [],
+        _po: [],
+        _remarks: [],
+      };
+      x8Map.set(k, g);
+    }
+    g.OQTY += numVal(r.SO_WGT);
+    g.RQTY += numVal(r.SL_WGT);
+    if (r.SO_DATE) g._dateParts.push(r.SO_DATE);
+    if (r.MARKA) g._marka.push(r.MARKA);
+    if (r.PO_NO) g._po.push(r.PO_NO);
+    if (r.REMARKS) g._remarks.push(r.REMARKS);
+    if (!rateChk) g.RATE = Math.max(g.RATE, r.RATE);
+  }
+
+  const out = [];
+  for (const g of x8Map.values()) {
+    const bqty = Math.round((g.OQTY - g.RQTY) * 1000) / 1000;
+    if (numVal(g.SO_NO) < 1) continue;
+    if (cpMode === 'P' && bqty <= 0) continue;
+    const soDate = pendingOrderMinDate(g._dateParts) || g.SO_DATE;
+    const rate = Math.round(numVal(g.RATE) * 100) / 100;
+    const amount = rate !== 0 && bqty !== 0 ? Math.round((bqty * rate) / 100 * 100) / 100 : 0;
+    out.push({
+      SO_NO: g.SO_NO,
+      SO_DATE: pendingOrderYmd(soDate),
+      CODE: g.CODE,
+      NAME: g.NAME,
+      ITEM_CODE: g.ITEM_CODE,
+      ITEM_NAME: g.ITEM_NAME,
+      STATUS: g.STATUS,
+      RATE: rate,
+      MARKA: g._marka.length ? g._marka.sort().pop() : '',
+      PO_NO: g._po.length ? g._po.sort().pop() : '',
+      REMARKS: g._remarks.length ? g._remarks.sort().pop() : '',
+      OQTY: Math.round(g.OQTY * 1000) / 1000,
+      RQTY: Math.round(g.RQTY * 1000) / 1000,
+      BQTY: bqty,
+      AMOUNT: amount,
+      HEAD_NAME: headName,
+    });
+  }
+
+  out.sort((a, b) => {
+    const da = parseDateOnly(a.SO_DATE);
+    const db = parseDateOnly(b.SO_DATE);
+    const ta = da ? da.getTime() : 0;
+    const tb = db ? db.getTime() : 0;
+    if (ta !== tb) return ta - tb;
+    const sn = numVal(a.SO_NO) - numVal(b.SO_NO);
+    if (sn !== 0) return sn;
+    return String(a.ITEM_CODE).localeCompare(String(b.ITEM_CODE));
+  });
+
+  return {
+    rows: out,
+    rate_chk: rateChk ? 'Y' : 'N',
+    head_name: headName,
+    mcs: orderType === 'SO' ? mcsMode : null,
+    cp: cpMode,
+  };
+}
+
+/** In/out line detail for one pending-order summary row (Fox sopnd drill-down). */
+async function buildPendingOrderDetail({
+  comp_code,
+  comp_uid,
+  s_date,
+  e_date,
+  rtype,
+  mcs,
+  so_no,
+  item_code,
+  status,
+  rate,
+  compdet,
+}) {
+  const rateChk = compdetYn(compdet, 'rate_chk');
+  const orderType = String(rtype || 'SO').trim().toUpperCase() === 'PO' ? 'PO' : 'SO';
+  const mcsMode = String(mcs || 'S').trim().toUpperCase() === 'C' ? 'C' : 'S';
+  const soNo = numVal(so_no);
+  const itemTrim = String(item_code ?? '').trim();
+  const statusTrim = String(status ?? '').trim();
+  const rateNum = Math.round(numVal(rate) * 100) / 100;
+
+  const orderBinds = {
+    comp_code,
+    so_no: soNo,
+    item_code: itemTrim,
+    status: statusTrim,
+  };
+  const fulfillBinds = {
+    comp_code,
+    so_no: soNo,
+    item_code: itemTrim,
+    status: statusTrim,
+  };
+  let orderRateSql = '';
+  let fulfillRateSql = '';
+  if (rateChk) {
+    orderBinds.rate = rateNum;
+    fulfillBinds.rate = rateNum;
+    orderRateSql = ' AND ROUND(NVL(A.RATE, 0), 2) = ROUND(:rate, 2)';
+    fulfillRateSql = orderRateSql;
+  }
+
+  const orderSql = `
+    SELECT A.SO_NO, A.SO_DATE, A.ITEM_CODE, A.STATUS, A.RATE, A.QNTY, A.MARKA, A.PO_NO, A.REMARKS, A.TRN_NO
+    FROM SORDER A
+    WHERE A.COMP_CODE = :comp_code
+      AND TRIM(UPPER(NVL(TO_CHAR(A.TYPE), '${orderType}'))) = '${orderType}'
+      AND A.SO_NO = :so_no
+      AND TRIM(A.ITEM_CODE) = TRIM(:item_code)
+      AND TRIM(NVL(A.STATUS, ' ')) = TRIM(:status)
+      ${orderRateSql}
+    ORDER BY A.SO_DATE, A.TRN_NO`;
+
+  let fulfillSql;
+  let fulfillSource;
+  if (orderType === 'SO') {
+    if (mcsMode === 'S') {
+      fulfillSource = 'SALE';
+      const rateClause = rateChk
+        ? ' AND ROUND(NVL(A.RATE, 0) - NVL(A.PAPLOO, 0), 2) = ROUND(:rate, 2)'
+        : '';
+      fulfillSql = `
+        SELECT A.SO_NO, A.BILL_DATE AS DOC_DATE, A.BILL_NO AS DOC_NO, A.TYPE, A.ITEM_CODE, A.STATUS,
+               NVL(A.RATE, 0) - NVL(A.PAPLOO, 0) AS RATE, A.QNTY
+        FROM SALE A
+        WHERE A.COMP_CODE = :comp_code AND A.SO_NO = :so_no
+          AND TRIM(A.ITEM_CODE) = TRIM(:item_code)
+          AND TRIM(NVL(A.STATUS, ' ')) = TRIM(:status)
+          ${rateClause}
+        ORDER BY A.BILL_DATE, A.BILL_NO`;
+    } else {
+      fulfillSource = 'ISSUE';
+      const rateClause = rateChk ? fulfillRateSql : '';
+      fulfillSql = `
+        SELECT A.SO_NO, A.R_DATE AS DOC_DATE, A.R_NO AS DOC_NO, A.TYPE, A.ITEM_CODE, A.STATUS, A.RATE, A.QNTY
+        FROM ISSUE A
+        WHERE A.COMP_CODE = :comp_code AND A.SO_NO = :so_no
+          AND TRIM(A.ITEM_CODE) = TRIM(:item_code)
+          AND TRIM(NVL(A.STATUS, ' ')) = TRIM(:status)
+          ${rateClause}
+        ORDER BY A.R_DATE, A.R_NO`;
+    }
+  } else {
+    fulfillSource = 'PURCHASE';
+    const rateClause = rateChk ? fulfillRateSql : '';
+    fulfillSql = `
+      SELECT A.SO_NO, A.R_DATE AS DOC_DATE, A.R_NO AS DOC_NO, A.BILL_NO, A.BILL_DATE, A.TYPE,
+             A.ITEM_CODE, A.STATUS, A.RATE, A.QNTY
+      FROM PURCHASE A
+      WHERE A.COMP_CODE = :comp_code AND A.SO_NO = :so_no
+        AND TRIM(A.ITEM_CODE) = TRIM(:item_code)
+        AND TRIM(NVL(A.STATUS, ' ')) = TRIM(:status)
+        ${rateClause}
+      ORDER BY A.R_DATE, A.R_NO`;
+  }
+
+  let orderRows;
+  let fulfillRows;
+  try {
+    [orderRows, fulfillRows] = await Promise.all([
+      runQuery(orderSql, orderBinds, comp_uid),
+      runQuery(fulfillSql, fulfillBinds, comp_uid),
+    ]);
+  } catch (e) {
+    if (orderType === 'SO' && mcsMode === 'S' && String(e?.message || '').includes('ORA-00904')) {
+      const rateClause = rateChk ? ' AND ROUND(NVL(A.RATE, 0), 2) = ROUND(:rate, 2)' : '';
+      fulfillSql = `
+        SELECT A.SO_NO, A.BILL_DATE AS DOC_DATE, A.BILL_NO AS DOC_NO, A.TYPE, A.ITEM_CODE, A.STATUS, A.RATE, A.QNTY
+        FROM SALE A
+        WHERE A.COMP_CODE = :comp_code AND A.SO_NO = :so_no
+          AND TRIM(A.ITEM_CODE) = TRIM(:item_code)
+          AND TRIM(NVL(A.STATUS, ' ')) = TRIM(:status)
+          ${rateClause}
+        ORDER BY A.BILL_DATE, A.BILL_NO`;
+      [orderRows, fulfillRows] = await Promise.all([
+        runQuery(orderSql, orderBinds, comp_uid),
+        runQuery(fulfillSql, fulfillBinds, comp_uid),
+      ]);
+    } else {
+      throw e;
+    }
+  }
+
+  const orderLines = (orderRows || []).map((r) => ({
+    IO: 'IN',
+    SOURCE: 'ORDER',
+    SO_NO: numVal(r.SO_NO),
+    SO_DATE: pendingOrderYmd(r.SO_DATE),
+    DOC_DATE: pendingOrderYmd(r.SO_DATE),
+    DOC_NO: String(r.TRN_NO ?? r.trn_no ?? ''),
+    TRN_NO: String(r.TRN_NO ?? r.trn_no ?? ''),
+    ITEM_CODE: String(r.ITEM_CODE ?? '').trim(),
+    STATUS: String(r.STATUS ?? '').trim(),
+    RATE: Math.round(numVal(r.RATE) * 100) / 100,
+    QNTY: numVal(r.QNTY),
+    MARKA: String(r.MARKA ?? '').trim(),
+    PO_NO: String(r.PO_NO ?? '').trim(),
+    REMARKS: String(r.REMARKS ?? '').trim(),
+    TYPE: orderType,
+  }));
+
+  let oqty = 0;
+  let rqty = 0;
+  for (const r of orderLines) oqty += numVal(r.QNTY);
+
+  const fulfillLines = (fulfillRows || []).map((r) => {
+    let qty = numVal(r.QNTY);
+    if (orderType === 'SO' && mcsMode === 'S') qty *= pendingOrderSaleQtySign(r.TYPE ?? r.type);
+    rqty += qty;
+    return {
+      IO: 'OUT',
+      SOURCE: fulfillSource,
+      SO_NO: numVal(r.SO_NO),
+      DOC_DATE: pendingOrderYmd(r.DOC_DATE ?? r.doc_date ?? r.BILL_DATE ?? r.R_DATE),
+      DOC_NO: String(r.DOC_NO ?? r.doc_no ?? r.BILL_NO ?? r.R_NO ?? ''),
+      BILL_NO: String(r.BILL_NO ?? r.bill_no ?? ''),
+      ITEM_CODE: String(r.ITEM_CODE ?? '').trim(),
+      STATUS: String(r.STATUS ?? '').trim(),
+      RATE: Math.round(numVal(r.RATE) * 100) / 100,
+      QNTY: qty,
+      TYPE: String(r.TYPE ?? r.type ?? '').trim(),
+    };
+  });
+
+  const bqty = Math.round((oqty - rqty) * 1000) / 1000;
+
+  return {
+    so_no: soNo,
+    item_code: itemTrim,
+    status: statusTrim,
+    rate: rateNum,
+    order_lines: orderLines,
+    fulfill_lines: fulfillLines,
+    summary: {
+      OQTY: Math.round(oqty * 1000) / 1000,
+      RQTY: Math.round(rqty * 1000) / 1000,
+      BQTY: bqty,
+    },
+    fulfill_source: fulfillSource,
+  };
+}
+
+app.get('/api/pending-order-parties', async (req, res) => {
+  try {
+    const { comp_code, comp_uid } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    const rows = await runQuery(
+      `SELECT CODE, NAME, CITY, NVL(GST_NO, ' ') AS GST_NO, NVL(PAN, ' ') AS PAN
+       FROM MASTER WHERE COMP_CODE = :comp_code ORDER BY NAME, CITY, CODE`,
+      { comp_code },
+      comp_uid
+    );
+    res.json(rows || []);
+  } catch (err) {
+    console.error('❌ pending-order-parties error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/pending-order-detail', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, rtype, mcs, so_no, item_code, status, rate } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (!s_date || !e_date || so_no == null || !item_code) {
+      return res.status(400).json({ error: 's_date, e_date, so_no, item_code are required' });
+    }
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid);
+    if (!compdet) return res.status(404).json({ error: 'compdet not found' });
+    const detail = await buildPendingOrderDetail({
+      comp_code,
+      comp_uid,
+      s_date,
+      e_date,
+      rtype,
+      mcs,
+      so_no,
+      item_code,
+      status,
+      rate,
+      compdet,
+    });
+    res.json({ ok: true, ...detail });
+  } catch (err) {
+    console.error('❌ pending-order-detail error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/pending-sales-order-report', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, code, item_code, mcs, cp } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (!s_date || !e_date) {
+      return res.status(400).json({ error: 's_date and e_date (DD-MM-YYYY) are required' });
+    }
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid);
+    if (!compdet) return res.status(404).json({ error: 'compdet not found' });
+    const result = await buildPendingOrderReportRows({
+      comp_code,
+      comp_uid,
+      s_date,
+      e_date,
+      code,
+      item_code,
+      rtype: 'SO',
+      mcs,
+      cp,
+      compdet,
+    });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('❌ pending-sales-order-report error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/pending-purchase-order-report', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, code, item_code, cp } = req.query;
+    if (!comp_code || comp_uid == null) {
+      return res.status(400).json({ error: 'comp_code and comp_uid are required' });
+    }
+    if (!s_date || !e_date) {
+      return res.status(400).json({ error: 's_date and e_date (DD-MM-YYYY) are required' });
+    }
+    const compdet = await runCompdetHeaderRow(comp_code, comp_uid);
+    if (!compdet) return res.status(404).json({ error: 'compdet not found' });
+    const result = await buildPendingOrderReportRows({
+      comp_code,
+      comp_uid,
+      s_date,
+      e_date,
+      code,
+      item_code,
+      rtype: 'PO',
+      cp,
+      compdet,
+    });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('❌ pending-purchase-order-report error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/sales-order-list-report', async (req, res) => {
   try {
     const { comp_code, comp_uid, s_date, e_date, code, item_code, marka } = req.query;
