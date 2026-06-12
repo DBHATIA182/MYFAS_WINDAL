@@ -411,9 +411,20 @@
   line-height: 1.45;
 }
 
+.windal-initial-year-hint {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
 .windal-initial-year-table-wrap {
   margin-bottom: 16px;
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: min(52vh, 440px);
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
 }
 
 .windal-initial-year-table {
@@ -423,6 +434,9 @@
 }
 
 .windal-initial-year-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   background: #1a3d73;
   color: #fff;
   padding: 10px 8px;
@@ -433,6 +447,8 @@
 
 .windal-initial-year-table tbody tr {
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(26, 61, 115, 0.12);
 }
 
 .windal-initial-year-table tbody td {

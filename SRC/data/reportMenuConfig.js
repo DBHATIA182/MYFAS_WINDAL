@@ -28,6 +28,7 @@ export const REPORT_MENU = [
     tileColor: '#0ca678',
     items: [
       { id: 'ledger', title: 'Ledger Report', shortTitle: 'Ledger', description: 'Account transactions' },
+      { id: 'complete-ledger', title: 'Complete Ledger', shortTitle: 'Complete Ledger', description: 'All accounts in code range' },
       { id: 'ledger-interest', title: 'Ledger With Interest', shortTitle: 'Ledger + Int.', description: 'Interest calculation' },
       { id: 'customer-ledger', title: 'Customer Ledger', shortTitle: 'Customer Ledger', description: 'Customer bills' },
       {

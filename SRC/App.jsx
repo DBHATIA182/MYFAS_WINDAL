@@ -27,6 +27,7 @@ import Slide36StateWisePurchase from './slides/Slide36StateWisePurchase';
 import Slide37PendingSalesOrder from './slides/Slide37PendingSalesOrder';
 import Slide38PendingPurchaseOrder from './slides/Slide38PendingPurchaseOrder';
 import Slide39PendingDispatchChallan from './slides/Slide39PendingDispatchChallan';
+import Slide40CompleteLedger from './slides/Slide40CompleteLedger';
 import Slide17TradingAc from './slides/Slide17TradingAc';
 import Slide18PlProfitLoss from './slides/Slide18PlProfitLoss';
 import Slide19BalanceSheet from './slides/Slide19BalanceSheet';
@@ -568,6 +569,7 @@ function App() {
     setFormData(prev => ({ ...prev, ...data }));
     const reportType = String(data?.reportType ?? '').trim().toLowerCase();
     if (reportType === 'ledger' || reportType === 'ledger-interest') setCurrentSlide(5);
+    else if (reportType === 'complete-ledger') setCurrentSlide(40);
     else if (reportType === 'bill-ledger' || reportType === 'customer-ledger' || reportType === 'supplier-ledger') setCurrentSlide(6);
     else if (reportType === 'broker-os') setCurrentSlide(7);
     else if (reportType === 'sale-list') setCurrentSlide(8);
@@ -707,6 +709,7 @@ function App() {
       const voiceCommands = [
         { phrases: ['open trial balance', 'trial balance'], reportType: 'trial-balance', slideNo: 4, title: 'Trial Balance' },
         { phrases: ['open ledger with interest', 'ledger with interest'], reportType: 'ledger-interest', slideNo: 5, title: 'Ledger With Interest' },
+        { phrases: ['open complete ledger', 'complete ledger'], reportType: 'complete-ledger', slideNo: 40, title: 'Complete Ledger' },
         { phrases: ['open ledger', 'ledger'], reportType: 'ledger', slideNo: 5, title: 'Ledger' },
         { phrases: ['open customer ledger', 'customer ledger'], reportType: 'customer-ledger', slideNo: 6, title: 'Customer Ledger' },
         { phrases: ['open supplier ledger', 'supplier ledger'], reportType: 'supplier-ledger', slideNo: 6, title: 'Supplier Ledger' },
@@ -1152,6 +1155,14 @@ function App() {
         )}
         {currentSlide === 39 && (
           <Slide39PendingDispatchChallan
+            apiBase={API_BASE}
+            formData={formData}
+            onPrev={() => setCurrentSlide(3)}
+            onReset={handleReset}
+          />
+        )}
+        {currentSlide === 40 && (
+          <Slide40CompleteLedger
             apiBase={API_BASE}
             formData={formData}
             onPrev={() => setCurrentSlide(3)}

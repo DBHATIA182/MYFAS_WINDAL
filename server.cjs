@@ -4326,6 +4326,212 @@ app.get('/api/ledger', async (req, res) => {
   }
 });
 
+async function fetchLedgerAccountRows(comp_code, comp_uid, code, s_date, e_date, voucher_wise_total) {
+  const codeN = parseMasterCodeForSql(code);
+  if (codeN === undefined) {
+    const err = new Error('Invalid account code');
+    err.statusCode = 400;
+    throw err;
+  }
+  const voucherWiseTotal = String(voucher_wise_total || 'N').trim().toUpperCase() === 'Y';
+
+  const txnSelect = voucherWiseTotal
+    ? `
+        SELECT
+               A.CODE,
+               MAX(B.NAME) AS NAME,
+               MAX(B.CITY) AS CITY,
+               MAX(B.GST_NO) AS GST_NO,
+               MAX(B.PAN) AS PAN,
+               MAX(B.ADD1) AS ADD1,
+               MAX(B.ADD2) AS ADD2,
+               MAX(B.TEL_NO_O) AS TEL_NO_O,
+               A.VR_DATE,
+               A.V_DATE,
+               A.VR_NO,
+               A.VR_TYPE,
+               A.TYPE,
+               0 AS TRN_NO,
+               A.DETAIL,
+               SUM(NVL(A.DR_AMT, 0)) AS DR_AMT,
+               SUM(NVL(A.CR_AMT, 0)) AS CR_AMT,
+               NULL AS DC_CODE,
+               NULL AS DC_NAME
+        FROM LEDGER A, MASTER B
+        WHERE A.COMP_CODE = :comp_code
+          AND A.CODE = :code
+          AND A.VR_DATE BETWEEN TO_DATE(:s_date, 'DD-MM-YYYY') AND TO_DATE(:e_date, 'DD-MM-YYYY')
+          AND A.COMP_CODE = B.COMP_CODE
+          AND A.CODE = B.CODE
+        GROUP BY A.CODE, A.VR_DATE, A.VR_NO, A.VR_TYPE, A.TYPE, A.CHQ_NO, A.DETAIL, A.V_DATE
+      `
+    : `
+        SELECT A.CODE, B.NAME, B.CITY, B.GST_NO, B.PAN, B.ADD1, B.ADD2, B.TEL_NO_O,
+               A.VR_DATE, A.V_DATE, A.VR_NO, A.VR_TYPE, A.TYPE, A.TRN_NO,
+               A.DETAIL, A.DR_AMT, A.CR_AMT, A.DC_CODE, NULL AS DC_NAME
+        FROM LEDGER A, MASTER B
+        WHERE A.COMP_CODE = :comp_code
+          AND A.CODE = :code
+          AND A.VR_DATE BETWEEN TO_DATE(:s_date, 'DD-MM-YYYY') AND TO_DATE(:e_date, 'DD-MM-YYYY')
+          AND A.COMP_CODE = B.COMP_CODE
+          AND A.CODE = B.CODE
+      `;
+
+  const sql = `
+      WITH OP AS (
+        SELECT SUM(NVL(DR_AMT,0) - NVL(CR_AMT,0)) OP_BAL
+        FROM LEDGER
+        WHERE COMP_CODE = :comp_code
+          AND CODE = :code
+          AND VR_DATE < TO_DATE(:s_date, 'DD-MM-YYYY')
+      ),
+      DATA AS (
+        SELECT :code AS CODE, B.NAME, B.CITY, B.GST_NO, B.PAN, B.ADD1, B.ADD2, B.TEL_NO_O,
+               TO_DATE(:s_date,'DD-MM-YYYY') AS VR_DATE,
+               CAST(NULL AS DATE) AS V_DATE,
+               0 AS VR_NO, 'OP' AS VR_TYPE, NULL AS TYPE, 0 AS TRN_NO, 'OPENING BALANCE' AS DETAIL,
+               CASE WHEN OP.OP_BAL > 0 THEN OP.OP_BAL ELSE 0 END AS DR_AMT,
+               CASE WHEN OP.OP_BAL < 0 THEN ABS(OP.OP_BAL) ELSE 0 END AS CR_AMT,
+               NULL AS DC_CODE, NULL AS DC_NAME
+        FROM OP, MASTER B
+        WHERE B.COMP_CODE = :comp_code
+          AND B.CODE = :code
+        UNION ALL
+        ${txnSelect}
+      )
+      SELECT DATA.*,
+             SUM(NVL(DR_AMT,0) - NVL(CR_AMT,0)) OVER (
+               ORDER BY VR_DATE, VR_NO, VR_TYPE, TRN_NO
+               ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+             ) AS RUN_BAL
+      FROM DATA
+      ORDER BY VR_DATE, VR_NO, VR_TYPE, TRN_NO`;
+
+  return runQuery(sql, { comp_code, code: codeN, s_date, e_date }, comp_uid);
+}
+
+function ledgerRowsHavePeriodTransactions(rows) {
+  return (rows || []).some((row) => {
+    const vr = String(row.VR_TYPE ?? row.vr_type ?? '').trim().toUpperCase();
+    if (vr === 'OP') return false;
+    const dr = Number(row.DR_AMT ?? row.dr_amt) || 0;
+    const cr = Number(row.CR_AMT ?? row.cr_amt) || 0;
+    return dr !== 0 || cr !== 0;
+  });
+}
+
+async function fetchCompleteLedgerMasterAccounts(comp_code, comp_uid, scheduleRaw, s_code, e_code, s_date, e_date) {
+  const sCodeN = parseMasterCodeForSql(s_code);
+  const eCodeN = parseMasterCodeForSql(e_code);
+  if (sCodeN === undefined || eCodeN === undefined) {
+    const err = new Error('s_code and e_code must be numeric');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!s_date || !e_date) {
+    const err = new Error('s_date and e_date are required');
+    err.statusCode = 400;
+    throw err;
+  }
+  let scheduleClause = '';
+  const binds = { comp_code, s_code: sCodeN, e_code: eCodeN, s_date, e_date };
+  if (scheduleRaw != null && String(scheduleRaw).trim() !== '') {
+    const schedN = parseMasterCodeForSql(scheduleRaw);
+    if (schedN === undefined) {
+      const err = new Error('schedule must be numeric when provided');
+      err.statusCode = 400;
+      throw err;
+    }
+    scheduleClause = ' AND ROUND(NVL(M.SCHEDULE, 0), 2) = :schedule';
+    binds.schedule = schedN;
+  }
+  const sql = `
+      SELECT M.CODE, M.NAME, M.CITY, M.GST_NO, M.PAN, M.ADD1, M.ADD2, M.TEL_NO_O
+      FROM MASTER M
+      WHERE M.COMP_CODE = :comp_code
+        AND M.CODE BETWEEN :s_code AND :e_code
+        ${scheduleClause}
+        AND EXISTS (
+          SELECT 1
+          FROM LEDGER L
+          WHERE L.COMP_CODE = M.COMP_CODE
+            AND L.CODE = M.CODE
+            AND L.VR_DATE BETWEEN TO_DATE(:s_date, 'DD-MM-YYYY') AND TO_DATE(:e_date, 'DD-MM-YYYY')
+            AND (NVL(L.DR_AMT, 0) <> 0 OR NVL(L.CR_AMT, 0) <> 0)
+        )
+      ORDER BY M.CODE`;
+  return runQuery(sql, binds, comp_uid);
+}
+
+async function buildCompleteLedgerReport({
+  comp_code,
+  comp_uid,
+  s_date,
+  e_date,
+  schedule,
+  s_code,
+  e_code,
+  voucher_wise_total,
+}) {
+  const accounts = await fetchCompleteLedgerMasterAccounts(
+    comp_code,
+    comp_uid,
+    schedule,
+    s_code,
+    e_code,
+    s_date,
+    e_date
+  );
+  const sections = [];
+  for (const acc of accounts || []) {
+    const code = acc.CODE ?? acc.code;
+    const rows = await fetchLedgerAccountRows(comp_code, comp_uid, code, s_date, e_date, voucher_wise_total);
+    if (!Array.isArray(rows) || rows.length === 0) continue;
+    if (!ledgerRowsHavePeriodTransactions(rows)) continue;
+    sections.push({
+      code,
+      name: acc.NAME ?? acc.name ?? '',
+      city: acc.CITY ?? acc.city ?? '',
+      rows,
+    });
+  }
+  return {
+    sections,
+    account_count: sections.length,
+    filters: {
+      s_date,
+      e_date,
+      schedule: schedule != null ? String(schedule).trim() : '',
+      s_code: parseMasterCodeForSql(s_code),
+      e_code: parseMasterCodeForSql(e_code),
+    },
+  };
+}
+
+app.get('/api/complete-ledger-report', async (req, res) => {
+  try {
+    const { comp_code, comp_uid, s_date, e_date, schedule, s_code, e_code, voucher_wise_total } = req.query;
+    if (!comp_code || !s_date || !e_date || s_code == null || String(s_code).trim() === '' || e_code == null || String(e_code).trim() === '') {
+      return res.status(400).json({ error: 'comp_code, s_date, e_date, s_code, and e_code are required' });
+    }
+    const payload = await buildCompleteLedgerReport({
+      comp_code,
+      comp_uid,
+      s_date,
+      e_date,
+      schedule,
+      s_code,
+      e_code,
+      voucher_wise_total,
+    });
+    res.json(payload);
+  } catch (err) {
+    console.error('❌ Complete Ledger Report Error:', err.message);
+    const status = err.statusCode || 500;
+    res.status(status).json({ error: err.message });
+  }
+});
+
 // 4A. Ledger with Interest Report
 app.get('/api/ledger-interest', async (req, res) => {
   try {

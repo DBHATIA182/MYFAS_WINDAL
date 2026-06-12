@@ -1138,6 +1138,68 @@ function buildLedgerReportHtml(data, metadata) {
   `;
 }
 
+function stripLedgerReportDocShell(html) {
+  const s = String(html || '');
+  const openEnd = s.indexOf('>');
+  const closeStart = s.lastIndexOf('</div>');
+  if (openEnd === -1 || closeStart === -1 || closeStart <= openEnd) return s;
+  return s.slice(openEnd + 1, closeStart).trim();
+}
+
+function buildCompleteLedgerReportHtml(data, metadata) {
+  const sections = Array.isArray(data?.sections) ? data.sections : [];
+  const company = escHtml(metadata?.companyName || metadata?.formData?.comp_name || metadata?.formData?.COMP_NAME || '');
+  const year = escHtml(metadata?.year || '');
+  const period = escHtml(metadata?.endDate || '');
+  const generated = escHtml(new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
+  const filterBits = [
+    metadata?.scheduleNo ? `Schedule ${escHtml(metadata.scheduleNo)}${metadata.scheduleLabel ? ` (${escHtml(metadata.scheduleLabel)})` : ''}` : '',
+    metadata?.startCode != null && metadata?.endCode != null ? `Codes ${escHtml(metadata.startCode)}–${escHtml(metadata.endCode)}` : '',
+    metadata?.accountCount != null ? `${escHtml(metadata.accountCount)} account(s)` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const body = sections
+    .map((sec, idx) => {
+      const row0 = Array.isArray(sec.rows) && sec.rows.length ? sec.rows[0] : null;
+      const accountMeta = buildLedgerStatementPdfMetadata({
+        formData: metadata?.formData,
+        compLedgerHeader: metadata?.compLedgerHeader,
+        account: { CODE: sec.code, NAME: sec.name, CITY: sec.city, ...(row0 || {}) },
+        year: metadata?.year,
+        endDate: metadata?.endDate,
+      });
+      const breakCls = idx > 0 ? ' complete-ledger-pdf-section--break' : '';
+      const inner = stripLedgerReportDocShell(buildLedgerReportHtml(sec.rows, accountMeta));
+      return `<div class="complete-ledger-pdf-section${breakCls}">${inner}</div>`;
+    })
+    .join('');
+
+  return `
+    <div class="report-doc complete-ledger-pdf-root">
+      <style>${PDF_REPORT_STYLES}</style>
+      <style>
+        .complete-ledger-pdf-section--break { page-break-before: always; break-before: page; margin-top: 16px; }
+        .complete-ledger-pdf-cover { page-break-after: always; break-after: page; margin-bottom: 12px; }
+      </style>
+      <div class="complete-ledger-pdf-cover">
+        <div class="report-topbar">
+          <div class="kicker">ACCOUNTING REPORT</div>
+          <h1>COMPLETE LEDGER</h1>
+          ${company ? `<div class="ledger-pdf-company-name">${company}</div>` : ''}
+          <table class="report-grid">
+            <tr><td class="lbl">Financial year</td><td class="val">${year}</td><td class="lbl">Accounts</td><td class="val">${escHtml(sections.length)}</td></tr>
+          </table>
+          <div class="report-period"><strong>Period: ${period}</strong>${filterBits ? ` &nbsp;|&nbsp; ${filterBits}` : ''}</div>
+          <div class="report-period"><strong>Generated:</strong> ${generated}</div>
+        </div>
+      </div>
+      ${body}
+    </div>
+  `;
+}
+
 /** Trading Ledger PDF (Entry/Date/Month wise). */
 function buildTradingLedgerReportHtml(data, metadata) {
   const rows = Array.isArray(data) ? data : [];
@@ -5657,9 +5719,10 @@ function buildTrialBalanceJsPdfBlob(data, metadata) {
 }
 
 /** Ledger PDF via jsPDF (styled like trial balance; reliable on mobile). */
-function buildLedgerJsPdfBlob(data, metadata) {
+function buildLedgerJsPdfBlob(data, metadata, pdfOpts = {}) {
   const rows = Array.isArray(data) ? data : [];
-  const doc = createJsPdfA4Portrait();
+  const doc = pdfOpts.doc || createJsPdfA4Portrait();
+  if (pdfOpts.doc) doc.addPage();
   const { pw, ph, lm, contentW } = pdfPageLayout(doc);
   const MIN_ROW_H = 5.8;
   const LINE_H = 3.1;
@@ -5707,7 +5770,7 @@ function buildLedgerJsPdfBlob(data, metadata) {
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(15);
-  doc.text('LEDGER ACCOUNT', lm + contentW / 2, y + 6.5, { align: 'center' });
+  doc.text(String(metadata?.ledgerBannerTitle || 'LEDGER ACCOUNT'), lm + contentW / 2, y + 6.5, { align: 'center' });
   y += 12;
 
   const panelH = 20;
@@ -5904,6 +5967,23 @@ function buildLedgerJsPdfBlob(data, metadata) {
     'grand'
   );
 
+  if (!pdfOpts.deferPageNumbers) {
+    const pageCount = doc.getNumberOfPages();
+    for (let p = 1; p <= pageCount; p += 1) {
+      doc.setPage(p);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(120, 130, 150);
+      doc.text(`Page ${p} of ${pageCount}`, pw - lm, ph - 5, { align: 'right' });
+    }
+  }
+
+  if (pdfOpts.returnDoc) return doc;
+  return doc.output('blob');
+}
+
+function stampJsPdfPageNumbers(doc) {
+  const { pw, ph, lm } = pdfPageLayout(doc);
   const pageCount = doc.getNumberOfPages();
   for (let p = 1; p <= pageCount; p += 1) {
     doc.setPage(p);
@@ -5912,7 +5992,35 @@ function buildLedgerJsPdfBlob(data, metadata) {
     doc.setTextColor(120, 130, 150);
     doc.text(`Page ${p} of ${pageCount}`, pw - lm, ph - 5, { align: 'right' });
   }
+}
 
+function buildCompleteLedgerJsPdfBlob(data, metadata) {
+  const sections = Array.isArray(data?.sections) ? data.sections : [];
+  if (!sections.length) throw new Error('No ledger sections to export');
+
+  let doc = null;
+  sections.forEach((sec, idx) => {
+    const row0 = Array.isArray(sec.rows) && sec.rows.length ? sec.rows[0] : null;
+    const accountMeta = buildLedgerStatementPdfMetadata({
+      formData: metadata?.formData,
+      compLedgerHeader: metadata?.compLedgerHeader,
+      account: { CODE: sec.code, NAME: sec.name, CITY: sec.city, ...(row0 || {}) },
+      year: metadata?.year,
+      endDate: metadata?.endDate,
+    });
+    const ledgerMeta = {
+      ...accountMeta,
+      ledgerBannerTitle: idx === 0 && sections.length > 1 ? 'COMPLETE LEDGER' : 'LEDGER ACCOUNT',
+    };
+    const rows = Array.isArray(sec.rows) ? sec.rows : [];
+    if (idx === 0) {
+      doc = buildLedgerJsPdfBlob(rows, ledgerMeta, { returnDoc: true, deferPageNumbers: true });
+      return;
+    }
+    buildLedgerJsPdfBlob(rows, ledgerMeta, { doc, returnDoc: true, deferPageNumbers: true });
+  });
+
+  stampJsPdfPageNumbers(doc);
   return doc.output('blob');
 }
 
@@ -6140,6 +6248,7 @@ async function htmlDocumentToPdfBlob(documentHtml, options) {
   });
   try {
     const root =
+      idoc.querySelector('.complete-ledger-pdf-root') ||
       idoc.querySelector('.cash-receipt-sheet') ||
       idoc.querySelector('.voucher-doc') ||
       idoc.querySelector('.production-print-pdf-doc') ||
@@ -6162,6 +6271,7 @@ async function htmlDocumentToPdfBlob(documentHtml, options) {
 
 export function buildReportHtml(reportType, data, metadata) {
   if (reportType === 'ledger') return buildLedgerReportHtml(data, metadata);
+  if (reportType === 'complete-ledger') return buildCompleteLedgerReportHtml(data, metadata);
   if (reportType === 'trading-ledger') return buildTradingLedgerReportHtml(data, metadata);
   if (reportType === 'bill-ledger') return buildBillLedgerReportHtml(data, metadata);
   if (reportType === 'broker-os') return buildBrokerOsReportHtml(data, metadata);
@@ -6244,7 +6354,7 @@ function getPdfOptions(metadata, reportType, data) {
           scrollX: 0,
           scrollY: 0,
         }
-      : reportType === 'pending-sales-order' || reportType === 'pending-purchase-order' || reportType === 'pending-dispatch-challan'
+      : reportType === 'pending-sales-order' || reportType === 'pending-purchase-order' || reportType === 'pending-dispatch-challan' || reportType === 'complete-ledger'
         ? {
             scale: 1.75,
             useCORS: true,
@@ -6313,7 +6423,8 @@ function getPdfOptions(metadata, reportType, data) {
           : reportType === 'trial-balance' ||
               reportType === 'trial-balance-summary' ||
               reportType === 'trial-date-wise' ||
-              reportType === 'ledger'
+              reportType === 'ledger' ||
+              reportType === 'complete-ledger'
             ? {
                 scale: shouldPreferNativeFileShare() ? 1 : 1.5,
                 useCORS: true,
@@ -6350,6 +6461,7 @@ function getPdfOptions(metadata, reportType, data) {
         reportType === 'trial-balance-summary' ||
         reportType === 'trial-date-wise' ||
         reportType === 'ledger' ||
+        reportType === 'complete-ledger' ||
         reportType === 'sale-bill' ||
         reportType === 'purchase-bill' ||
         reportType === 'dispatch-challan-print' ||
@@ -6380,7 +6492,8 @@ function getPdfOptions(metadata, reportType, data) {
     reportType === 'trial-balance' ||
     reportType === 'trial-balance-summary' ||
     reportType === 'trial-date-wise' ||
-    reportType === 'ledger'
+    reportType === 'ledger' ||
+    reportType === 'complete-ledger'
   ) {
     base.pagebreak = { mode: ['css', 'legacy'] };
   }
@@ -6411,6 +6524,18 @@ export async function getPdfBlob(reportType, data, metadata) {
       const blob = buildLedgerJsPdfBlob(data, metadata);
       assertPdfBlob(blob);
       return { blob, filename: options.filename };
+    }
+    if (reportType === 'complete-ledger') {
+      try {
+        const blob = buildCompleteLedgerJsPdfBlob(data, metadata);
+        assertPdfBlob(blob);
+        return { blob, filename: options.filename };
+      } catch (err) {
+        const htmlContent = buildReportHtml(reportType, data, metadata);
+        const docHtml = wrapReportHtmlForPdf(htmlContent);
+        const blob = await htmlDocumentToPdfBlob(docHtml, options);
+        return { blob, filename: options.filename };
+      }
     }
     if (reportType === 'voucher-print') {
       const docHtml = buildVoucherPrintDocumentHtml(data, metadata);
@@ -6585,6 +6710,8 @@ export async function sharePdfWithWhatsApp(reportType, data, metadata, shareText
                                 ? 'Pending Purchase Order'
                               : reportType === 'pending-dispatch-challan'
                                 ? 'Pending Dispatch Challan'
+                              : reportType === 'complete-ledger'
+                                ? 'Complete Ledger'
                             : reportType === 'production-list'
                               ? 'Production list'
                               : reportType === 'production-print'

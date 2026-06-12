@@ -164,6 +164,28 @@ export const REPORT_HELP = {
     },
   },
 
+  'complete-ledger': {
+    title: 'Complete Ledger',
+    summary: 'Ledger for every account in a code range, with optional schedule filter.',
+    sections: [
+      section('Parameters', [
+        'Starting and ending dates, optional specific schedule no. (help list from SCHEDULE), starting and ending account codes.',
+        'Voucher wise total works like the single-account ledger report.',
+      ]),
+      section('On screen', [
+        'One ledger section per account in the selected range.',
+        'Click a row → Voucher detail; sale bill print on supported lines.',
+        'Pdf / Excel / WhatsApp export the full multi-account report.',
+      ]),
+    ],
+    views: {
+      voucher: {
+        title: 'Voucher (from Complete Ledger)',
+        bullets: ['Full voucher lines. ← Back returns to complete ledger.'],
+      },
+    },
+  },
+
   ledger: {
     title: 'Ledger Report',
     summary: 'Detailed transactions for one account over a date range.',
