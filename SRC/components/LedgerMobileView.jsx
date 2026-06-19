@@ -1,9 +1,8 @@
-import React, { useLayoutEffect, useMemo, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import SessionToolbarChrome from './SessionToolbarChrome';
 import { mountLedgerFullBleedLayout } from '../utils/ledgerFullBleedLayout';
 import {
   filterLedgerMobileRows,
-  countLedgerFilterStats,
   ledgerFilterIsActive,
   collectLedgerVrTypes,
   formatBalanceDrCr,
@@ -11,9 +10,12 @@ import {
   formatLedgerMobileShortDate,
   formatParamMobileDate,
   formatLedgerMobileRowBal,
+  formatSignedLedgerAmount,
   ledgerMobileRowClickable,
   ledgerMobileRowTitle,
   ledgerMobileVrMeta,
+  ledgerRowSignedAmount,
+  LEDGER_AMT_EPS,
   splitLedgerMobileRows,
 } from '../utils/ledgerMobileDisplay';
 
@@ -21,16 +23,14 @@ function LedgerMobileTxnCard({ row, onVoucherClick, onLedgerSaleBillClick }) {
   const vrType = row.VR_TYPE ?? row.vr_type;
   const vrDate = row.VR_DATE ?? row.vr_date;
   const vrNo = row.VR_NO ?? row.vr_no;
-  const drAmt = parseFloat(row.DR_AMT ?? row.dr_amt ?? 0) || 0;
-  const crAmt = parseFloat(row.CR_AMT ?? row.cr_amt ?? 0) || 0;
+  const signedAmt = ledgerRowSignedAmount(row);
   const meta = ledgerMobileVrMeta(vrType);
   const { clickable, canSaleBill, canDrill } = ledgerMobileRowClickable(row, {
     onVoucherClick,
     onLedgerSaleBillClick,
   });
-  const isDebit = drAmt > 0;
-  const isCredit = crAmt > 0;
-  const amount = isDebit ? drAmt : isCredit ? crAmt : 0;
+  const isDebit = signedAmt > 0;
+  const isCredit = signedAmt < 0;
 
   const handleClick = () => {
     if (canSaleBill) onLedgerSaleBillClick(row);
@@ -69,13 +69,7 @@ function LedgerMobileTxnCard({ row, onVoucherClick, onLedgerSaleBillClick }) {
             isCredit ? ' ledger-new-mobile__card-amt--credit' : isDebit ? ' ledger-new-mobile__card-amt--debit' : ''
           }`}
         >
-          {amount > 0 ? (
-            <>
-              {isCredit ? '+' : '−'}₹{formatIndianLedgerAmount(amount)}
-            </>
-          ) : (
-            '—'
-          )}
+          {Math.abs(signedAmt) >= LEDGER_AMT_EPS ? formatSignedLedgerAmount(signedAmt) : '—'}
         </span>
         <span className="ledger-new-mobile__card-bal">{formatLedgerMobileRowBal(row)}</span>
       </span>
@@ -107,23 +101,33 @@ export default function LedgerMobileView({
   helpCompanyName = '',
 }) {
   const [search, setSearch] = useState('');
-  const [amountSide, setAmountSide] = useState('all');
-  const [vrType, setVrType] = useState('all');
+  const [amountSideFilter, setAmountSideFilter] = useState('all');
+  const [vrTypeFilter, setVrTypeFilter] = useState('all');
   const [menuOpen, setMenuOpen] = useState(false);
+  const listRef = useRef(null);
 
   useLayoutEffect(() => mountLedgerFullBleedLayout(), []);
 
   const vrTypeOptions = useMemo(() => collectLedgerVrTypes(rows), [rows]);
   const { openingRows, txnRows } = useMemo(() => splitLedgerMobileRows(rows), [rows]);
-  const filteredTxn = useMemo(
-    () => filterLedgerMobileRows(txnRows.map((t) => t.row), search, { amountSide, vrType }),
-    [txnRows, search, amountSide, vrType]
-  );
-  const filterStats = useMemo(
-    () => countLedgerFilterStats(rows, search, { amountSide, vrType }),
-    [rows, search, amountSide, vrType]
-  );
-  const filterActive = ledgerFilterIsActive(search, amountSide, vrType);
+
+  const { visibleTxn, filterStats, filterActive } = useMemo(() => {
+    const txn = txnRows.map((t) => t.row);
+    const filters = { amountSide: amountSideFilter, vrType: vrTypeFilter };
+    const active = ledgerFilterIsActive(search, filters.amountSide, filters.vrType);
+    const visible = filterLedgerMobileRows(txn, search, filters);
+    return {
+      visibleTxn: visible,
+      filterStats: { shown: visible.length, total: txn.length },
+      filterActive: active,
+    };
+  }, [txnRows, search, amountSideFilter, vrTypeFilter]);
+
+  const listFilterKey = `${search}|${amountSideFilter}|${vrTypeFilter}`;
+
+  useLayoutEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [listFilterKey]);
 
   const openingBal =
     openingRows.length > 0
@@ -235,7 +239,7 @@ export default function LedgerMobileView({
             }`}
           >
             <span className="ledger-new-mobile__summary-label">Balance</span>
-            <span className="ledger-new-mobile__summary-value">₹{formatBalanceDrCr(closing)}</span>
+            <span className="ledger-new-mobile__summary-value">{formatBalanceDrCr(closing)}</span>
           </div>
         </div>
 
@@ -258,8 +262,8 @@ export default function LedgerMobileView({
             <span className="ledger-new-mobile__vr-type-label">Vr.Type</span>
             <select
               className="ledger-new-mobile__vr-type-select"
-              value={vrType}
-              onChange={(e) => setVrType(e.target.value)}
+              value={vrTypeFilter}
+              onChange={(e) => setVrTypeFilter(e.target.value)}
               aria-label="Filter by voucher type"
             >
               <option value="all">All types</option>
@@ -281,11 +285,11 @@ export default function LedgerMobileView({
             <button
               key={id}
               type="button"
-              className={`ledger-new-mobile__amount-side${amountSide === id ? ' is-active' : ''}${
+              className={`ledger-new-mobile__amount-side${amountSideFilter === id ? ' is-active' : ''}${
                 id === 'dr' ? ' ledger-new-mobile__amount-side--dr' : id === 'cr' ? ' ledger-new-mobile__amount-side--cr' : ''
               }`}
-              aria-pressed={amountSide === id}
-              onClick={() => setAmountSide(id)}
+              aria-pressed={amountSideFilter === id}
+              onClick={() => setAmountSideFilter(id)}
             >
               {label}
             </button>
@@ -295,8 +299,8 @@ export default function LedgerMobileView({
         {filterActive ? (
           <p className="ledger-new-mobile__filter-count">
             Showing {filterStats.shown} of {filterStats.total} entries
-            {vrType !== 'all' ? ` · Vr ${vrType}` : ''}
-            {amountSide === 'dr' ? ' · Dr only' : amountSide === 'cr' ? ' · Cr only' : ''}
+            {vrTypeFilter !== 'all' ? ` · Vr ${vrTypeFilter}` : ''}
+            {amountSideFilter === 'dr' ? ' · Dr only' : amountSideFilter === 'cr' ? ' · Cr only' : ''}
           </p>
         ) : null}
 
@@ -306,19 +310,19 @@ export default function LedgerMobileView({
         </div>
       </div>
 
-      <div className="ledger-new-mobile__list">
-        {filteredTxn.length === 0 ? (
-          <p className="ledger-new-mobile__empty">No transactions match your filter.</p>
-        ) : (
-          filteredTxn.map((row, i) => (
+      <div ref={listRef} className="ledger-new-mobile__list" key={listFilterKey}>
+        {visibleTxn.length > 0 ? (
+          visibleTxn.map((row, i) => (
             <LedgerMobileTxnCard
-              key={`${row.VR_NO ?? row.vr_no ?? i}-${row.VR_DATE ?? row.vr_date ?? i}`}
+              key={`${listFilterKey}-${row.VR_NO ?? row.vr_no ?? 'n'}-${row.VR_DATE ?? row.vr_date ?? 'd'}-${row.VR_TYPE ?? row.vr_type ?? 't'}-${row.TRN_NO ?? row.trn_no ?? i}`}
               row={row}
               onVoucherClick={onVoucherClick}
               onLedgerSaleBillClick={onLedgerSaleBillClick}
             />
           ))
-        )}
+        ) : filterActive ? (
+          <p className="ledger-new-mobile__empty">No transactions match your filter.</p>
+        ) : null}
       </div>
 
       <footer className="ledger-new-mobile__closing">

@@ -6,6 +6,8 @@ import LedgerReportHeader from '../components/LedgerReportHeader';
 import LedgerReportContextCard from '../components/LedgerReportContextCard';
 import FasReportHeader from '../components/FasReportHeader';
 import TrialBalanceSessionCard from '../components/TrialBalanceSessionCard';
+import TrialBalanceMobileView from '../components/TrialBalanceMobileView';
+import LedgerMobileView from '../components/LedgerMobileView';
 import FlexAmount from '../components/FlexAmount';
 import { computeLedgerSummary } from '../utils/ledgerSummary';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
@@ -52,7 +54,7 @@ function TrialBalanceShell({ className = '', header, exportBar = null, children 
   );
 }
 
-export default function Slide4({ apiBase, formData, onPrev, onReset }) {
+export default function Slide4({ apiBase, formData, onPrev, onReset, viewMode: appViewMode = 'desktop' }) {
   const [viewMode, setViewMode] = useState(VIEW.FORM);
   const [loading, setLoading] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
@@ -373,6 +375,51 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
   }
 
   if (viewMode === VIEW.LEDGER) {
+    if (appViewMode === 'mobile') {
+      return (
+        <>
+          <LedgerMobileView
+            companyName={compName}
+            accountName={ledgerTitle}
+            accountCode={ledgerAccountCode}
+            startDate={toInputDateString(formData.comp_s_dt ?? formData.COMP_S_DT)}
+            endDate={toInputDateString(formData.comp_e_dt ?? formData.COMP_E_DT)}
+            opening={ledgerTotals.opening}
+            sumDr={ledgerTotals.sumDr}
+            sumCr={ledgerTotals.sumCr}
+            closing={ledgerTotals.closing}
+            rows={ledgerRows}
+            onBack={() => setViewMode(VIEW.TRIAL)}
+            onVoucherClick={runLedgerVoucher}
+            onLedgerSaleBillClick={openLedgerSaleBill}
+            onExportPdf={() => downloadLedgerPdf().catch((e) => alert(e?.message || String(e)))}
+            onExportExcel={() => {
+              try {
+                downloadExcelRows(ledgerRows, 'Ledger', `${compName}_Ledger_${ledgerAccountCode}`);
+              } catch (e) {
+                alert(String(e?.message || e));
+              }
+            }}
+            onExportWhatsApp={() => shareLedgerWhatsApp().catch((e) => alert(e?.message || String(e)))}
+            helpReportId="trial-balance"
+            helpCompanyName={compName}
+          />
+          <SaleBillPrintModal
+            open={billPrintOpen}
+            onClose={() => {
+              setBillPrintOpen(false);
+              setBillPrintParams(null);
+            }}
+            apiBase={apiBase}
+            compCode={compCode}
+            compUid={compUid}
+            billParams={billPrintParams}
+            companyName={compName}
+          />
+        </>
+      );
+    }
+
     return (
       <TrialBalanceShell
         className="fas-tb-host--results fas-ledger-host"
@@ -505,6 +552,33 @@ export default function Slide4({ apiBase, formData, onPrev, onReset }) {
   }
 
   if (viewMode === VIEW.TRIAL) {
+    if (appViewMode === 'mobile') {
+      return (
+        <TrialBalanceMobileView
+          rows={trialRows}
+          compName={compName}
+          compYear={compYear}
+          periodStartLabel={periodStartLabel}
+          periodEndLabel={periodEndLabel}
+          endDateDisplay={endDateDisplay}
+          closingDr={trialTotals.closingDr}
+          closingCr={trialTotals.closingCr}
+          onBack={() => setViewMode(VIEW.FORM)}
+          onLedgerClick={(code, name) => runLedger(code, name)}
+          onExportPdf={() => downloadTrialPdf().catch((e) => alert(e?.message || String(e)))}
+          onExportExcel={() => {
+            try {
+              downloadExcelRows(trialRows, 'TrialBalance', `${compName}_TrialBalance`);
+            } catch (e) {
+              alert(String(e?.message || e));
+            }
+          }}
+          onExportWhatsApp={() => shareTrialWhatsApp().catch((e) => alert(e?.message || String(e)))}
+          pdfBusy={pdfBusy}
+        />
+      );
+    }
+
     return (
       <TrialBalanceShell
         className="fas-tb-host--results"

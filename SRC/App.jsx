@@ -54,6 +54,7 @@ import './purchaseBillEntry.css';
 import './styles/saleListScreen.css';
 import './styles/ledgerFullBleed.css';
 import './styles/ledgerMobile.css';
+import './styles/trialBalanceMobile.css';
 import './styles/ledgerDesktop.css';
 
 // Local: Vite dev uses '' so /api/* is proxied to port 5001 (see vite.config.js). Run `npm run server` in another terminal.
@@ -1074,7 +1075,9 @@ function App() {
         {currentSlide === 3 && (
           <Slide3 formData={formData} onPrev={handlePrev} onNext={handleSlide3Next} onExit={handleExitApp} />
         )}
-        {currentSlide === 4 && <Slide4 apiBase={API_BASE} formData={formData} onPrev={handlePrev} onReset={handleReset} />}
+        {currentSlide === 4 && (
+          <Slide4 apiBase={API_BASE} formData={formData} viewMode={viewMode} onPrev={handlePrev} onReset={handleReset} />
+        )}
         {currentSlide === 30 && (
           <Slide30TrialBalanceSummary
             apiBase={API_BASE}
