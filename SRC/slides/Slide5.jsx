@@ -15,8 +15,9 @@ import { filterLedgerRows, countLedgerFilterStats, ledgerFilterIsActive, collect
 import { toInputDateString, toOracleDate, toDisplayDate, formatCurBal, getCurBal } from '../utils/dateFormat';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
 import { computeLedgerSummary } from '../utils/ledgerSummary';
-import SessionInfoLine from '../components/SessionInfoLine';
 import SessionToolbarChrome from '../components/SessionToolbarChrome';
+import TrialBalanceSessionCard from '../components/TrialBalanceSessionCard';
+import ReportHelpButton from '../components/ReportHelpButton';
 import VoiceSearchButton from '../components/VoiceSearchButton';
 import { filterAccountRowsSmart, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
 import { applyVoiceAccountSearch } from '../utils/voiceSearchApply';
@@ -25,6 +26,18 @@ import { LEDGER_FLOW_STYLE, LEDGER_SHELL_STYLE, mountLedgerFullBleedLayout } fro
 function formatIndianAmount(val) {
   const num = parseFloat(val) || 0;
   return num.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+}
+
+function LedgerFormShell({ className = '', header, footer = null, children }) {
+  return (
+    <div className={`slide slide-5 fas-tb-host${className ? ` ${className}` : ''}`}>
+      <div className="fas-flow fas-tb-flow fas-tb-flow--form-app">
+        <div className="fas-ledger-sticky-top">{header}</div>
+        <div className="fas-flow-body fas-tb-body fas-tb-body--form-scroll">{children}</div>
+        {footer ? <div className="fas-tb-form-footer-bar">{footer}</div> : null}
+      </div>
+    </div>
+  );
 }
 
 function LedgerReportShell({ className = '', header, exportBar = null, children }) {
@@ -73,6 +86,7 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
   const [loading, setLoading] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const startDateInputRef = useRef(null);
+  const endDateInputRef = useRef(null);
   const accountSearchInputRef = useRef(null);
   const [listHighlight, setListHighlight] = useState(0);
   const [voucherRows, setVoucherRows] = useState(null);
@@ -188,7 +202,7 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    e?.preventDefault?.();
     if (!selectedAccount) {
       alert('Please select an account');
       return;
@@ -241,6 +255,18 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
       alert('Error: ' + (error.response?.data?.error || error.message));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLedgerFormKeyDown = (e) => {
+    if (e.key !== 'Enter' || e.defaultPrevented) return;
+    const target = e.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (target.id === 'account-search') return;
+
+    e.preventDefault();
+    if (target.id === 'start-date') {
+      endDateInputRef.current?.focus();
     }
   };
 
@@ -370,6 +396,8 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
   );
   const useMobileLedgerCards = viewMode === 'mobile' && !isLedgerInterest;
   const isDesktopLedgerView = viewMode === 'desktop';
+  const ledgerHelpId = isLedgerInterest ? 'ledger-interest' : 'ledger';
+  const ledgerFormTitle = isLedgerInterest ? 'Ledger With Interest' : 'Ledger Report';
 
   if (showReport && reportData.length > 0) {
     const account = accounts.find((a) => String(a.CODE) === String(selectedAccount));
@@ -694,28 +722,52 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
   }
 
   return (
-    <div className="slide slide-5">
-      <h2>{isLedgerInterest ? 'Ledger With Interest Parameters' : 'Ledger Report Parameters'}</h2>
-      
-      <SessionInfoLine formData={formData} helpReportId={isLedgerInterest ? 'ledger-interest' : 'ledger'}>
-        <br />
-        <span className="compdet-date-hint">
-          Dates below are comp_s_dt / comp_e_dt for this year (FY may span two calendar years).
-        </span>
-      </SessionInfoLine>
+    <LedgerFormShell
+      className="fas-tb-host--form fas-ledger-host--form"
+      footer={
+        isDesktopLedgerView ? (
+          <button
+            type="button"
+            className="fas-btn fas-btn-primary fas-tb-run-bottom"
+            disabled={loading}
+            onClick={() => void handleSubmit()}
+          >
+            {loading ? 'Running…' : '▶ Run Report'}
+          </button>
+        ) : null
+      }
+      header={
+        <FasReportHeader
+          title={ledgerFormTitle}
+          onBack={onPrev}
+          rightSlot={
+            isDesktopLedgerView ? (
+              <ReportHelpButton reportId={ledgerHelpId} />
+            ) : (
+              <button
+                type="button"
+                className="fas-report-header__run"
+                disabled={loading}
+                onClick={() => void handleSubmit()}
+              >
+                {loading ? 'Running…' : '▶ Run'}
+              </button>
+            )
+          }
+        />
+      }
+    >
+      <form
+        id="ledger-params-form"
+        onSubmit={handleSubmit}
+        onKeyDown={handleLedgerFormKeyDown}
+        className="fas-tb-form-shell fas-ledger-form-shell"
+      >
+        <TrialBalanceSessionCard compact formData={formData} helpReportId={ledgerHelpId} />
 
-      <form onSubmit={handleSubmit} className="report-form">
-        <div className="button-group button-group--form-top">
-          <button type="button" className="btn btn-secondary" onClick={onPrev}>
-            ← Back
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Loading...' : 'Run'}
-          </button>
-        </div>
-        <div className="form-group account-search-group">
-          <label htmlFor="account-search">Search account:</label>
-          <div className="account-search-input-row">
+        <div className="fas-field-group fas-ledger-form__account">
+          <div className="fas-field-label">Search account</div>
+          <div className="account-search-input-row fas-ledger-form__search-row">
             <input
               id="account-search"
               ref={accountSearchInputRef}
@@ -725,22 +777,22 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
               value={accountSearch}
               onChange={(e) => setAccountSearch(e.target.value)}
               onKeyDown={(e) => {
-              if (selectedAccount) return;
-              const max = Math.max(0, filteredAccounts.length - 1);
-              if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                if (filteredAccounts.length === 0) return;
-                setListHighlight((h) => Math.min(max, h + 1));
-              } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                setListHighlight((h) => Math.max(0, h - 1));
-              } else if (e.key === 'Enter') {
-                const acc = filteredAccounts[safeHighlight];
-                if (acc) {
+                if (selectedAccount) return;
+                const max = Math.max(0, filteredAccounts.length - 1);
+                if (e.key === 'ArrowDown') {
                   e.preventDefault();
-                  selectAccount(acc);
+                  if (filteredAccounts.length === 0) return;
+                  setListHighlight((h) => Math.min(max, h + 1));
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setListHighlight((h) => Math.max(0, h - 1));
+                } else if (e.key === 'Enter') {
+                  const acc = filteredAccounts[safeHighlight];
+                  e.preventDefault();
+                  if (acc) {
+                    selectAccount(acc);
+                  }
                 }
-              }
               }}
               className="form-input account-search-input-row__field"
             />
@@ -752,8 +804,9 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
           </div>
           {selectedAccount ? (
             <p className="account-selected-hint">
-              Selected: <strong>{accounts.find((a) => String(a.CODE) === String(selectedAccount))?.NAME ?? '—'}</strong>
-              {' '}(<code>{selectedAccount}</code>)
+              Selected:{' '}
+              <strong>{accounts.find((a) => String(a.CODE) === String(selectedAccount))?.NAME ?? '—'}</strong>{' '}
+              (<code>{selectedAccount}</code>)
               <button
                 type="button"
                 className="btn-text-clear"
@@ -783,11 +836,7 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
                   const bal = getCurBal(account);
                   const n = Number(bal);
                   const dc =
-                    bal != null && bal !== '' && !Number.isNaN(n)
-                      ? n < 0
-                        ? 'Cr'
-                        : 'Dr'
-                      : '';
+                    bal != null && bal !== '' && !Number.isNaN(n) ? (n < 0 ? 'Cr' : 'Dr') : '';
                   const rowHi = safeHighlight === index;
                   return (
                     <button
@@ -823,39 +872,50 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
               )}
             </div>
           ) : !selectedAccount ? (
-            <p className="sale-bill-section__hint dc-party-search-hint">{SEARCH_TYPE_HINT}</p>
+            <p className="fas-tb-field-hint">{SEARCH_TYPE_HINT}</p>
           ) : null}
         </div>
 
-        <div className="form-group">
-          <label htmlFor="start-date">Starting date (financial year from compdet)</label>
-          <input
-            id="start-date"
-            ref={startDateInputRef}
-            type="date"
-            lang="en-GB"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="form-input"
-          />
-        </div>
+        <div className="fas-ledger-form__date-row">
+          <div className="fas-field-group">
+            <div className="fas-field-label">From (comp_s_dt)</div>
+            <div className="fas-field-input fas-tb-date-field">
+              <span className="fas-field-icon" aria-hidden="true">
+                📅
+              </span>
+              <input
+                id="start-date"
+                ref={startDateInputRef}
+                type="date"
+                lang="en-GB"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
+          </div>
 
-        <div className="form-group">
-          <label htmlFor="end-date">Ending date (financial year from compdet)</label>
-          <input
-            id="end-date"
-            type="date"
-            lang="en-GB"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="form-input"
-          />
+          <div className="fas-field-group">
+            <div className="fas-field-label">To (comp_e_dt)</div>
+            <div className="fas-field-input fas-tb-date-field">
+              <span className="fas-field-icon" aria-hidden="true">
+                📅
+              </span>
+              <input
+                id="end-date"
+                ref={endDateInputRef}
+                type="date"
+                lang="en-GB"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </div>
+          </div>
         </div>
 
         {!isLedgerInterest ? (
-          <div className="form-group">
-            <span className="form-label-block">Voucher Wise Total</span>
-            <div className="radio-row">
+          <div className="fas-field-group">
+            <div className="fas-field-label">Voucher wise total</div>
+            <div className="radio-row fas-ledger-form__radio-row">
               <label className="radio-inline">
                 <input
                   type="radio"
@@ -882,64 +942,62 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
 
         {isLedgerInterest ? (
           <>
-            <div className="form-group">
-              <label htmlFor="interest-date">Interest calculation date</label>
-              <input
-                id="interest-date"
-                type="date"
-                lang="en-GB"
-                value={interestCalcDate}
-                onChange={(e) => setInterestCalcDate(e.target.value)}
-                className="form-input"
-              />
+            <div className="fas-field-group">
+              <div className="fas-field-label">Interest calculation date</div>
+              <div className="fas-field-input fas-tb-date-field">
+                <span className="fas-field-icon" aria-hidden="true">
+                  📅
+                </span>
+                <input
+                  id="interest-date"
+                  type="date"
+                  lang="en-GB"
+                  value={interestCalcDate}
+                  onChange={(e) => setInterestCalcDate(e.target.value)}
+                />
+              </div>
             </div>
-            <div className="form-row-broker">
-              <div className="form-group">
-                <label htmlFor="interest-rate">Rate of interest (%)</label>
-                <input
-                  id="interest-rate"
-                  type="number"
-                  step="0.01"
-                  className="form-input"
-                  value={interestRate}
-                  onChange={(e) => setInterestRate(e.target.value)}
-                />
+            <div className="fas-ledger-form__interest-grid">
+              <div className="fas-field-group">
+                <div className="fas-field-label">Rate of interest (%)</div>
+                <div className="fas-field-input">
+                  <input
+                    id="interest-rate"
+                    type="number"
+                    step="0.01"
+                    value={interestRate}
+                    onChange={(e) => setInterestRate(e.target.value)}
+                  />
+                </div>
               </div>
-              <div className="form-group">
-                <label htmlFor="grace-dr">Grace days Debit</label>
-                <input
-                  id="grace-dr"
-                  type="number"
-                  step="1"
-                  className="form-input"
-                  value={graceDrDays}
-                  onChange={(e) => setGraceDrDays(e.target.value)}
-                />
+              <div className="fas-field-group">
+                <div className="fas-field-label">Grace days (Dr)</div>
+                <div className="fas-field-input">
+                  <input
+                    id="grace-dr"
+                    type="number"
+                    step="1"
+                    value={graceDrDays}
+                    onChange={(e) => setGraceDrDays(e.target.value)}
+                  />
+                </div>
               </div>
-              <div className="form-group">
-                <label htmlFor="grace-cr">Grace days Credit</label>
-                <input
-                  id="grace-cr"
-                  type="number"
-                  step="1"
-                  className="form-input"
-                  value={graceCrDays}
-                  onChange={(e) => setGraceCrDays(e.target.value)}
-                />
+              <div className="fas-field-group">
+                <div className="fas-field-label">Grace days (Cr)</div>
+                <div className="fas-field-input">
+                  <input
+                    id="grace-cr"
+                    type="number"
+                    step="1"
+                    value={graceCrDays}
+                    onChange={(e) => setGraceCrDays(e.target.value)}
+                  />
+                </div>
               </div>
             </div>
           </>
         ) : null}
-
-        <div className="button-group">
-          <button type="button" onClick={onPrev} className="btn btn-secondary">
-            ← Back
-          </button>
-          <button type="submit" disabled={loading} className="btn btn-primary">
-            {loading ? 'Loading...' : 'Run'}
-          </button>
-        </div>
       </form>
-    </div>
+    </LedgerFormShell>
   );
 }

@@ -9,6 +9,7 @@ export default function TrialBalanceSessionCard({
   helpReportId = 'trial-balance',
   helpViewKey = null,
   asOfLabel = null,
+  compact = false,
 }) {
   const session = useAppSession();
   const compName = String(formData?.comp_name ?? formData?.COMP_NAME ?? '').trim();
@@ -22,14 +23,21 @@ export default function TrialBalanceSessionCard({
     .filter(Boolean)
     .join(' | ');
   const ctxLine = [compCode, user].filter(Boolean).join(' | ');
+  const compactMeta = [fyLine, ctxLine].filter(Boolean).join(' · ');
 
   return (
     <>
-      <div className="fas-tb-session-card">
+      <div className={`fas-tb-session-card${compact ? ' fas-tb-session-card--compact' : ''}`}>
         <div className="fas-tb-session-card__text">
           <div className="fas-tb-session-card__company">{compName || '—'}</div>
-          {fyLine ? <div className="fas-tb-session-card__meta">{fyLine}</div> : null}
-          {ctxLine ? <div className="fas-tb-session-card__meta">{ctxLine}</div> : null}
+          {compact ? (
+            compactMeta ? <div className="fas-tb-session-card__meta">{compactMeta}</div> : null
+          ) : (
+            <>
+              {fyLine ? <div className="fas-tb-session-card__meta">{fyLine}</div> : null}
+              {ctxLine ? <div className="fas-tb-session-card__meta">{ctxLine}</div> : null}
+            </>
+          )}
         </div>
         <div className="fas-tb-session-card__actions">
           <SessionToolbarChrome

@@ -571,10 +571,14 @@ function App() {
 };
 
   const handleSlide3Next = (data) => {
-    setFormData(prev => ({ ...prev, ...data }));
     const reportType = String(data?.reportType ?? '').trim().toLowerCase();
-    if (reportType === 'ledger' || reportType === 'ledger-interest') setCurrentSlide(5);
-    else if (reportType === 'complete-ledger') setCurrentSlide(40);
+    if (reportType === 'ledger' || reportType === 'ledger-interest') {
+      setFormData((prev) => ({ ...prev, ...data, ledgerReturnSlide: 3 }));
+      setCurrentSlide(5);
+      return;
+    }
+    setFormData((prev) => ({ ...prev, ...data }));
+    if (reportType === 'complete-ledger') setCurrentSlide(40);
     else if (reportType === 'bill-ledger' || reportType === 'customer-ledger' || reportType === 'supplier-ledger') setCurrentSlide(6);
     else if (reportType === 'broker-os') setCurrentSlide(7);
     else if (reportType === 'sale-list') setCurrentSlide(8);
@@ -658,6 +662,18 @@ function App() {
     setCurrentSlide(8);
   };
 
+  const backFromLedger = () => {
+    const returnSlide = formData.ledgerReturnSlide ?? 3;
+    setFormData((prev) => {
+      const { ledgerReturnSlide, ...rest } = prev;
+      if (returnSlide === 4) {
+        return { ...rest, reportType: 'trial-balance' };
+      }
+      return rest;
+    });
+    setCurrentSlide(returnSlide);
+  };
+
   const handlePrev = () => setCurrentSlide(prev => prev - 1);
 
   const handleExitApp = () => {
@@ -706,7 +722,13 @@ function App() {
           alert(`Please select company and financial year before opening ${title}.`);
           return true;
         }
-        setFormData((prev) => ({ ...prev, reportType }));
+        setFormData((prev) => {
+          const next = { ...prev, reportType };
+          if (reportType === 'ledger' || reportType === 'ledger-interest') {
+            next.ledgerReturnSlide = currentSlide;
+          }
+          return next;
+        });
         setCurrentSlide(slideNo);
         return true;
       };
@@ -1096,7 +1118,7 @@ function App() {
           />
         )}
         {currentSlide === 5 && (
-          <Slide5 apiBase={API_BASE} formData={formData} viewMode={viewMode} onPrev={handlePrev} onReset={handleReset} />
+          <Slide5 apiBase={API_BASE} formData={formData} viewMode={viewMode} onPrev={backFromLedger} onReset={handleReset} />
         )}
         {currentSlide === 6 && (
           <Slide6 apiBase={API_BASE} formData={formData} onPrev={backFromCustomerLedger} onReset={handleReset} />

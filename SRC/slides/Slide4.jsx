@@ -21,6 +21,7 @@ import { formatLedgerVoucherApiError } from '../utils/apiLabel';
 import { sortTrialBalanceRows, computeTrialTopSummary } from '../utils/trialBalanceSort';
 import SessionInfoLine from '../components/SessionInfoLine';
 import SessionToolbarChrome from '../components/SessionToolbarChrome';
+import ReportHelpButton from '../components/ReportHelpButton';
 import { LEDGER_FLOW_STYLE, LEDGER_SHELL_STYLE, mountLedgerFullBleedLayout } from '../utils/ledgerFullBleedLayout';
 
 const VIEW = { FORM: 'form', TRIAL: 'trial', LEDGER: 'ledger', VOUCHER: 'voucher' };
@@ -37,17 +38,19 @@ function computeTrialClosingTotals(rows) {
 
 function TrialBalanceShell({ className = '', header, exportBar = null, children }) {
   const isLedgerHost = className.includes('fas-ledger-host');
+  const isResults = className.includes('fas-tb-host--results');
+  const useFullBleed = isLedgerHost || isResults;
   useLayoutEffect(() => {
-    if (!isLedgerHost) return undefined;
+    if (!useFullBleed) return undefined;
     return mountLedgerFullBleedLayout();
-  }, [isLedgerHost]);
+  }, [useFullBleed]);
 
   return (
     <div
-      className={`slide slide-4 fas-tb-host${isLedgerHost ? ' ledger-full-bleed' : ''}${className ? ` ${className}` : ''}`}
-      style={isLedgerHost ? LEDGER_SHELL_STYLE : undefined}
+      className={`slide slide-4 fas-tb-host${useFullBleed ? ' ledger-full-bleed' : ''}${className ? ` ${className}` : ''}`}
+      style={useFullBleed ? LEDGER_SHELL_STYLE : undefined}
     >
-      <div className="fas-flow fas-tb-flow" style={isLedgerHost ? LEDGER_FLOW_STYLE : undefined}>
+      <div className="fas-flow fas-tb-flow" style={useFullBleed ? LEDGER_FLOW_STYLE : undefined}>
         <div className="fas-ledger-sticky-top">
           {header}
           {exportBar}
@@ -707,14 +710,18 @@ export default function Slide4({ apiBase, formData, onPrev, onReset, viewMode: a
           title="Trial Balance"
           onBack={onPrev}
           rightSlot={
-            <button
-              type="button"
-              className="fas-report-header__run"
-              onClick={runTrialBalance}
-              disabled={loading}
-            >
-              {loading ? 'Running…' : '▶ Run'}
-            </button>
+            appViewMode === 'desktop' ? (
+              <ReportHelpButton reportId="trial-balance" />
+            ) : (
+              <button
+                type="button"
+                className="fas-report-header__run"
+                onClick={runTrialBalance}
+                disabled={loading}
+              >
+                {loading ? 'Running…' : '▶ Run'}
+              </button>
+            )
           }
         />
       }

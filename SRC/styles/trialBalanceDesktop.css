@@ -1,4 +1,109 @@
-/* Desktop trial balance — schedule expand/collapse + filters */
+/* Desktop trial balance — parameters card + report table */
+
+/* ── Parameters: centered framed card on desktop ── */
+@media (min-width: 641px) {
+  .app--desktop .app-main.app-main--ledger-full-bleed:has(> .slide-4.fas-tb-host--form),
+  .app--desktop .app-main:has(> .slide-4.fas-tb-host--form) {
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 28px 24px !important;
+    overflow: auto !important;
+    background: linear-gradient(160deg, #e8eef8 0%, #eef2f7 45%, #f4f6fb 100%) !important;
+  }
+
+  .app--desktop .app-main:has(> .slide-4.fas-tb-host--form) > .slide-4.fas-tb-host--form {
+    width: min(520px, calc(100vw - 48px)) !important;
+    max-width: 520px !important;
+    height: auto !important;
+    max-height: min(720px, calc(100dvh - 96px)) !important;
+    flex: 0 1 auto !important;
+    align-self: center !important;
+    margin: auto !important;
+    border-radius: 18px !important;
+    box-shadow:
+      0 20px 50px rgba(15, 30, 60, 0.12),
+      0 0 0 1px rgba(15, 30, 60, 0.06) !important;
+    background: #fff !important;
+    overflow: hidden !important;
+  }
+
+  .app--desktop .slide-4.fas-tb-host--form .fas-tb-flow {
+    height: auto !important;
+    max-height: min(720px, calc(100dvh - 96px)) !important;
+    border-radius: 18px !important;
+    overflow: hidden !important;
+    background: #fff !important;
+  }
+
+  .app--desktop .slide-4.fas-tb-host--form .fas-report-header {
+    border-radius: 18px 18px 0 0 !important;
+  }
+
+  .app--desktop .slide-4.fas-tb-host--form .fas-tb-body {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 16px 18px 18px !important;
+  }
+
+  .app--desktop .slide-4.fas-tb-host--form .fas-tb-form-shell {
+    gap: 14px;
+  }
+
+  .app--desktop .slide-4.fas-tb-host--form .fas-tb-session-card {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+  }
+}
+
+@media (max-width: 640px) {
+  .slide-4.fas-tb-host--form {
+    width: 100% !important;
+    max-width: none !important;
+    height: 100% !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .slide-4.fas-tb-host--form .fas-tb-flow {
+    height: 100% !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+  }
+}
+
+/* Trial results: bounded table region scrolls vertically */
+.slide-4.fas-tb-host--results.ledger-full-bleed .fas-ledger-sticky-top {
+  flex: 0 0 auto !important;
+}
+
+.slide-4.fas-tb-host--results.ledger-full-bleed .fas-tb-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.slide-4.fas-tb-host--results .fas-tb-session-card,
+.slide-4.fas-tb-host--results .fas-tb-totals,
+.slide-4.fas-tb-host--results .fas-tb-status-hint {
+  flex-shrink: 0;
+}
+
+.slide-4.fas-tb-host--results .fas-tb-table-wrap {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.slide-4.fas-tb-host--results .trial-desktop__toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
 
 .trial-desktop__toolbar {
   display: flex;
