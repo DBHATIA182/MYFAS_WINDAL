@@ -1,0 +1,503 @@
+/* LEDGERNEW — mobile card ledger (viewMode mobile only) */
+
+.ledger-new-mobile {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  background: var(--fas-surface, #eef2f7);
+  box-sizing: border-box;
+}
+
+.ledger-new-mobile__header {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  background: var(--fas-navy, #0f1e3c);
+  color: #fff;
+  z-index: 20;
+}
+
+.ledger-new-mobile__header-back {
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 20px;
+  line-height: 1;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+
+.ledger-new-mobile__header-text {
+  min-width: 0;
+}
+
+.ledger-new-mobile__header-company {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ledger-new-mobile__header-sub {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fas-accent, #7eb8ff);
+  margin-top: 1px;
+}
+
+.ledger-new-mobile__header-account {
+  font-size: 10px;
+  opacity: 0.85;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ledger-new-mobile__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.ledger-new-mobile__header-actions .session-info-line__actions {
+  display: flex;
+  gap: 2px;
+}
+
+.ledger-new-mobile__header-actions .btn-report-help,
+.ledger-new-mobile__header-actions .toolbar-icon-btn,
+.ledger-new-mobile__header-actions .voice-command-btn {
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.ledger-new-mobile__menu-wrap {
+  position: relative;
+}
+
+.ledger-new-mobile__menu-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ledger-new-mobile__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 140px;
+  background: #fff;
+  border: 1px solid var(--fas-border, #d8e0ec);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 30, 60, 0.15);
+  z-index: 40;
+  overflow: hidden;
+}
+
+.ledger-new-mobile__menu-item {
+  display: block;
+  width: 100%;
+  border: none;
+  background: #fff;
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fas-navy, #0f1e3c);
+  cursor: pointer;
+}
+
+.ledger-new-mobile__menu-item + .ledger-new-mobile__menu-item {
+  border-top: 1px solid var(--fas-border, #d8e0ec);
+}
+
+.ledger-new-mobile__sticky {
+  flex: 0 0 auto;
+  padding: 10px 12px 8px;
+  background: linear-gradient(180deg, var(--fas-navy, #0f1e3c) 0%, #1a3270 100%);
+  color: #fff;
+  z-index: 10;
+}
+
+.ledger-new-mobile__dates {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ledger-new-mobile__date-pill {
+  padding: 5px 10px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ledger-new-mobile__date-arrow {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.ledger-new-mobile__summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ledger-new-mobile__summary-card {
+  padding: 8px 6px;
+  border-radius: 10px;
+  text-align: center;
+  min-width: 0;
+  border: 1px solid transparent;
+}
+
+.ledger-new-mobile__summary-card--debit {
+  background: rgba(254, 226, 226, 0.95);
+  border-color: rgba(252, 165, 165, 0.55);
+}
+
+.ledger-new-mobile__summary-card--debit .ledger-new-mobile__summary-label {
+  color: #991b1b;
+  opacity: 1;
+}
+
+.ledger-new-mobile__summary-card--debit .ledger-new-mobile__summary-value {
+  color: #dc2626;
+}
+
+.ledger-new-mobile__summary-card--credit {
+  background: rgba(220, 252, 231, 0.95);
+  border-color: rgba(134, 239, 172, 0.55);
+}
+
+.ledger-new-mobile__summary-card--credit .ledger-new-mobile__summary-label {
+  color: #166534;
+  opacity: 1;
+}
+
+.ledger-new-mobile__summary-card--credit .ledger-new-mobile__summary-value {
+  color: #16a34a;
+}
+
+.ledger-new-mobile__summary-card--balance-dr {
+  background: rgba(219, 234, 254, 0.95);
+  border-color: rgba(147, 197, 253, 0.55);
+}
+
+.ledger-new-mobile__summary-card--balance-dr .ledger-new-mobile__summary-label {
+  color: #1e40af;
+  opacity: 1;
+}
+
+.ledger-new-mobile__summary-card--balance-dr .ledger-new-mobile__summary-value {
+  color: #2563eb;
+}
+
+.ledger-new-mobile__summary-card--balance-cr {
+  background: rgba(220, 252, 231, 0.95);
+  border-color: rgba(134, 239, 172, 0.55);
+}
+
+.ledger-new-mobile__summary-card--balance-cr .ledger-new-mobile__summary-label {
+  color: #166534;
+  opacity: 1;
+}
+
+.ledger-new-mobile__summary-card--balance-cr .ledger-new-mobile__summary-value {
+  color: #16a34a;
+}
+
+.ledger-new-mobile__summary-label {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+  margin-bottom: 4px;
+}
+
+.ledger-new-mobile__summary-value {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.ledger-new-mobile__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 0 10px;
+  height: 38px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--fas-border, #d8e0ec);
+}
+
+.ledger-new-mobile__search-icon {
+  font-size: 14px;
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+
+.ledger-new-mobile__search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--fas-navy, #0f1e3c);
+  outline: none;
+}
+
+.ledger-new-mobile__opening {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--fas-navy, #0f1e3c);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ledger-new-mobile__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ledger-new-mobile__empty {
+  margin: 24px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--fas-text-muted, #64748b);
+}
+
+.ledger-new-mobile__card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  border: 1.5px solid var(--fas-border, #d8e0ec);
+  border-radius: 12px;
+  background: #fff;
+  text-align: left;
+  box-shadow: 0 2px 8px rgba(15, 30, 60, 0.05);
+  cursor: default;
+  font-family: inherit;
+}
+
+.ledger-new-mobile__card--clickable {
+  cursor: pointer;
+}
+
+.ledger-new-mobile__card--clickable:active {
+  transform: scale(0.995);
+  background: #f8fafc;
+}
+
+.ledger-new-mobile__card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.ledger-new-mobile__card-icon--sale {
+  background: rgba(37, 99, 235, 0.12);
+}
+.ledger-new-mobile__card-icon--purchase {
+  background: rgba(234, 88, 12, 0.12);
+}
+.ledger-new-mobile__card-icon--receipt {
+  background: rgba(22, 163, 74, 0.12);
+}
+.ledger-new-mobile__card-icon--payment {
+  background: rgba(220, 38, 38, 0.12);
+}
+.ledger-new-mobile__card-icon--journal {
+  background: rgba(124, 58, 237, 0.12);
+}
+.ledger-new-mobile__card-icon--expense {
+  background: rgba(245, 158, 11, 0.15);
+}
+.ledger-new-mobile__card-icon--neutral {
+  background: rgba(100, 116, 139, 0.12);
+}
+
+.ledger-new-mobile__card-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ledger-new-mobile__card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fas-navy, #0f1e3c);
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.ledger-new-mobile__card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.ledger-new-mobile__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.ledger-new-mobile__chip--date {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.ledger-new-mobile__chip--vr {
+  background: rgba(42, 79, 168, 0.1);
+  color: #2a4fa8;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.ledger-new-mobile__chip--type {
+  color: #fff;
+}
+
+.ledger-new-mobile__chip--sale {
+  background: #2563eb;
+}
+.ledger-new-mobile__chip--purchase {
+  background: #ea580c;
+}
+.ledger-new-mobile__chip--receipt {
+  background: #16a34a;
+}
+.ledger-new-mobile__chip--payment {
+  background: #dc2626;
+}
+.ledger-new-mobile__chip--journal {
+  background: #7c3aed;
+}
+.ledger-new-mobile__chip--expense {
+  background: #d97706;
+}
+.ledger-new-mobile__chip--neutral {
+  background: #64748b;
+}
+
+.ledger-new-mobile__card-amt {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ledger-new-mobile__card-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.ledger-new-mobile__card-bal {
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.ledger-new-mobile__card-amt--debit {
+  color: #dc2626;
+}
+
+.ledger-new-mobile__card-amt--credit {
+  color: #16a34a;
+}
+
+.ledger-new-mobile__closing {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--fas-navy, #0f1e3c);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 15;
+}
+
+.ledger-new-mobile__closing strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.app--mobile .ledger-new-mobile.ledger-full-bleed {
+  position: fixed !important;
+  inset: 0 !important;
+}

@@ -3,6 +3,7 @@ import axios from 'axios';
 import ReportTable from '../components/ReportTable';
 import SaleBillPrintModal from '../components/SaleBillPrintModal';
 import LedgerReportContextCard from '../components/LedgerReportContextCard';
+import LedgerMobileView from '../components/LedgerMobileView';
 import FasReportHeader from '../components/FasReportHeader';
 import FlexAmount from '../components/FlexAmount';
 import { generatePDF, sharePdfWithWhatsApp, buildLedgerStatementPdfMetadata } from '../utils/pdfgenerator';
@@ -58,7 +59,7 @@ function highlightMatch(text, q) {
   );
 }
 
-export default function Slide5({ apiBase, onPrev, onReset, formData }) {
+export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 'desktop' }) {
   const [accounts, setAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState('');
   const [accountSearch, setAccountSearch] = useState('');
@@ -337,6 +338,7 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
   };
 
   const ledgerTotals = useMemo(() => computeLedgerSummary(reportData), [reportData]);
+  const useMobileLedgerCards = viewMode === 'mobile' && !isLedgerInterest;
 
   if (showReport && reportData.length > 0) {
     const account = accounts.find((a) => String(a.CODE) === String(selectedAccount));
@@ -442,6 +444,41 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
           </div>
           {saleBillModal}
         </LedgerReportShell>
+      );
+    }
+
+    if (useMobileLedgerCards) {
+      return (
+        <>
+          <LedgerMobileView
+            companyName={compName}
+            accountName={account?.NAME ?? ''}
+            accountCode={String(selectedAccount || (account?.CODE ?? ''))}
+            startDate={startDate}
+            endDate={endDate}
+            opening={ledgerTotals.opening}
+            sumDr={ledgerTotals.sumDr}
+            sumCr={ledgerTotals.sumCr}
+            closing={ledgerTotals.closing}
+            rows={reportData}
+            onBack={closeReport}
+            onVoucherClick={runLedgerVoucher}
+            onLedgerSaleBillClick={openLedgerSaleBill}
+            onExportPdf={() => downloadPDF().catch((e) => alert(e?.message || String(e)))}
+            onExportExcel={() => {
+              try {
+                const code = String(selectedAccount || 'account');
+                downloadExcelRows(reportData, 'Ledger', `${compName}_Ledger_${code}`);
+              } catch (e) {
+                alert(String(e?.message || e));
+              }
+            }}
+            onExportWhatsApp={() => shareWhatsApp().catch((e) => alert(e?.message || String(e)))}
+            helpReportId="ledger"
+            helpCompanyName={compName}
+          />
+          {saleBillModal}
+        </>
       );
     }
 
