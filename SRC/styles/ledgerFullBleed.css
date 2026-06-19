@@ -1,0 +1,179 @@
+/* Ledger + trial balance report — fixed full viewport (loaded last) */
+
+body.fas-ledger-report-fullpage,
+html.fas-ledger-report-fullpage {
+  width: 100% !important;
+  max-width: none !important;
+  overflow: hidden !important;
+}
+
+body.fas-ledger-report-fullpage {
+  margin: 0 !important;
+  padding: 0 !important;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+
+body.fas-ledger-report-fullpage #root,
+body.fas-ledger-report-fullpage .app {
+  width: 100vw !important;
+  max-width: none !important;
+  min-height: 100dvh !important;
+  height: 100dvh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.ledger-full-bleed .fas-tb-flow {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  height: 100% !important;
+  max-height: 100dvh !important;
+  min-height: 0 !important;
+}
+
+body.fas-ledger-report-fullpage .app,
+.app.app--ledger-full-bleed {
+  background: var(--fas-surface, #eef2f7) !important;
+}
+
+body.fas-ledger-report-fullpage .app-main,
+.app-main.app-main--ledger-full-bleed {
+  align-items: stretch !important;
+  justify-content: stretch !important;
+  padding: 0 !important;
+  width: 100vw !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+.ledger-full-bleed,
+body.fas-ledger-report-fullpage .ledger-full-bleed,
+.app-main--ledger-full-bleed > .ledger-full-bleed {
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  max-width: none !important;
+  height: 100dvh !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  align-self: stretch !important;
+  flex: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  z-index: 5 !important;
+  box-sizing: border-box !important;
+}
+
+.ledger-full-bleed .fas-tb-flow,
+body.fas-ledger-report-fullpage .fas-tb-flow,
+.app-main--ledger-full-bleed .fas-tb-flow {
+  width: 100% !important;
+  max-width: none !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  border-radius: 0 !important;
+}
+
+.ledger-full-bleed .fas-ledger-sticky-top {
+  flex: 0 0 auto !important;
+  z-index: 30 !important;
+  touch-action: manipulation;
+}
+
+.ledger-full-bleed .fas-ledger-sticky-top .fas-report-header,
+.ledger-full-bleed .fas-tb-flow > .fas-report-header {
+  flex-shrink: 0 !important;
+}
+
+.ledger-full-bleed .fas-ledger-sticky-top .fas-tb-export-bar,
+.ledger-full-bleed .fas-tb-flow > .fas-tb-export-bar {
+  flex-shrink: 0 !important;
+}
+
+.ledger-full-bleed .fas-ledger-host .fas-tb-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+.ledger-full-bleed .fas-ledger-host .fas-ledger-context-card,
+.ledger-full-bleed .fas-ledger-host .fas-ledger-totals,
+.ledger-full-bleed .fas-ledger-host .fas-ledger-footer {
+  flex-shrink: 0;
+}
+
+/* Desktop: keep table in its own scroll region below summary cards */
+@media (min-width: 641px) {
+  .ledger-full-bleed .fas-ledger-host .fas-tb-body {
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .ledger-full-bleed .fas-ledger-host .fas-ledger-table-wrap {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Mobile / app mobile mode: one scroll area under fixed header */
+@media (max-width: 640px) {
+  .ledger-full-bleed .fas-ledger-host .fas-ledger-table-wrap {
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    border: none;
+    border-radius: 0;
+  }
+
+  .ledger-full-bleed .fas-ledger-host .fas-ledger-table-wrap .report-table--ledger thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+}
+
+.app--mobile .ledger-full-bleed .fas-ledger-host .fas-ledger-table-wrap {
+  flex: 0 0 auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+  border: none;
+  border-radius: 0;
+}
+
+.app--mobile .ledger-full-bleed .fas-ledger-host .fas-ledger-table-wrap .report-table--ledger thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.ledger-full-bleed .fas-report-header {
+  border-radius: 0 !important;
+}

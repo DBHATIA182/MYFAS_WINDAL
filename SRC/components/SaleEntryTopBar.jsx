@@ -41,6 +41,7 @@ export default function SaleEntryTopBar({
   userName,
   companyName,
   can,
+  showPermissions = true,
   helpReportId,
   helpViewKey,
   helpLabel,
@@ -71,7 +72,7 @@ export default function SaleEntryTopBar({
             <strong className="sale-entry-top-bar__user">{user}</strong>
           </>
         ) : null}
-        {can ? (
+        {can && showPermissions ? (
           <>
             <Pipe />
             <SaleEntryPermissionPills can={can} />

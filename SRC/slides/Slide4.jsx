@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useLayoutEffect } from 'react';
 import axios from 'axios';
 import ReportTable from '../components/ReportTable';
 import SaleBillPrintModal from '../components/SaleBillPrintModal';
@@ -15,6 +15,7 @@ import { formatLedgerVoucherApiError } from '../utils/apiLabel';
 import { sortTrialBalanceRows, computeTrialTopSummary } from '../utils/trialBalanceSort';
 import SessionInfoLine from '../components/SessionInfoLine';
 import SessionToolbarChrome from '../components/SessionToolbarChrome';
+import { LEDGER_FLOW_STYLE, LEDGER_SHELL_STYLE, mountLedgerFullBleedLayout } from '../utils/ledgerFullBleedLayout';
 
 const VIEW = { FORM: 'form', TRIAL: 'trial', LEDGER: 'ledger', VOUCHER: 'voucher' };
 
@@ -29,11 +30,22 @@ function computeTrialClosingTotals(rows) {
 }
 
 function TrialBalanceShell({ className = '', header, exportBar = null, children }) {
+  const isLedgerHost = className.includes('fas-ledger-host');
+  useLayoutEffect(() => {
+    if (!isLedgerHost) return undefined;
+    return mountLedgerFullBleedLayout();
+  }, [isLedgerHost]);
+
   return (
-    <div className={`slide slide-4 fas-tb-host${className ? ` ${className}` : ''}`}>
-      <div className="fas-flow fas-tb-flow">
-        {header}
-        {exportBar}
+    <div
+      className={`slide slide-4 fas-tb-host${isLedgerHost ? ' ledger-full-bleed' : ''}${className ? ` ${className}` : ''}`}
+      style={isLedgerHost ? LEDGER_SHELL_STYLE : undefined}
+    >
+      <div className="fas-flow fas-tb-flow" style={isLedgerHost ? LEDGER_FLOW_STYLE : undefined}>
+        <div className="fas-ledger-sticky-top">
+          {header}
+          {exportBar}
+        </div>
         <div className="fas-flow-body fas-tb-body">{children}</div>
       </div>
     </div>

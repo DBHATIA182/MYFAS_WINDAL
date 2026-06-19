@@ -31,37 +31,37 @@ export default function LedgerReportContextCard({
 
   return (
     <div className="fas-ledger-context-card">
-      <div className="fas-ledger-context-card__company">
-        {compName ? <div className="fas-ledger-context-card__company-name">{compName}</div> : null}
-        {cAdd1 ? <div className="fas-ledger-context-card__line">{cAdd1}</div> : null}
-        {cAdd2 ? <div className="fas-ledger-context-card__line">{cAdd2}</div> : null}
-        {cGst ? (
-          <div className="fas-ledger-context-card__gst">
-            <span className="fas-ledger-context-card__gst-icon" aria-hidden="true">
-              🏷
-            </span>
-            GST: {cGst}
-          </div>
-        ) : null}
-      </div>
+      <div className="fas-ledger-context-card__grid">
+        <div className="fas-ledger-context-card__company">
+          {compName ? <div className="fas-ledger-context-card__company-name">{compName}</div> : null}
+          {cAdd1 ? <div className="fas-ledger-context-card__line">{cAdd1}</div> : null}
+          {cAdd2 ? <div className="fas-ledger-context-card__line">{cAdd2}</div> : null}
+          {cGst ? (
+            <div className="fas-ledger-context-card__gst">
+              <span className="fas-ledger-context-card__gst-icon" aria-hidden="true">
+                🏷
+              </span>
+              GST: {cGst}
+            </div>
+          ) : null}
+        </div>
 
-      <div className="fas-ledger-context-card__divider" aria-hidden="true" />
-
-      <div className="fas-ledger-context-card__account">
-        {accName ? <div className="fas-ledger-context-card__account-name">{accName}</div> : null}
-        {accCode ? (
-          <div className="fas-ledger-context-card__code-pill">Code: {accCode}</div>
-        ) : null}
-        {fyLine ? (
-          <div className="fas-ledger-context-card__fy">
-            <span className="fas-ledger-context-card__fy-icon" aria-hidden="true">
-              📅
-            </span>
-            {fyLine}
-          </div>
-        ) : null}
-        {hint ? <p className="fas-ledger-context-card__hint">{hint}</p> : null}
+        <div className="fas-ledger-context-card__account">
+          {accName ? <div className="fas-ledger-context-card__account-name">{accName}</div> : null}
+          {accCode ? (
+            <div className="fas-ledger-context-card__code-pill">Code: {accCode}</div>
+          ) : null}
+          {fyLine ? (
+            <div className="fas-ledger-context-card__fy">
+              <span className="fas-ledger-context-card__fy-icon" aria-hidden="true">
+                📅
+              </span>
+              {fyLine}
+            </div>
+          ) : null}
+        </div>
       </div>
+      {hint ? <p className="fas-ledger-context-card__hint">{hint}</p> : null}
     </div>
   );
 }

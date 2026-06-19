@@ -1,16 +1,45 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import ReportTable from '../components/ReportTable';
 import SaleBillPrintModal from '../components/SaleBillPrintModal';
-import LedgerReportHeader from '../components/LedgerReportHeader';
+import LedgerReportContextCard from '../components/LedgerReportContextCard';
+import FasReportHeader from '../components/FasReportHeader';
+import FlexAmount from '../components/FlexAmount';
 import { generatePDF, sharePdfWithWhatsApp, buildLedgerStatementPdfMetadata } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
 import { toInputDateString, toOracleDate, toDisplayDate, formatCurBal, getCurBal } from '../utils/dateFormat';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
+import { computeLedgerSummary } from '../utils/ledgerSummary';
 import SessionInfoLine from '../components/SessionInfoLine';
+import SessionToolbarChrome from '../components/SessionToolbarChrome';
 import VoiceSearchButton from '../components/VoiceSearchButton';
 import { filterAccountRowsSmart, SEARCH_NO_MATCH, SEARCH_TYPE_HINT } from '../utils/masterSearchFilter';
 import { applyVoiceAccountSearch } from '../utils/voiceSearchApply';
+import { LEDGER_FLOW_STYLE, LEDGER_SHELL_STYLE, mountLedgerFullBleedLayout } from '../utils/ledgerFullBleedLayout';
+
+function formatIndianAmount(val) {
+  const num = parseFloat(val) || 0;
+  return num.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+}
+
+function LedgerReportShell({ className = '', header, exportBar = null, children }) {
+  useLayoutEffect(() => mountLedgerFullBleedLayout(), []);
+
+  return (
+    <div
+      className={`slide slide-5 fas-tb-host ledger-full-bleed${className ? ` ${className}` : ''}`}
+      style={LEDGER_SHELL_STYLE}
+    >
+      <div className="fas-flow fas-tb-flow" style={LEDGER_FLOW_STYLE}>
+        <div className="fas-ledger-sticky-top">
+          {header}
+          {exportBar}
+        </div>
+        <div className="fas-flow-body fas-tb-body">{children}</div>
+      </div>
+    </div>
+  );
+}
 
 function highlightMatch(text, q) {
   if (text == null) return null;
@@ -307,8 +336,18 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
     await sharePdfWithWhatsApp('ledger', reportData, ledgerPdfMeta(), shareText);
   };
 
+  const ledgerTotals = useMemo(() => computeLedgerSummary(reportData), [reportData]);
+
   if (showReport && reportData.length > 0) {
     const account = accounts.find((a) => String(a.CODE) === String(selectedAccount));
+    const compName = formData.comp_name ?? formData.COMP_NAME ?? '';
+    const compYear = formData.comp_year ?? formData.COMP_YEAR ?? '';
+    const periodLine = `Financial year ${compYear} · ${toDisplayDate(startDate)} – ${toDisplayDate(endDate)}`;
+    const ledgerHint = isLedgerInterest
+      ? `Interest date ${toDisplayDate(interestCalcDate)} · Rate ${String(interestRate).trim() || '0'}% · Grace DR ${String(
+          graceDrDays
+        ).trim() || '0'} · Grace CR ${String(graceCrDays).trim() || '0'}`
+      : `Tap a row for voucher detail; sale bill print opens where mapping is available. · Voucher Wise Total: ${voucherWiseTotal}`;
     const closeReport = () => {
       setVoucherRows(null);
       setVoucherTitle('');
@@ -334,113 +373,183 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
 
     if (voucherRows != null) {
       return (
-        <div className="slide slide-report">
-          <SessionInfoLine formData={formData} helpReportId={isLedgerInterest ? 'ledger-interest' : 'ledger'} />
-          <div className="report-toolbar">
-            <h2>Voucher entries</h2>
-            <div className="toolbar-actions">
-            
-              <button type="button" className="btn btn-toolbar-back" onClick={() => setVoucherRows(null)}>
-                ← Back to ledger
+        <LedgerReportShell
+          className="fas-tb-host--results fas-ledger-host"
+          header={
+            <FasReportHeader
+              className="fas-report-header--ledger-toolbar"
+              title="Voucher entries"
+              backLabel="← Ledger"
+              onBack={() => setVoucherRows(null)}
+              rightSlot={
+                <SessionToolbarChrome
+                  helpReportId={isLedgerInterest ? 'ledger-interest' : 'ledger'}
+                  helpCompanyName={compName}
+                />
+              }
+            />
+          }
+          exportBar={
+            <div className="fas-tb-export-bar fas-tb-export-bar--icons">
+              <button
+                type="button"
+                className="fas-tb-export-icon fas-tb-export-icon--back-nav btn btn-secondary"
+                aria-label="Back to ledger"
+                title="Back to ledger"
+                onClick={() => setVoucherRows(null)}
+              >
+                <span aria-hidden="true">←</span>
               </button>
               <button
                 type="button"
-                className="btn btn-excel"
+                className="fas-tb-export-icon btn btn-excel"
+                aria-label="Excel"
+                title="Excel"
                 onClick={() => {
                   try {
                     const tag = String(voucherTitle || 'voucher').replace(/\s+/g, '_');
-                    downloadExcelRows(voucherRows, 'Voucher', `${formData.comp_name ?? 'Company'}_${tag}`);
+                    downloadExcelRows(voucherRows, 'Voucher', `${compName}_${tag}`);
                   } catch (e) {
                     alert(String(e?.message || e));
                   }
                 }}
               >
-                📊 Excel
+                <span aria-hidden="true">📊</span>
               </button>
             </div>
-          </div>
-
-          <LedgerReportHeader
+          }
+        >
+          <LedgerReportContextCard
             compHeader={compLedgerHeader}
-            companyNameFallback={formData.comp_name ?? formData.COMP_NAME ?? ''}
+            companyNameFallback={compName}
             account={account}
             accountCodeFallback={selectedAccount}
-            periodLine={`Financial year ${formData.comp_year ?? formData.COMP_YEAR ?? ''} · ${toDisplayDate(startDate)} – ${toDisplayDate(endDate)}`}
+            fyLine={periodLine}
+            hint={`Voucher: ${voucherTitle}`}
           />
-          <p className="ledger-report-voucher-ref">
-            Voucher: <strong>{voucherTitle}</strong>
-          </p>
 
-          <div className="report-display">
+          <div className="fas-ledger-table-wrap">
             <ReportTable data={voucherRows} type="ledger-voucher" />
           </div>
 
-          <div className="button-group">
-            <button type="button" onClick={() => setVoucherRows(null)} className="btn btn-secondary">
+          <div className="fas-ledger-footer fas-ledger-footer--mobile-only">
+            <button type="button" className="fas-btn fas-btn--outline" onClick={() => setVoucherRows(null)}>
               ← Back to ledger
             </button>
-            <button type="button" onClick={closeReport} className="btn btn-secondary">
-              ← Back
+            <button type="button" className="fas-btn fas-btn--outline" onClick={closeReport}>
+              ← Parameters
             </button>
           </div>
           {saleBillModal}
-        </div>
+        </LedgerReportShell>
       );
     }
 
     return (
-      <div className="slide slide-report">
-        <SessionInfoLine formData={formData} helpReportId={isLedgerInterest ? 'ledger-interest' : 'ledger'} />
-        <div className="report-toolbar">
-          <h2>{isLedgerInterest ? 'Ledger With Interest' : 'Ledger Report'}</h2>
-          <div className="toolbar-actions">
-            
-            <button type="button" className="btn btn-toolbar-back" onClick={closeReport}>
-              ← Back
+      <LedgerReportShell
+        className="fas-tb-host--results fas-ledger-host"
+        header={
+          <FasReportHeader
+            className="fas-report-header--ledger-toolbar"
+            title={isLedgerInterest ? 'Ledger With Interest' : 'Ledger Report'}
+            onBack={closeReport}
+            rightSlot={
+              <SessionToolbarChrome
+                helpReportId={isLedgerInterest ? 'ledger-interest' : 'ledger'}
+                helpCompanyName={compName}
+              />
+            }
+          />
+        }
+        exportBar={
+          <div className="fas-tb-export-bar fas-tb-export-bar--icons">
+            <button
+              type="button"
+              className="fas-tb-export-icon fas-tb-export-icon--back-nav btn btn-secondary"
+              aria-label="Parameters"
+              title="Parameters"
+              onClick={closeReport}
+            >
+              <span aria-hidden="true">←</span>
             </button>
             {!isLedgerInterest ? (
-              <button type="button" onClick={() => downloadPDF().catch((e) => alert(e?.message || String(e)))} className="btn btn-export">
-                Pdf
+              <button
+                type="button"
+                className="fas-tb-export-icon btn btn-export"
+                aria-label="PDF"
+                title="PDF"
+                onClick={() => downloadPDF().catch((e) => alert(e?.message || String(e)))}
+              >
+                <span aria-hidden="true">📄</span>
               </button>
             ) : null}
             <button
               type="button"
-              className="btn btn-excel"
+              className="fas-tb-export-icon btn btn-excel"
+              aria-label="Excel"
+              title="Excel"
               onClick={() => {
                 try {
                   const code = String(selectedAccount || 'account');
-                  downloadExcelRows(reportData, 'Ledger', `${formData.comp_name ?? 'Company'}_Ledger_${code}`);
+                  downloadExcelRows(reportData, 'Ledger', `${compName}_Ledger_${code}`);
                 } catch (e) {
                   alert(String(e?.message || e));
                 }
               }}
             >
-              📊 Excel
+              <span aria-hidden="true">📊</span>
             </button>
             {!isLedgerInterest ? (
-              <button type="button" onClick={() => shareWhatsApp().catch((e) => alert(e?.message || String(e)))} className="btn btn-whatsapp">
-                💬 WhatsApp
+              <button
+                type="button"
+                className="fas-tb-export-icon btn btn-whatsapp"
+                aria-label="WhatsApp"
+                title="WhatsApp"
+                onClick={() => shareWhatsApp().catch((e) => alert(e?.message || String(e)))}
+              >
+                <span aria-hidden="true">💬</span>
               </button>
             ) : null}
           </div>
-        </div>
-
-        <LedgerReportHeader
+        }
+      >
+        <LedgerReportContextCard
           compHeader={compLedgerHeader}
-          companyNameFallback={formData.comp_name ?? formData.COMP_NAME ?? ''}
+          companyNameFallback={compName}
           account={account}
           accountCodeFallback={selectedAccount}
-          periodLine={`Financial year ${formData.comp_year ?? formData.COMP_YEAR ?? ''} · ${toDisplayDate(startDate)} – ${toDisplayDate(endDate)}`}
-          hint={
-            isLedgerInterest
-              ? `Interest date ${toDisplayDate(interestCalcDate)} · Rate ${String(interestRate).trim() || '0'}% · Grace DR ${String(
-                  graceDrDays
-                ).trim() || '0'} · Grace CR ${String(graceCrDays).trim() || '0'}`
-              : `Tap a row for voucher detail; sale bill print opens where mapping is available. · Voucher Wise Total: ${voucherWiseTotal}`
-          }
+          fyLine={periodLine}
+          hint={ledgerHint}
         />
 
-        <div className="report-display">
+        <div className="fas-ledger-totals">
+          <div className="fas-tb-total-card fas-ledger-total-card--opening">
+            <div className="fas-tb-total-card__label">Opening</div>
+            <FlexAmount
+              className="fas-tb-total-card__value"
+              value={formatIndianAmount(ledgerTotals.opening)}
+              prefix="₹"
+            />
+          </div>
+          <div className="fas-tb-total-card fas-tb-total-card--debit">
+            <div className="fas-tb-total-card__label">Total Dr</div>
+            <FlexAmount
+              className="fas-tb-total-card__value"
+              value={formatIndianAmount(ledgerTotals.sumDr)}
+              prefix="₹"
+            />
+          </div>
+          <div className="fas-tb-total-card fas-tb-total-card--credit">
+            <div className="fas-tb-total-card__label">Total Cr</div>
+            <FlexAmount
+              className="fas-tb-total-card__value"
+              value={formatIndianAmount(ledgerTotals.sumCr)}
+              prefix="₹"
+            />
+          </div>
+        </div>
+
+        <div className="fas-ledger-table-wrap">
           <ReportTable
             data={reportData}
             type={isLedgerInterest ? 'ledger-interest' : 'ledger'}
@@ -449,13 +558,13 @@ export default function Slide5({ apiBase, onPrev, onReset, formData }) {
           />
         </div>
 
-        <div className="button-group">
-          <button onClick={closeReport} className="btn btn-secondary">
-            ← Back
+        <div className="fas-ledger-footer fas-ledger-footer--mobile-only">
+          <button type="button" className="fas-btn fas-btn--outline" onClick={closeReport}>
+            ← Parameters
           </button>
         </div>
         {saleBillModal}
-      </div>
+      </LedgerReportShell>
     );
   }
 

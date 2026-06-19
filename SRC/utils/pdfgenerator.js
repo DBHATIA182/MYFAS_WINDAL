@@ -2,7 +2,7 @@ import html2pdf from 'html2pdf.js';
 import { jsPDF } from 'jspdf';
 import { formatLedgerDateDisplay } from './dateFormat';
 import { buildBrokerOsDisplayRows, brokerOsBCodeOf, brokerOsCrFirstFromSchedule } from './brokerOsDisplay';
-import { buildSaleListDisplayRows, saleListMeas, isSaleListCn } from './saleListDisplay';
+import { buildSaleListDisplayRows, saleListMeas, isSaleListCn, saleListBrokerName } from './saleListDisplay';
 import { rupeesToWords } from './rupeesInWords';
 import { saleBillStatusUnitLabel } from './saleBillDocTitle';
 import { showSaleBillLessBrokerage } from './saleBillBroker';
@@ -1847,7 +1847,7 @@ function buildSaleListReportHtml(data, metadata) {
               <td>${escHtml(row.BILL_NO ?? row.bill_no)}</td>
               <td>${escHtml(row.CODE ?? row.code)}</td>
               <td class="col-name">${escHtml(row.NAME ?? row.name)}</td>
-              <td>${escHtml(row.B_CODE ?? row.b_code ?? row.BK_CODE ?? row.bk_code)}</td>
+              <td class="col-name">${escHtml(saleListBrokerName(row))}</td>
               <td>${escHtml(row.ITEM_CODE ?? row.item_code)}</td>
               <td class="col-name">${escHtml(row.ITEM_NAME ?? row.item_name)}</td>
               <td class="amount">${formatAmtPdf(saleListMeas(row, 'QNTY', 'qnty'))}</td>
@@ -1885,7 +1885,7 @@ function buildSaleListReportHtml(data, metadata) {
             <th>Bill no</th>
             <th>Code</th>
             <th>Name</th>
-            <th>Bk</th>
+            <th>Broker</th>
             <th>Item</th>
             <th>Item name</th>
             <th class="amount">Qty</th>

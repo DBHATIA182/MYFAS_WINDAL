@@ -74,6 +74,27 @@ function committedWeightStr(v) {
   return s.replace(/\.?0+$/, '') || '0';
 }
 
+function roundBkRate4(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.round(x * 10000) / 10000;
+}
+
+function parseBkRateInput(raw) {
+  const s = String(raw ?? '').trim();
+  if (s === '' || s === '.' || s === '-') return 0;
+  const norm = s.startsWith('.') ? `0${s}` : s;
+  const n = Number(norm);
+  if (!Number.isFinite(n)) return 0;
+  return roundBkRate4(Math.max(0, Math.min(99.9999, n)));
+}
+
+function committedBkRateStr(v) {
+  const n = roundBkRate4(Number(v));
+  if (n === 0) return '';
+  return n.toFixed(4);
+}
+
 function committedChargeStr(v) {
   const n = clampSaleCharge(Number(v));
   if (n === 0) return '';
@@ -126,7 +147,7 @@ function committedOthStr(v) {
   return n < 0 ? `-${s}` : s;
 }
 
-/** Rate / bk rate: round to 2 decimals (#######.00). */
+/** Rate: round to 2 decimals (#######.00). */
 function roundRate2(n) {
   const x = Number(n);
   if (!Number.isFinite(x)) return 0;
@@ -143,6 +164,18 @@ function fmtCellAmt(v) {
 function fmtAmtAlways(v) {
   const n = Number(v);
   return (Number.isFinite(n) ? n : 0).toFixed(2);
+}
+
+/** Mobile footer: icon + label (label hidden on phone via CSS). */
+function SaleBillFooterButton({ icon, className = '', children, ...props }) {
+  return (
+    <button type="button" className={`sale-bill-footer-btn ${className}`.trim()} {...props}>
+      <span className="sale-bill-footer-btn__icon" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="sale-bill-footer-btn__text">{children}</span>
+    </button>
+  );
 }
 
 function clampTaxPer(n) {
@@ -179,6 +212,30 @@ function computeLineWeight(qnty, status, unitWgt, gAmtCal, existingWeight) {
   }
 
   return null;
+}
+
+function scrollAndFocusInput(el) {
+  if (!el || el.disabled) return false;
+  try {
+    el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+  } catch {
+    try {
+      el.scrollIntoView({ block: 'center' });
+    } catch (_) {}
+  }
+  try {
+    el.focus({ preventScroll: true });
+  } catch {
+    try {
+      el.focus();
+    } catch (_) {}
+  }
+  if (typeof el.select === 'function' && el.type !== 'date' && el.type !== 'number') {
+    try {
+      el.select();
+    } catch (_) {}
+  }
+  return true;
 }
 
 function focusNextInForm(rootEl, currentEl) {
@@ -432,7 +489,8 @@ function selectAllOnFocus(e) {
   });
 }
 
-export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, onReset }) {
+export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, onReset, viewMode = 'desktop' }) {
+  const isMobileView = viewMode === 'mobile';
   const lastPostedBillRef = useRef(null);
   /** Bumps when a new bill-slot fetch starts; stale responses must not overwrite UI (Prev vs late Next). */
   const billSlotFetchGenRef = useRef(0);
@@ -440,6 +498,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
   const modeRef = useRef('new');
   const brokerSearchRef = useRef(null);
   const brokerPickLockRef = useRef(false);
+  const pendingBrokerFocusRef = useRef(false);
   /** When Prev/Next lands on an empty slot from Edit, we set mode to `new` without re-running Edit→New reset. */
   const skipClearOnEditToNewEffectRef = useRef(false);
   const compCode = formData.comp_code ?? formData.COMP_CODE;
@@ -455,6 +514,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
   const [brokers, setBrokers] = useState([]);
   const [lookups, setLookups] = useState({ markas: [], plants: [], items: [] });
   const [loading, setLoading] = useState(true);
+  const [mastersLoading, setMastersLoading] = useState(true);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
@@ -506,6 +566,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
   const [insText, setInsText] = useState(null);
   const [othExpText, setOthExpText] = useState(null);
   const [lineWeightEdit, setLineWeightEdit] = useState(null);
+  const [lineBkRateEdit, setLineBkRateEdit] = useState(null);
   const [tdsOnAmt, setTdsOnAmt] = useState(0);
   const [tdsPer, setTdsPer] = useState(0);
   const [tdsAmt, setTdsAmt] = useState(0);
@@ -601,9 +662,22 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
     }
   }, [code, bCode]);
 
-  const focusBrokerSearch = useCallback(() => {
-    window.setTimeout(() => brokerSearchRef.current?.focus(), 0);
+  const scheduleFocusBroker = useCallback(() => {
+    const attempt = (n = 0) => {
+      if (scrollAndFocusInput(brokerSearchRef.current)) return;
+      if (n < 16) window.requestAnimationFrame(() => attempt(n + 1));
+    };
+    window.requestAnimationFrame(() => attempt(0));
   }, []);
+
+  const focusBrokerSearch = scheduleFocusBroker;
+
+  useEffect(() => {
+    if (!pendingBrokerFocusRef.current) return;
+    if (!code || String(bCode ?? '').trim() || !brokerFinderOpen) return;
+    pendingBrokerFocusRef.current = false;
+    scheduleFocusBroker();
+  }, [code, bCode, brokerFinderOpen, scheduleFocusBroker]);
 
   const applyBrokerPick = useCallback((partyCode) => {
     const pc = String(partyCode ?? '').trim();
@@ -666,9 +740,10 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
 
   const loadBase = useCallback(async () => {
     setLoading(true);
+    setMastersLoading(true);
     setErr('');
     try {
-      const [pRes, cRes, ptRes, brRes, luRes, mpRes] = await Promise.all([
+      const [pRes, cRes, mpRes] = await Promise.all([
         axios.get(`${apiBase}/api/sale-bill-user-permissions`, { params, ...reqOpts }),
         axios.get(`${apiBase}/api/sale-bill-form-context`, {
           params: {
@@ -678,15 +753,6 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
           },
           ...reqOpts,
         }),
-        axios.get(`${apiBase}/api/sale-bill-master-by-schedule`, {
-          params: { comp_code: compCode, comp_uid: compUid, schedule: 8.1 },
-          ...reqOpts,
-        }),
-        axios.get(`${apiBase}/api/sale-bill-master-by-schedule`, {
-          params: { comp_code: compCode, comp_uid: compUid, schedule: 11.2 },
-          ...reqOpts,
-        }),
-        axios.get(`${apiBase}/api/sale-bill-lookups`, { params: { comp_code: compCode, comp_uid: compUid }, ...reqOpts }),
         axios.get(`${apiBase}/api/master-party-user-permissions`, {
           params: { comp_uid: compUid, user_name: userName || '' },
           ...reqOpts,
@@ -699,9 +765,6 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
       if (roffC) {
         setAddCode((prev) => (String(prev ?? '').trim() === '' ? roffC : prev));
       }
-      setParties(ptRes.data || []);
-      setBrokers(brRes.data || []);
-      setLookups(luRes.data || { markas: [], plants: [], items: [] });
       const gGst = String(cRes.data?.G_GST_NO ?? '').trim();
       setCompGst(gGst);
     } catch (e) {
@@ -709,7 +772,28 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
     } finally {
       setLoading(false);
     }
-  }, [apiBase, compCode, compUid, compYear, params]);
+
+    try {
+      const [ptRes, brRes, luRes] = await Promise.all([
+        axios.get(`${apiBase}/api/sale-bill-master-by-schedule`, {
+          params: { comp_code: compCode, comp_uid: compUid, schedule: 8.1 },
+          ...reqOpts,
+        }),
+        axios.get(`${apiBase}/api/sale-bill-master-by-schedule`, {
+          params: { comp_code: compCode, comp_uid: compUid, schedule: 11.2 },
+          ...reqOpts,
+        }),
+        axios.get(`${apiBase}/api/sale-bill-lookups`, { params: { comp_code: compCode, comp_uid: compUid }, ...reqOpts }),
+      ]);
+      setParties(ptRes.data || []);
+      setBrokers(brRes.data || []);
+      setLookups(luRes.data || { markas: [], plants: [], items: [] });
+    } catch (e) {
+      setErr((prev) => prev || e?.response?.data?.error || e.message || 'Could not load party/broker/item lists');
+    } finally {
+      setMastersLoading(false);
+    }
+  }, [apiBase, compCode, compUid, compYear, params, userName]);
 
   useEffect(() => {
     if (!ctx) return;
@@ -829,10 +913,11 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
       if (!String(bCode ?? '').trim()) {
         setBrokerSearch('');
         setBrokerFinderOpen(true);
-        focusBrokerSearch();
+        pendingBrokerFocusRef.current = true;
+        scheduleFocusBroker();
       }
     },
-    [parties, ctx, bCode, focusBrokerSearch]
+    [parties, ctx, bCode, scheduleFocusBroker]
   );
 
   const tryOpenNewParty = useCallback(
@@ -886,7 +971,8 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         if (!String(bCode ?? '').trim()) {
           setBrokerSearch('');
           setBrokerFinderOpen(true);
-          focusBrokerSearch();
+          pendingBrokerFocusRef.current = true;
+          scheduleFocusBroker();
         }
       } else if (target === 'shipped') {
         setParties((prev) => upsertMasterParty(prev, entry));
@@ -895,7 +981,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         setShippedSearch('');
       }
     },
-    [masterPartyModal, code, ctx, bCode, focusBrokerSearch]
+    [masterPartyModal, code, ctx, bCode, scheduleFocusBroker]
   );
 
   const applyItemToLine = (idx, itemCode) => {
@@ -927,7 +1013,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
       row.cgst_per = clampTaxPer(row.cgst_per);
       row.sgst_per = clampTaxPer(row.sgst_per);
       row.igst_per = clampTaxPer(row.igst_per);
-      row.bk_rate = roundRate2(Number(it?.BK_RATE ?? it?.bk_rate ?? 0) || 0);
+      row.bk_rate = roundBkRate4(Number(it?.BK_RATE ?? it?.bk_rate ?? 0) || 0);
       row.unit_wgt = Number(it?.UNIT_WGT ?? it?.unit_wgt ?? 0) || 0;
       const autoW = computeLineWeight(row.qnty, row.status, row.unit_wgt, ctx?.G_AMT_CAL, row.weight);
       if (autoW != null) row.weight = autoW;
@@ -946,7 +1032,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
       L.sgst_amt = Math.round(taxBase * (Number(L.sgst_per) || 0) * 0.01 * 100) / 100;
       L.igst_amt = Math.round(taxBase * (Number(L.igst_per) || 0) * 0.01 * 100) / 100;
       const bkw = String(L.bk_bw || 'A').toUpperCase();
-      const br = roundRate2(L.bk_rate);
+      const br = roundBkRate4(L.bk_rate);
       if (bkw === 'B') L.bk_amt = Math.round(q * br * 100) / 100;
       else if (bkw === 'W') L.bk_amt = Math.round(w * br * 100) / 100;
       else L.bk_amt = Math.round(L.amount * (br / 100) * 100) / 100;
@@ -995,6 +1081,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
       L.cgst_per = clampTaxPer(L.cgst_per);
       L.sgst_per = clampTaxPer(L.sgst_per);
       L.igst_per = clampTaxPer(L.igst_per);
+      L.bk_rate = roundBkRate4(L.bk_rate);
       const skipAutoWeight = L.weight_manual === true;
       if (!skipAutoWeight) {
         const uw = Number(L.unit_wgt) || 0;
@@ -1015,7 +1102,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
       L.sgst_amt = Math.round(taxBase * (Number(L.sgst_per) || 0) * 0.01 * 100) / 100;
       L.igst_amt = Math.round(taxBase * (Number(L.igst_per) || 0) * 0.01 * 100) / 100;
       const bkw = String(L.bk_bw || 'A').toUpperCase();
-      const br = roundRate2(L.bk_rate);
+      const br = roundBkRate4(L.bk_rate);
       if (bkw === 'B') L.bk_amt = Math.round(q * br * 100) / 100;
       else if (bkw === 'W') L.bk_amt = Math.round(w * br * 100) / 100;
       else L.bk_amt = Math.round(L.amount * (br / 100) * 100) / 100;
@@ -1335,7 +1422,10 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
       setShippedFinderOpen(false);
       const bk = first.B_CODE != null ? String(first.B_CODE).trim() : '';
       setBrokerFinderOpen(!bk);
-      if (!bk) focusBrokerSearch();
+      if (!bk) {
+        pendingBrokerFocusRef.current = true;
+        scheduleFocusBroker();
+      }
       setLabourText(null);
       setFreightText(null);
       setInsText(null);
@@ -1384,7 +1474,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
             cgst_amt: Number(r.CGST_AMT ?? r.cgst_amt ?? 0) || 0,
             sgst_amt: Number(r.SGST_AMT ?? r.sgst_amt ?? 0) || 0,
             igst_amt: Number(r.IGST_AMT ?? r.igst_amt ?? 0) || 0,
-            bk_rate: roundRate2(Number(r.BK_RATE ?? r.bk_rate ?? 0) || 0),
+            bk_rate: roundBkRate4(Number(r.BK_RATE ?? r.bk_rate ?? 0) || 0),
             bk_bw: String(r.BK_BW ?? r.bk_bw ?? 'A'),
             bk_amt: Number(r.BK_AMT ?? r.bk_amt ?? 0) || 0,
             unit_wgt: uw,
@@ -1393,7 +1483,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         })
       );
     },
-    [focusBrokerSearch, lookups.items, parties]
+    [scheduleFocusBroker, lookups.items, parties]
   );
 
   const tryLoadSaleBillByBillNoRelaxed = useCallback(
@@ -1608,7 +1698,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
           cgst_amt: Number(L.cgst_amt) || 0,
           sgst_amt: Number(L.sgst_amt) || 0,
           igst_amt: Number(L.igst_amt) || 0,
-          bk_rate: roundRate2(Number(L.bk_rate) || 0),
+          bk_rate: roundBkRate4(Number(L.bk_rate) || 0),
           bk_bw: L.bk_bw || 'A',
           bk_amt: Number(L.bk_amt) || 0,
         })),
@@ -1702,7 +1792,11 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
   const canEditSaleBillFields = canEditLines;
 
   return (
-    <div className="slide slide-21-sale-bill sale-bill-page" onKeyDown={handleEnterAsTab} role="presentation">
+    <div
+      className={`slide slide-21-sale-bill sale-bill-page${isMobileView ? ' slide-21-sale-bill--mobile' : ''}`}
+      onKeyDown={handleEnterAsTab}
+      role="presentation"
+    >
       <SaleBillPrintModal
         open={printOpen}
         onClose={() => {
@@ -1723,6 +1817,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
             ctx={ctx}
             userName={userName}
             can={can}
+            showPermissions={!isMobileView}
             helpReportId="sale-bill-entry"
           />
         }
@@ -1738,6 +1833,91 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
       {err ? (
         <p className="deploy-update-msg deploy-update-msg--err">{err}</p>
       ) : null}
+      {mastersLoading ? (
+        <p className="sale-bill-masters-loading-hint">Loading party, broker and item lists in background…</p>
+      ) : null}
+
+      <footer className="sale-bill-footer slide-21-sale-bill-ignore-enter" role="toolbar" aria-label="Sale bill actions">
+        <div className="sale-bill-footer-inner">
+        <SaleBillFooterButton className="btn btn-secondary" icon="←" onClick={onPrev} aria-label="Back" title="Back">
+          ← Back
+        </SaleBillFooterButton>
+        <SaleBillFooterButton className="btn btn-secondary" icon="⌂" onClick={onReset} aria-label="Home" title="Home">
+          Home
+        </SaleBillFooterButton>
+        <SaleBillFooterButton className="btn btn-secondary" icon="⎙" onClick={openPrintBill} aria-label="Print bill" title="Print bill">
+          Print bill
+        </SaleBillFooterButton>
+        {showBillSlotNav ? (
+          <SaleBillFooterButton
+            className="btn btn-secondary"
+            icon="◀"
+            aria-label="Previous bill"
+            title="Previous bill"
+            onClick={() => {
+              void clearSaleBillFormForPrevEntry();
+            }}
+          >
+            Prev bill
+          </SaleBillFooterButton>
+        ) : null}
+        {showBillSlotNav ? (
+          <SaleBillFooterButton
+            className="btn btn-secondary"
+            icon="▶"
+            aria-label="Next bill"
+            title="Next bill"
+            onClick={() => {
+              void clearSaleBillFormForNewEntry();
+            }}
+          >
+            Next bill
+          </SaleBillFooterButton>
+        ) : null}
+        {mode === 'new' && can.canAdd ? (
+          <SaleBillFooterButton
+            className="btn btn-primary sale-bill-footer-btn--primary"
+            icon="✓"
+            disabled={postedNewBill && !can.canEdit}
+            title={
+              postedNewBill && !can.canEdit
+                ? 'Use Next bill or Prev bill for a new voucher, or enable Edit (F1) to change this bill.'
+                : postedNewBill
+                  ? 'Update bill'
+                  : 'Save new bill'
+            }
+            aria-label={postedNewBill ? 'Update bill' : 'Save new bill'}
+            onClick={() => handleSave(postedNewBill ? 'edit' : 'add')}
+          >
+            {postedNewBill ? 'Update bill' : 'Save new bill'}
+          </SaleBillFooterButton>
+        ) : null}
+        {mode === 'edit' && can.canEdit ? (
+          <SaleBillFooterButton
+            className="btn btn-primary sale-bill-footer-btn--primary"
+            icon="✓"
+            aria-label="Update bill"
+            title="Update bill"
+            onClick={() => handleSave('edit')}
+          >
+            Update bill
+          </SaleBillFooterButton>
+        ) : null}
+        {mode === 'delete' && can.canDelete ? (
+          <SaleBillFooterButton
+            className="btn btn-primary sale-bill-footer-btn--primary sale-bill-footer-btn--danger"
+            icon="✕"
+            aria-label="Delete bill"
+            title="Delete bill"
+            onClick={() => {
+              if (window.confirm('Delete SALE, LEDGER, STOCK, and BILLS rows for this bill key?')) handleSave('delete');
+            }}
+          >
+            Delete bill
+          </SaleBillFooterButton>
+        ) : null}
+        </div>
+      </footer>
 
       <section className="sale-bill-section sale-bill-section--toolbar sale-bill-section--card">
         <div className="sale-bill-toolbar">
@@ -1955,12 +2135,23 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                       e.preventDefault();
                       setBilledHi((h) => Math.max(0, h - 1));
                     } else if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.stopPropagation();
                       const r = filteredBilledParties[safeBilledHi];
                       if (r) {
-                        e.preventDefault();
-                        e.stopPropagation();
                         applyBilledPartyPick(String(r.CODE ?? r.code ?? '').trim());
                         setBilledSearch('');
+                        return;
+                      }
+                      const q = billedSearch.trim();
+                      if (q) {
+                        const exact = parties.find(
+                          (p) => String(p.CODE ?? p.code ?? '').trim().toLowerCase() === q.toLowerCase()
+                        );
+                        if (exact) {
+                          applyBilledPartyPick(String(exact.CODE ?? exact.code ?? '').trim());
+                          setBilledSearch('');
+                        }
                       }
                     }
                   }}
@@ -1988,6 +2179,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                           disabled={!canEditSaleBillFields}
                           className={`account-search-row party-search-row${rowHi ? ' is-highlight' : ''}${rowSel ? ' is-active' : ''}`}
                           onMouseEnter={() => setBilledHi(index)}
+                          onPointerDown={(e) => e.preventDefault()}
                           onClick={() => {
                             applyBilledPartyPick(pc);
                             setBilledSearch('');
@@ -2384,7 +2576,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
               <th title="SGST_AMT">SGST amt</th>
               <th title="IGST_PER">IGST %</th>
               <th title="IGST_AMT">IGST amt</th>
-              <th title="Up to 9999999.99, two decimal places">Bk rate (0.00)</th>
+              <th title="Up to 99.9999, four decimal places">Bk rate (0.0000)</th>
               <th>Bk BW</th>
               <th>Bk amt</th>
             </tr>
@@ -2474,9 +2666,9 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                     onChange={(e) => {
                       applyItemToLine(idx, e.target.value);
                     }}
-                    disabled={!canEditSaleBillFields || (mode === 'edit' && !can.canEdit)}
+                    disabled={!canEditSaleBillFields || (mode === 'edit' && !can.canEdit) || mastersLoading}
                   >
-                    <option value="">— item —</option>
+                    <option value="">{mastersLoading ? 'Loading items…' : '— item —'}</option>
                     {lookups.items.map((it) => (
                       <option key={String(it.ITEM_CODE ?? it.item_code)} value={String(it.ITEM_CODE ?? it.item_code).trim()}>
                         {it.ITEM_NAME ?? it.item_name}
@@ -2656,25 +2848,34 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                 <td className="num">{fmtAmtAlways(L.igst_amt)}</td>
                 <td>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="9999999.99"
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
                     className="sale-bill-rate-input sale-bill-rate-input--narrow"
-                    placeholder="0.00"
-                    value={Number(L.bk_rate) === 0 ? '' : roundRate2(L.bk_rate)}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      if (raw === '' || raw === '-') {
-                        recalcLine(idx, { bk_rate: 0 });
-                        return;
-                      }
-                      const v = parseFloat(raw);
-                      if (!Number.isFinite(v)) return;
-                      recalcLine(idx, { bk_rate: v });
+                    placeholder="0.0000"
+                    value={
+                      lineBkRateEdit && lineBkRateEdit.idx === idx
+                        ? lineBkRateEdit.text
+                        : committedBkRateStr(L.bk_rate)
+                    }
+                    onFocus={() => {
+                      if (!canEditSaleBillFields) return;
+                      setLineBkRateEdit({ idx, text: committedBkRateStr(L.bk_rate) });
                     }}
-                    onBlur={() => recalcLine(idx, { bk_rate: roundRate2(L.bk_rate) })}
+                    onChange={(e) => {
+                      if (!canEditSaleBillFields) return;
+                      const t = sanitizeNonNegDecimal(e.target.value, 2, 4);
+                      setLineBkRateEdit({ idx, text: t });
+                      recalcLine(idx, { bk_rate: parseBkRateInput(t) });
+                    }}
+                    onBlur={() => {
+                      if (lineBkRateEdit?.idx !== idx) return;
+                      const br = parseBkRateInput(lineBkRateEdit.text);
+                      recalcLine(idx, { bk_rate: br });
+                      setLineBkRateEdit(null);
+                    }}
                     disabled={!canEditSaleBillFields}
+                    title="Bk rate: up to 99.9999 (four decimals), e.g. .3125 or .8250"
                   />
                 </td>
                 <td>
@@ -2695,7 +2896,7 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
                     disabled={!canEditSaleBillFields}
                   />
                 </td>
-                <td>{fmtCellAmt(L.bk_amt)}</td>
+                <td className="num">{fmtAmtAlways(L.bk_amt)}</td>
               </tr>
             ))}
           </tbody>
@@ -2896,72 +3097,6 @@ export default function Slide21SaleBill({ apiBase, formData, userName, onPrev, o
         </div>
       </section>
 
-      <footer className="sale-bill-footer slide-21-sale-bill-ignore-enter">
-        <div className="sale-bill-footer-inner">
-        <button type="button" className="btn btn-secondary" onClick={onPrev}>
-          ← Back
-        </button>
-        <button type="button" className="btn btn-secondary" onClick={onReset}>
-          Home
-        </button>
-        <button type="button" className="btn btn-secondary" onClick={openPrintBill}>
-          Print bill
-        </button>
-        {showBillSlotNav ? (
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => {
-              void clearSaleBillFormForPrevEntry();
-            }}
-          >
-            Prev bill
-          </button>
-        ) : null}
-        {showBillSlotNav ? (
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => {
-              void clearSaleBillFormForNewEntry();
-            }}
-          >
-            Next bill
-          </button>
-        ) : null}
-        {mode === 'new' && can.canAdd ? (
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={postedNewBill && !can.canEdit}
-            title={
-              postedNewBill && !can.canEdit
-                ? 'Use Next bill or Prev bill for a new voucher, or enable Edit (F1) to change this bill.'
-                : undefined
-            }
-            onClick={() => handleSave(postedNewBill ? 'edit' : 'add')}
-          >
-            {postedNewBill ? 'Update bill' : 'Save new bill'}
-          </button>
-        ) : null}
-        {mode === 'edit' && can.canEdit ? (
-          <button type="button" className="btn btn-primary" onClick={() => handleSave('edit')}>
-            Update bill
-          </button>
-        ) : null}
-        {mode === 'delete' && can.canDelete ? (
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => {
-              if (window.confirm('Delete SALE, LEDGER, STOCK, and BILLS rows for this bill key?')) handleSave('delete');
-            }}
-          >
-            Delete bill
-          </button>
-        ) : null}
-        </div>
-      </footer>
       <SaleBillLinePickModal
         open={challanPick.open}
         title={challanPick.cp === 'C' ? 'Dispatch challans (all)' : 'Pending challans'}

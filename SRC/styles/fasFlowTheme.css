@@ -1364,17 +1364,99 @@ body,
 }
 
 /* ── Ledger account (from trial balance drill-down) ── */
+.app--fas-flow .slide.slide-5.fas-tb-host {
+  height: 100%;
+  max-height: none;
+  padding: 0;
+}
+
+/* Ledger report (slide 5) + trial drill-down (slide 4): full viewport — override default .slide 800px card */
+.app-main:has(> .slide-5.fas-tb-host),
+.app-main:has(> .slide-4.fas-tb-host) {
+  align-items: stretch !important;
+  justify-content: stretch !important;
+  padding: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.app-main:has(> .slide-5.fas-tb-host) > .slide-5.fas-tb-host,
+.app-main:has(> .slide-4.fas-tb-host) > .slide-4.fas-tb-host {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  align-self: stretch !important;
+  height: 100% !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.app-main:has(> .slide-5.fas-tb-host) .fas-tb-flow,
+.app-main:has(> .slide-4.fas-tb-host) .fas-tb-flow {
+  width: 100% !important;
+  max-width: none !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+.app-main:has(> .slide-5.fas-tb-host) .fas-ledger-host .fas-tb-body,
+.app-main:has(> .slide-4.fas-tb-host) .fas-ledger-host .fas-tb-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+}
+
+.app-main:has(> .slide-5.fas-tb-host) .fas-ledger-table-wrap,
+.app-main:has(> .slide-4.fas-tb-host) .fas-ledger-table-wrap {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+}
+
 .fas-ledger-host .fas-tb-body {
-  gap: 10px;
+  gap: 8px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
 }
 
 .fas-ledger-context-card {
   flex-shrink: 0;
-  padding: 12px 14px;
+  padding: 10px 12px;
   background: var(--fas-white);
   border: 1.5px solid var(--fas-border);
   border-radius: var(--fas-radius-sm);
   box-shadow: 0 2px 10px rgba(15, 30, 60, 0.05);
+}
+
+.fas-ledger-context-card__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px 14px;
+  align-items: start;
+}
+
+.fas-ledger-context-card__company {
+  min-width: 0;
+}
+
+.fas-ledger-context-card__account {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding-left: 14px;
+  border-left: 1px solid var(--fas-border);
 }
 
 .fas-ledger-context-card__company-name,
@@ -1386,11 +1468,15 @@ body,
   word-break: break-word;
 }
 
+.fas-ledger-context-card__account-name {
+  text-align: right;
+}
+
 .fas-ledger-context-card__line {
   margin-top: 2px;
   font-size: 11px;
   color: var(--fas-text-secondary);
-  line-height: 1.4;
+  line-height: 1.35;
   word-break: break-word;
 }
 
@@ -1398,8 +1484,8 @@ body,
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-top: 6px;
-  padding: 4px 8px;
+  margin-top: 4px;
+  padding: 3px 8px;
   border-radius: 6px;
   background: var(--fas-surface2);
   border: 1px solid var(--fas-border);
@@ -1409,14 +1495,12 @@ body,
 }
 
 .fas-ledger-context-card__divider {
-  height: 1px;
-  margin: 10px 0;
-  background: var(--fas-border);
+  display: none;
 }
 
 .fas-ledger-context-card__code-pill {
   display: inline-block;
-  margin-top: 6px;
+  margin-top: 4px;
   padding: 3px 10px;
   border-radius: 20px;
   background: rgba(42, 79, 168, 0.1);
@@ -1427,22 +1511,52 @@ body,
   font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
 
+.fas-ledger-context-card__account .fas-ledger-context-card__code-pill {
+  margin-top: 4px;
+}
+
 .fas-ledger-context-card__fy {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: flex-end;
   gap: 6px;
-  margin-top: 6px;
-  font-size: 11px;
+  margin-top: 4px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--fas-text-secondary);
+  text-align: right;
+  line-height: 1.35;
 }
 
 .fas-ledger-context-card__hint {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--fas-border);
   font-size: 10px;
   font-style: italic;
   color: var(--fas-text-muted);
-  line-height: 1.45;
+  line-height: 1.4;
+}
+
+@media (max-width: 520px) {
+  .fas-ledger-context-card__grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .fas-ledger-context-card__account {
+    align-items: flex-start;
+    padding-left: 0;
+    padding-top: 8px;
+    border-left: none;
+    border-top: 1px solid var(--fas-border);
+  }
+
+  .fas-ledger-context-card__account-name,
+  .fas-ledger-context-card__fy {
+    text-align: left;
+    justify-content: flex-start;
+  }
 }
 
 .fas-ledger-totals {
@@ -1520,4 +1634,138 @@ body,
 .fas-btn--outline:hover:not(:disabled) {
   border-color: var(--fas-indigo);
   color: var(--fas-indigo);
+}
+
+/* Ledger export — compact icon row (not full-width buttons) */
+.fas-tb-export-bar--icons {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.75rem;
+}
+
+.fas-tb-export-bar--icons .fas-tb-export-icon {
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 2.5rem;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  padding: 0;
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+}
+
+.fas-tb-export-bar--icons .fas-tb-export-icon span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.fas-tb-export-bar--icons .fas-tb-export-icon--back-nav {
+  display: none;
+}
+
+/* Ledger desktop: back in toolbar row, hide hint + bottom Parameters */
+@media (min-width: 641px) {
+  .fas-ledger-host .fas-report-header--ledger-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .fas-ledger-host .fas-report-header--ledger-toolbar .fas-report-header__back {
+    display: none;
+  }
+
+  .fas-ledger-host .fas-report-header--ledger-toolbar .fas-report-header__center {
+    grid-column: 1;
+    justify-content: center;
+  }
+
+  .fas-ledger-host .fas-report-header--ledger-toolbar .fas-report-header__actions {
+    grid-column: 2;
+  }
+
+  .fas-ledger-host .fas-tb-export-bar--icons .fas-tb-export-icon--back-nav {
+    display: inline-flex;
+    background: var(--fas-white);
+    border: 1.5px solid var(--fas-border);
+    color: var(--fas-navy);
+    font-weight: 700;
+  }
+
+  .fas-ledger-host .fas-ledger-context-card__hint {
+    display: none;
+  }
+
+  .fas-ledger-host .fas-ledger-footer--mobile-only {
+    display: none;
+  }
+}
+
+/* Ledger report — full viewport width (beats default .slide 800px card) */
+html.fas-ledger-report-fullpage,
+body.fas-ledger-report-fullpage {
+  width: 100%;
+  max-width: none;
+  overflow-x: hidden;
+}
+
+body.fas-ledger-report-fullpage .app,
+body.fas-ledger-report-fullpage #root {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+}
+
+body.fas-ledger-report-fullpage .app-main {
+  align-items: stretch !important;
+  justify-content: stretch !important;
+  padding: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+body.fas-ledger-report-fullpage .app-main > .slide.slide-5.fas-tb-host,
+body.fas-ledger-report-fullpage .app-main > .slide.slide-4.fas-tb-host,
+.app-main > .slide.slide-5.fas-tb-host,
+.app-main > .slide.slide-4.fas-tb-host {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  align-self: stretch !important;
+  flex: 1 1 auto !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+body.fas-ledger-report-fullpage .app--no-header .app-main {
+  padding: 0 !important;
+}
+
+body.fas-ledger-report-fullpage .app-main > .slide.slide-5.fas-tb-host .fas-tb-flow,
+body.fas-ledger-report-fullpage .app-main > .slide.slide-4.fas-tb-host .fas-tb-flow,
+.app-main > .slide.slide-5.fas-tb-host .fas-tb-flow,
+.app-main > .slide.slide-4.fas-tb-host .fas-tb-flow {
+  width: 100% !important;
+  max-width: none !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  border-radius: 0 !important;
 }

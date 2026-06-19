@@ -16,6 +16,20 @@ export function isSaleListCn(row) {
   return t === 'CN' || t === 'GN' || t === 'CX';
 }
 
+export function saleListBrokerCode(row) {
+  if (!row || typeof row !== 'object') return '';
+  const code = row.B_CODE ?? row.b_code ?? row.BK_CODE ?? row.bk_code;
+  return code != null ? String(code).trim() : '';
+}
+
+export function saleListBrokerName(row) {
+  if (!row || typeof row !== 'object') return '—';
+  const name = String(row.BK_NAME ?? row.bk_name ?? row.BNAME ?? row.bname ?? '').trim();
+  if (name) return name;
+  const code = saleListBrokerCode(row);
+  return code || '—';
+}
+
 export function saleListMeas(row, upperKey, lowerKey) {
   const v = n(row, upperKey, lowerKey);
   return isSaleListCn(row) ? -v : v;
@@ -74,7 +88,10 @@ function compareByItem(a, b) {
 }
 
 function compareByBroker(a, b) {
-  const nCmp = cmpText(textOf(a, 'BK_NAME', 'bk_name'), textOf(b, 'BK_NAME', 'bk_name'));
+  const nCmp = cmpText(
+    textOf(a, 'BK_NAME', 'bk_name') || textOf(a, 'BNAME', 'bname'),
+    textOf(b, 'BK_NAME', 'bk_name') || textOf(b, 'BNAME', 'bname')
+  );
   if (nCmp !== 0) return nCmp;
   const cCmp = cmpText(
     textOf(a, 'B_CODE', 'b_code') || textOf(a, 'BK_CODE', 'bk_code'),

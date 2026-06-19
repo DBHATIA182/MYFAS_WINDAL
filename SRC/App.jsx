@@ -52,6 +52,7 @@ import { getWindalDocumentTitle } from './utils/windalBrand';
 import './saleEntryDesktop.css';
 import './purchaseBillEntry.css';
 import './styles/saleListScreen.css';
+import './styles/ledgerFullBleed.css';
 
 // Local: Vite dev uses '' so /api/* is proxied to port 5001 (see vite.config.js). Run `npm run server` in another terminal.
 // Vite preview / static file open on localhost still calls :5001 directly.
@@ -963,7 +964,8 @@ function App() {
     !authenticated || (authenticated && currentSlide >= 1 && currentSlide <= 2);
   const useWindalDashboard = authenticated && currentSlide === 3;
   const useFasFlowFullScreen = authenticated && currentSlide > 3;
-  const appClassName = `app ${viewMode === 'desktop' ? 'app--desktop' : 'app--mobile'}${hideAppHeaderChrome ? ' app--no-header' : ''}${useWindalInitial ? ' app--windal-initial' : ''}${useWindalDashboard ? ' app--windal-dashboard' : ''}${useFasFlowFullScreen ? ' app--fas-flow' : ''}`;
+  const useLedgerFullBleed = authenticated && (currentSlide === 4 || currentSlide === 5);
+  const appClassName = `app ${viewMode === 'desktop' ? 'app--desktop' : 'app--mobile'}${hideAppHeaderChrome ? ' app--no-header' : ''}${useWindalInitial ? ' app--windal-initial' : ''}${useWindalDashboard ? ' app--windal-dashboard' : ''}${useFasFlowFullScreen ? ' app--fas-flow' : ''}${useLedgerFullBleed ? ' app--ledger-full-bleed' : ''}`;
 
   if (!clientGuardChecked) {
     return (
@@ -1048,7 +1050,7 @@ function App() {
       ) : null}
 
       <AppSessionContext.Provider value={{ formData, userName: loginUserName, headerActions: flowHeaderActions }}>
-      <main className="app-main">
+      <main className={`app-main${useLedgerFullBleed ? ' app-main--ledger-full-bleed' : ''}`}>
         {currentSlide === 1 && (
           <Slide1
             companies={companies}
@@ -1183,6 +1185,7 @@ function App() {
             apiBase={API_BASE}
             formData={formData}
             userName={loginUserName}
+            viewMode={viewMode}
             onPrev={() => setCurrentSlide(3)}
             onReset={handleReset}
           />

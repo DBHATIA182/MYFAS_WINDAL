@@ -513,7 +513,37 @@
   height: auto;
   min-height: 0;
   overflow: visible;
-  display: block;
+  display: flex;
+  flex-direction: column;
+}
+
+.app--desktop .slide-21-sale-bill .sale-bill-footer {
+  order: 999;
+  margin-top: auto;
+}
+
+/* Sale bill entry — scroll long form inside app-main (fas-flow sets slide height:100% + overflow:hidden) */
+.app-main:has(> .slide-21-sale-bill) {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+}
+
+.app--fas-flow .app-main:has(> .slide-21-sale-bill) > .slide.slide-21-sale-bill,
+.app-main:has(> .slide-21-sale-bill) > .slide.slide-21-sale-bill {
+  flex: 0 0 auto !important;
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.app--mobile .slide.slide-21-sale-bill {
+  touch-action: pan-y;
 }
 
 /* Purchase bill — compact header + lines + expenses panel */

@@ -6,7 +6,7 @@ import {
   brokerOsCrFirstFromSchedule,
   segmentBrokerOsByHeader,
 } from '../utils/brokerOsDisplay';
-import { buildSaleListDisplayRows, saleListMeas, isSaleListCn } from '../utils/saleListDisplay';
+import { buildSaleListDisplayRows, saleListMeas, isSaleListCn, saleListBrokerName, saleListBrokerCode } from '../utils/saleListDisplay';
 import { ageingCurBalDisplay } from '../utils/ageingDisplay';
 import {
   sortTrialBalanceRows,
@@ -19,9 +19,13 @@ import {
 const LEDGER_SALE_VR_TYPES = new Set(['SL', 'SE', 'CN']);
 
 /** <colgroup> px widths (no InvDate column — date is on the Day banner row only) */
+const SALE_LIST_COL_COUNT = 23;
+/** Lead columns before Qty (Tp … BKH); broker name only — no separate Bk code column. */
+const SALE_LIST_LEAD_COL_SPAN = 13;
+
 const SALE_LIST_COL_WIDTHS_PX = [
   /* Tp, InvNo, Bt, Party, Name — wide enough for 5-digit bill no + party code on mobile */
-  22, 58, 14, 68, 196, 96, 124, 118, 50, 168, 42, 56, 146, 20,
+  22, 58, 14, 68, 196, 96, 124, 118, 196, 42, 56, 146, 20,
   /* Qty, Wt, Rate, Amount, Taxable, CGST, SGST, IGST, Round off, Bill amt */
   78, 108, 78, 132, 92, 76, 76, 76, 58, 100,
 ];
@@ -1304,8 +1308,9 @@ export default function ReportTable({
               <th scope="col">City</th>
               <th scope="col">PAN</th>
               <th scope="col">GST</th>
-              <th scope="col">Bk</th>
-              <th scope="col">Bk name</th>
+              <th scope="col" title="Broker name (SALE.B_CODE)">
+                Broker
+              </th>
               <th scope="col">Trn</th>
               <th scope="col">Item</th>
               <th scope="col">Item name</th>
@@ -1347,7 +1352,7 @@ export default function ReportTable({
               if (item.kind === 'day-header') {
                 return (
                   <tr key={`dh-${i}`} className="sale-list-day-banner">
-                    <td colSpan={24}>
+                    <td colSpan={SALE_LIST_COL_COUNT}>
                       <strong>Day–{item.dateLabel}</strong>
                     </td>
                   </tr>
@@ -1357,7 +1362,7 @@ export default function ReportTable({
                 const dayTotalCaption = `Day total — ${item.dateLabel}`;
                 return (
                   <tr key={`dt-${i}`} className="sale-list-day-total">
-                    <td colSpan={14} className="sale-list-subtotal-label" title={dayTotalCaption}>
+                    <td colSpan={SALE_LIST_LEAD_COL_SPAN} className="sale-list-subtotal-label" title={dayTotalCaption}>
                       <strong>Day total</strong>
                     </td>
                     <td className="text-right">{fmtAlways(item.qnty)}</td>
@@ -1376,7 +1381,7 @@ export default function ReportTable({
               if (item.kind === 'bill-gap') {
                 return (
                   <tr key={`bg-${i}`} className="sale-list-bill-gap" aria-hidden="true">
-                    <td colSpan={24} />
+                    <td colSpan={SALE_LIST_COL_COUNT} />
                   </tr>
                 );
               }
@@ -1384,7 +1389,7 @@ export default function ReportTable({
                 const billTotalCaption = `Bill total — ${item.type} / ${item.billDateLabel} / ${item.billNo} / ${item.bType}`;
                 return (
                   <tr key={`bt-${i}`} className="sale-list-bill-total">
-                    <td colSpan={14} className="sale-list-subtotal-label" title={billTotalCaption}>
+                    <td colSpan={SALE_LIST_LEAD_COL_SPAN} className="sale-list-subtotal-label" title={billTotalCaption}>
                       <strong>Bill total</strong>
                     </td>
                     <td className="text-right">{fmtAlways(item.qnty)}</td>
@@ -1403,7 +1408,7 @@ export default function ReportTable({
               if (item.kind === 'section-label') {
                 return (
                   <tr key={`sl-${i}`} className="sale-list-section-label">
-                    <td colSpan={24}>
+                    <td colSpan={SALE_LIST_COL_COUNT}>
                       <strong>{item.label}</strong>
                     </td>
                   </tr>
@@ -1413,7 +1418,7 @@ export default function ReportTable({
                 return (
                   <tr key={`ich-${i}`} className="sale-list-item-col-head sale-list-item-summary-head">
                     <th
-                      colSpan={14}
+                      colSpan={SALE_LIST_LEAD_COL_SPAN}
                       scope="colgroup"
                       className="sale-list-item-summary-lead"
                       title="Item code · Item name"
@@ -1443,7 +1448,7 @@ export default function ReportTable({
                 const codeShown = item.code && item.code !== '—' ? item.code : '—';
                 return (
                   <tr key={`gi-${i}-${item.code}`} className="sale-list-grand-item sale-list-item-summary-row">
-                    <td colSpan={14} className="sale-list-item-summary-lead">
+                    <td colSpan={SALE_LIST_LEAD_COL_SPAN} className="sale-list-item-summary-lead">
                       <div className="sale-list-item-sum-lead-inner">
                         <span className="sale-list-item-sum-code bill-code" title={String(codeShown).trim() || undefined}>
                           {codeShown}
@@ -1468,7 +1473,7 @@ export default function ReportTable({
               if (item.kind === 'grand-total') {
                 return (
                   <tr key={`gt-${i}`} className="sale-list-grand-total">
-                    <td colSpan={14}>
+                    <td colSpan={SALE_LIST_LEAD_COL_SPAN}>
                       <strong>Grand total</strong>
                     </td>
                     <td className="text-right">{fmtAlways(item.qnty)}</td>
@@ -1526,13 +1531,14 @@ export default function ReportTable({
                   </td>
                   <td>{row.GST_NO ?? row.gst_no ?? '—'}</td>
                   <td
-                    className="bill-code"
-                    title={String(row.B_CODE ?? row.b_code ?? row.BK_CODE ?? row.bk_code ?? '').trim() || undefined}
+                    className="ledger-detail"
+                    title={
+                      saleListBrokerCode(row)
+                        ? `${saleListBrokerCode(row)} — ${saleListBrokerName(row)}`
+                        : saleListBrokerName(row)
+                    }
                   >
-                    {row.B_CODE ?? row.b_code ?? row.BK_CODE ?? row.bk_code ?? '—'}
-                  </td>
-                  <td className="ledger-detail" title={row.BK_NAME ?? row.bk_name ?? ''}>
-                    {clampText(row.BK_NAME ?? row.bk_name ?? '—', 25)}
+                    {clampText(saleListBrokerName(row), 28)}
                   </td>
                   <td title={String(row.TRN_NO ?? row.trn_no ?? '').trim() || undefined}>
                     {row.TRN_NO ?? row.trn_no ?? '—'}

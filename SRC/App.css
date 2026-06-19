@@ -162,6 +162,53 @@ body {
   min-width: 0; /* flex: allow inner horizontal scroll instead of growing past viewport */
 }
 
+/* Trial balance + ledger report hosts — full viewport (not 800px card) */
+.slide.fas-tb-host {
+  max-width: none !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  align-self: stretch !important;
+  flex: 1 1 auto !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  box-sizing: border-box;
+}
+
+.app-main--ledger-full-bleed {
+  align-items: stretch !important;
+  justify-content: stretch !important;
+  padding: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.app--ledger-full-bleed {
+  background: var(--fas-surface, #eef2f7) !important;
+}
+
+.app-main--ledger-full-bleed > .slide.fas-tb-host {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+.app-main--ledger-full-bleed .fas-tb-flow {
+  width: 100% !important;
+  max-width: none !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  border-radius: 0 !important;
+}
+
 .slide-3 {
   max-width: 920px;
   width: 100%;
@@ -4268,14 +4315,14 @@ mark.search-highlight {
  * lets the browser redistribute columns, recreating huge gaps after Tp / InvNo / Bt / Party.
  */
 .table-responsive--sale-list > .report-table.report-table--sale-list {
-  width: var(--sl-table-width, 2052px) !important;
-  min-width: var(--sl-table-width, 2052px) !important;
+  width: var(--sl-table-width, 1884px) !important;
+  min-width: var(--sl-table-width, 1884px) !important;
   max-width: none !important;
 }
 
 .report-table.report-table--sale-list {
-  width: var(--sl-table-width, 2052px) !important;
-  min-width: var(--sl-table-width, 2052px) !important;
+  width: var(--sl-table-width, 1884px) !important;
+  min-width: var(--sl-table-width, 1884px) !important;
   max-width: none !important;
   font-size: 0.68rem;
   margin-left: 0 !important;
@@ -4317,9 +4364,9 @@ mark.search-highlight {
 }
 
 /* Trn / Item / Item name: clamp header paint so narrow cols don’t stack on each other */
+.report-table--sale-list thead th:nth-child(10),
 .report-table--sale-list thead th:nth-child(11),
-.report-table--sale-list thead th:nth-child(12),
-.report-table--sale-list thead th:nth-child(13) {
+.report-table--sale-list thead th:nth-child(12) {
   overflow: hidden !important;
   text-overflow: ellipsis;
 }
@@ -4421,8 +4468,8 @@ mark.search-highlight {
 }
 
 /* BKH: broker-hold flag; body is typically one character */
-.report-table--sale-list thead th:nth-child(14),
-.report-table--sale-list tr.sale-list-line td:nth-child(14) {
+.report-table--sale-list thead th:nth-child(13),
+.report-table--sale-list tr.sale-list-line td:nth-child(13) {
   text-align: center !important;
   white-space: nowrap;
   overflow: hidden;
@@ -4431,14 +4478,13 @@ mark.search-highlight {
   padding-right: 0.02rem !important;
 }
 
-.report-table--sale-list thead th:nth-child(14) {
+.report-table--sale-list thead th:nth-child(13) {
   font-size: 0.6rem;
   font-weight: 700;
   letter-spacing: -0.035em;
   line-height: 1.05;
 }
 
-/* Bk: was right-aligned in a 28px col — code sat on the edge and met Bk name (looked like "26001SELF") */
 .report-table--sale-list thead th:nth-child(9),
 .report-table--sale-list tr.sale-list-line td:nth-child(9) {
   text-align: left !important;
@@ -4451,13 +4497,6 @@ mark.search-highlight {
 
 .report-table--sale-list thead th:nth-child(10),
 .report-table--sale-list tr.sale-list-line td:nth-child(10) {
-  padding-left: 0.28rem !important;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.report-table--sale-list thead th:nth-child(11),
-.report-table--sale-list tr.sale-list-line td:nth-child(11) {
   text-align: left !important;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4467,8 +4506,8 @@ mark.search-highlight {
 }
 
 /* Item code: varchar-style, left-aligned; gutter after Trn (above) and before Item name */
-.report-table--sale-list thead th:nth-child(12),
-.report-table--sale-list tr.sale-list-line td:nth-child(12) {
+.report-table--sale-list thead th:nth-child(11),
+.report-table--sale-list tr.sale-list-line td:nth-child(11) {
   text-align: left !important;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4477,8 +4516,8 @@ mark.search-highlight {
   border-right: 1px solid #e2e8f0;
 }
 
-.report-table--sale-list thead th:nth-child(13),
-.report-table--sale-list tr.sale-list-line td:nth-child(13) {
+.report-table--sale-list thead th:nth-child(12),
+.report-table--sale-list tr.sale-list-line td:nth-child(12) {
   text-align: left !important;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4492,8 +4531,8 @@ mark.search-highlight {
 }
 
 /* Qty … Bill amt (no Lot column) — wide enough for Indian-format totals; padding avoids digit run-on */
-.report-table--sale-list thead th:nth-child(n+15),
-.report-table--sale-list tr.sale-list-line td:nth-child(n+15),
+.report-table--sale-list thead th:nth-child(n+14),
+.report-table--sale-list tr.sale-list-line td:nth-child(n+14),
 .report-table--sale-list tr.sale-list-day-total td:nth-child(n+2),
 .report-table--sale-list tr.sale-list-bill-total td:nth-child(n+2),
 .report-table--sale-list tr.sale-list-grand-total td:nth-child(n+2) {
@@ -4528,8 +4567,8 @@ mark.search-highlight {
   }
 
   .table-responsive--sale-list > .report-table.report-table--sale-list {
-    width: var(--sl-table-width, 2052px) !important;
-    min-width: var(--sl-table-width, 2052px) !important;
+    width: var(--sl-table-width, 1884px) !important;
+    min-width: var(--sl-table-width, 1884px) !important;
   }
 
   .sale-list-hint {
@@ -4686,7 +4725,7 @@ tr.sale-list-bill-total td {
   border-bottom: 2px solid #64748b;
 }
 
-/* Subtotal row: keep label short in the colspan=14 cell — long captions used to force lead cols to huge min width */
+/* Subtotal row: keep label short in the colspan=13 cell — long captions used to force lead cols to huge min width */
 .report-table--sale-list td.sale-list-subtotal-label {
   white-space: nowrap;
 }
@@ -6874,7 +6913,9 @@ body.force-desktop-view .app--desktop {
 }
 
 .app-main:has(> .slide.slide-8),
-.app-main:has(> .slide.slide-report) {
+.app-main:has(> .slide.slide-report),
+.app-main:has(> .slide-5.fas-tb-host),
+.app-main:has(> .slide-4.fas-tb-host) {
   align-items: stretch;
   padding: 0;
   min-width: 0;
@@ -6882,7 +6923,9 @@ body.force-desktop-view .app--desktop {
 }
 
 .app-main:has(> .slide.slide-8) > .slide.slide-8,
-.app-main:has(> .slide.slide-report) > .slide.slide-report {
+.app-main:has(> .slide.slide-report) > .slide.slide-report,
+.app-main:has(> .slide-5.fas-tb-host) > .slide-5.fas-tb-host,
+.app-main:has(> .slide-4.fas-tb-host) > .slide-4.fas-tb-host {
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -7712,6 +7755,16 @@ body.force-desktop-view .app--desktop {
   font-size: 0.95rem;
 }
 
+.sale-bill-masters-loading-hint {
+  margin: 0 0 0.65rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  font-size: 0.88rem;
+}
+
 .sale-bill-page {
   scroll-padding-bottom: 6rem;
 }
@@ -7789,6 +7842,24 @@ body.force-desktop-view .app--desktop {
   width: 100%;
 }
 
+.sale-bill-footer-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  position: relative;
+}
+
+.sale-bill-footer-btn__icon {
+  display: none;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.sale-bill-footer-btn__text {
+  line-height: 1.2;
+}
+
 .sale-bill-ref-pill {
   border-color: #c7d2fe;
   background: linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%);
@@ -7842,12 +7913,17 @@ body.force-desktop-view .app--desktop {
 @media (max-width: 640px) {
   .slide.slide-21-sale-bill {
     max-width: 100%;
-    padding: 1rem max(0.85rem, env(safe-area-inset-right)) calc(5.75rem + env(safe-area-inset-bottom))
+    padding: 1rem max(0.85rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom))
       max(0.85rem, env(safe-area-inset-left));
     border-radius: 0;
     border-left: none;
     border-right: none;
     box-shadow: none;
+  }
+
+  .slide-21-sale-bill.sale-bill-page {
+    scroll-padding-top: 3.5rem;
+    scroll-padding-bottom: 1rem;
   }
 
   .sale-bill-page__title {
@@ -7887,34 +7963,90 @@ body.force-desktop-view .app--desktop {
     margin-top: 0.5rem;
   }
 
-  .sale-bill-footer {
+  .slide-21-sale-bill .sale-bill-footer {
     position: sticky;
-    bottom: 0;
-    z-index: 30;
-    margin-top: 1rem;
-    padding: 0.65rem 0 max(0.65rem, env(safe-area-inset-bottom)) 0;
-    background: rgba(255, 255, 255, 0.94);
+    top: 0;
+    z-index: 40;
+    margin: 0 calc(-1 * max(0.85rem, env(safe-area-inset-right))) 0.5rem
+      calc(-1 * max(0.85rem, env(safe-area-inset-left)));
+    padding: 0.35rem max(0.85rem, env(safe-area-inset-right)) 0.35rem max(0.85rem, env(safe-area-inset-left));
+    background: rgba(255, 255, 255, 0.97);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border-top: 1px solid #e2e8f0;
-    box-shadow: 0 -10px 28px rgba(15, 23, 42, 0.1);
+    border-top: none;
+    border-bottom: 1px solid #e2e8f0;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.1);
   }
 
   .sale-bill-footer-inner {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.35rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
   }
 
-  .sale-bill-footer-inner .btn {
-    min-height: 2.75rem;
-    font-size: 0.95rem;
+  .sale-bill-footer-inner::-webkit-scrollbar {
+    display: none;
   }
 
-  .sale-bill-footer-inner .btn-primary {
-    grid-column: 1 / -1;
-    min-height: 3rem;
-    font-size: 1.02rem;
+  .slide-21-sale-bill .sale-bill-footer-btn {
+    flex: 0 0 auto;
+    min-width: 2.65rem;
+    width: 2.65rem;
+    height: 2.65rem;
+    min-height: 2.65rem;
+    padding: 0;
+    font-size: 0;
+    border-radius: 10px;
+  }
+
+  .slide-21-sale-bill .sale-bill-footer-btn__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.12rem;
+    line-height: 1;
+  }
+
+  .slide-21-sale-bill .sale-bill-footer-btn__text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .slide-21-sale-bill .sale-bill-footer-btn--primary {
+    margin-left: 0;
+    min-width: 2.85rem;
+    width: 2.85rem;
+    height: 2.85rem;
+    min-height: 2.85rem;
+    box-shadow: 0 3px 12px rgba(79, 70, 229, 0.35);
+  }
+
+  .slide-21-sale-bill .sale-bill-footer-btn--danger {
+    background: linear-gradient(180deg, #f87171 0%, #dc2626 100%);
+    border-color: #dc2626;
+  }
+
+  .slide-21-sale-bill .sale-bill-footer-inner .btn {
+    min-height: 2.65rem;
+    font-size: 0;
+  }
+
+  .slide-21-sale-bill .sale-bill-footer-inner .btn-primary {
+    grid-column: auto;
+    min-height: 2.85rem;
+    font-size: 0;
     font-weight: 700;
   }
 
@@ -7941,6 +8073,177 @@ body.force-desktop-view .app--desktop {
   .slide-21-sale-bill .broker-search-results .account-search-row {
     min-height: 3rem;
   }
+}
+
+/* Mobile view mode at any screen width — action toolbar under header, sticky on scroll */
+.app--mobile .slide.slide-21-sale-bill,
+.slide.slide-21-sale-bill--mobile {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  touch-action: pan-y;
+}
+
+.slide.slide-21-sale-bill--mobile {
+  max-width: 100%;
+}
+
+.app--mobile .slide-21-sale-bill.sale-bill-page {
+  scroll-padding-top: 3.5rem;
+  scroll-padding-bottom: 1rem;
+}
+
+.slide-21-sale-bill--mobile .sale-bill-search-input,
+.app--mobile .slide-21-sale-bill .sale-bill-search-input {
+  scroll-margin-top: 3.75rem;
+  scroll-margin-bottom: min(42vh, 18rem);
+}
+
+@media (max-width: 640px) {
+  .slide-21-sale-bill .sale-bill-search-input {
+    scroll-margin-top: 3.75rem;
+    scroll-margin-bottom: min(42vh, 18rem);
+  }
+}
+
+.app--mobile .slide-21-sale-bill .sale-bill-footer {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  margin: 0 calc(-1 * max(0.85rem, env(safe-area-inset-right))) 0.5rem
+    calc(-1 * max(0.85rem, env(safe-area-inset-left)));
+  padding: 0.35rem max(0.85rem, env(safe-area-inset-right)) 0.35rem max(0.85rem, env(safe-area-inset-left));
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: none;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.1);
+}
+
+.app--mobile .slide-21-sale-bill .sale-bill-footer-inner {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  overflow-x: auto;
+}
+
+.app--mobile .slide-21-sale-bill .sale-bill-footer-btn {
+  flex: 0 0 auto;
+  min-width: 2.65rem;
+  width: 2.65rem;
+  height: 2.65rem;
+  min-height: 2.65rem;
+  padding: 0;
+  font-size: 0;
+}
+
+.app--mobile .slide-21-sale-bill .sale-bill-footer-btn__icon {
+  display: inline-flex;
+}
+
+.app--mobile .slide-21-sale-bill .sale-bill-footer-btn__text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.app--mobile .slide-21-sale-bill .sale-bill-footer-btn--primary {
+  margin-left: 0;
+  min-width: 2.85rem;
+  width: 2.85rem;
+  height: 2.85rem;
+  min-height: 2.85rem;
+}
+
+/* Mobile view mode (any width) — icon-only action toolbar */
+.slide-21-sale-bill--mobile .sale-bill-footer {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  margin: 0 calc(-1 * max(0.85rem, env(safe-area-inset-right))) 0.5rem
+    calc(-1 * max(0.85rem, env(safe-area-inset-left)));
+  padding: 0.35rem max(0.85rem, env(safe-area-inset-right)) 0.35rem max(0.85rem, env(safe-area-inset-left));
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: none;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.1);
+}
+
+.slide-21-sale-bill--mobile .sale-bill-footer-inner {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.slide-21-sale-bill--mobile .sale-bill-footer-btn {
+  flex: 0 0 auto;
+  min-width: 2.65rem;
+  width: 2.65rem;
+  height: 2.65rem;
+  min-height: 2.65rem;
+  padding: 0;
+  font-size: 0;
+  border-radius: 10px;
+}
+
+.slide-21-sale-bill--mobile .sale-bill-footer-btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.12rem;
+  line-height: 1;
+}
+
+.slide-21-sale-bill--mobile .sale-bill-footer-btn__text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.slide-21-sale-bill--mobile .sale-bill-footer-btn--primary {
+  margin-left: 0;
+  min-width: 2.85rem;
+  width: 2.85rem;
+  height: 2.85rem;
+  min-height: 2.85rem;
+  box-shadow: 0 3px 12px rgba(79, 70, 229, 0.35);
+}
+
+.slide-21-sale-bill--mobile .sale-bill-footer-inner .btn {
+  min-height: 2.65rem;
+  font-size: 0;
+}
+
+.slide-21-sale-bill--mobile .sale-bill-footer-inner .btn-primary {
+  min-height: 2.85rem;
+  font-size: 0;
+}
+
+.slide-21-sale-bill--mobile.sale-bill-page {
+  scroll-padding-top: 3.5rem;
+  scroll-padding-bottom: 1rem;
+}
+
+.slide-21-sale-bill--mobile .sale-entry-top-bar__line {
+  font-size: 0.72rem;
 }
 
 @media (min-width: 641px) {
