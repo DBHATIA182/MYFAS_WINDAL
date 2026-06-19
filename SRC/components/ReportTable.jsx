@@ -64,6 +64,7 @@ export default function ReportTable({
   saleListSortMode = 'date',
   billLedgerInterest = false,
   billLedgerKind = 'customer',
+  filterActive = false,
 }) {
   const [trialSelectedKey, setTrialSelectedKey] = useState(null);
   const [ledgerSelectedKey, setLedgerSelectedKey] = useState(null);
@@ -157,6 +158,24 @@ export default function ReportTable({
     const num = parseFloat(val);
     if (!Number.isFinite(num)) return '0';
     return Math.max(0, Math.trunc(num)).toLocaleString('en-IN');
+  };
+
+  const renderLedgerClBalance = (val, { total = false } = {}) => {
+    const num = parseFloat(val) || 0;
+    const abs = fmtAlways(Math.abs(num));
+    const tag = num < 0 ? 'Cr' : 'Dr';
+    const tagClass = num < 0 ? 'ledger-cl-balance-tag--cr' : 'ledger-cl-balance-tag--dr';
+    const amtClass = total ? 'ledger-cl-balance-amt ledger-cl-balance-amt--total' : 'ledger-cl-balance-amt';
+    const tagEl =
+      num === 0 ? null : (
+        <span className={`ledger-cl-balance-tag ${tagClass}${total ? ' ledger-cl-balance-tag--total' : ''}`}>{tag}</span>
+      );
+    return (
+      <span className="ledger-cl-balance-cell">
+        <span className={amtClass}>{abs}</span>
+        {tagEl}
+      </span>
+    );
   };
 
   const clampText = (value, maxLen = 25) => {
@@ -550,6 +569,19 @@ export default function ReportTable({
   // --- LEDGER VIEW ---
   if (type === 'ledger' || type === 'ledger-interest') {
     const showInterestCols = type === 'ledger-interest';
+    const txnRows = data.filter(
+      (row) =>
+        String(row.VR_TYPE ?? row.vr_type ?? '')
+          .trim()
+          .toUpperCase() !== 'OP'
+    );
+    if (filterActive && txnRows.length === 0) {
+      return (
+        <p className="no-data fas-ledger-filter-empty">
+          No transactions match your filter. Try another date, voucher no., detail, or amount.
+        </p>
+      );
+    }
     let sumDr = 0;
     let sumCr = 0;
     let sumDays = 0;
@@ -588,7 +620,7 @@ export default function ReportTable({
               <th className="ledger-detail col-ledger-detail-narrow">Detail</th>
               <th className="text-right col-ledger-amt">Dr.Amount</th>
               <th className="text-right col-ledger-amt">Cr.Amount</th>
-              <th className="text-right col-ledger-amt">Cl.Balance</th>
+              <th className="text-right col-ledger-amt col-ledger-cl-bal">Cl.Balance</th>
               {showInterestCols ? <th className="text-right col-ledger-amt col-ledger-days">Days</th> : null}
               {showInterestCols ? <th className="text-right col-ledger-amt col-ledger-int">Dr.Int</th> : null}
               {showInterestCols ? <th className="text-right col-ledger-amt col-ledger-int">Cr.Int</th> : null}
@@ -652,16 +684,16 @@ export default function ReportTable({
                     {lineType != null && lineType !== '' ? String(lineType) : '—'}
                   </td>
                   <td className="ledger-detail col-ledger-detail-narrow" title={String(row.DETAIL ?? row.detail ?? '')}>
-                    {row.DETAIL ?? row.detail}
+                    {clampText(row.DETAIL ?? row.detail, 36)}
                   </td>
                   <td className="text-right dr-amt col-ledger-amt">{fmt(row.DR_AMT ?? row.dr_amt)}</td>
                   <td className="text-right cr-amt col-ledger-amt">{fmt(row.CR_AMT ?? row.cr_amt)}</td>
                   <td
-                    className={`text-right col-ledger-amt ledger-cl-balance${
+                    className={`text-right col-ledger-amt col-ledger-cl-bal ledger-cl-balance${
                       clBalNum < 0 ? ' ledger-cl-balance--negative' : ''
                     }`}
                   >
-                    {fmt(clBal)}
+                    {renderLedgerClBalance(clBal)}
                   </td>
                   {showInterestCols ? (
                     <td className="text-right col-ledger-amt col-ledger-days">
@@ -704,11 +736,11 @@ export default function ReportTable({
                 <strong>{fmt(sumCr)}</strong>
               </td>
               <td
-                className={`text-right col-ledger-amt ledger-cl-balance-total${
+                className={`text-right col-ledger-amt col-ledger-cl-bal ledger-cl-balance-total${
                   closingNeg ? ' ledger-cl-balance-total--negative' : ''
                 }`}
               >
-                <strong>{fmt(closingBal)}</strong>
+                <strong>{renderLedgerClBalance(closingBal, { total: true })}</strong>
               </td>
               {showInterestCols ? (
                 <td className="text-right col-ledger-amt col-ledger-days">

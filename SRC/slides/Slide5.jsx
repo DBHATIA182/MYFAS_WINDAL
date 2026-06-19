@@ -6,8 +6,12 @@ import LedgerReportContextCard from '../components/LedgerReportContextCard';
 import LedgerMobileView from '../components/LedgerMobileView';
 import FasReportHeader from '../components/FasReportHeader';
 import FlexAmount from '../components/FlexAmount';
-import { generatePDF, sharePdfWithWhatsApp, buildLedgerStatementPdfMetadata } from '../utils/pdfgenerator';
+import { generatePDF, sharePdfWithWhatsApp, buildLedgerStatementPdfMetadata, buildReportHtml } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
+import { printHtmlDocument } from '../utils/openPrintPreviewWindow';
+import LedgerExportMenu from '../components/LedgerExportMenu';
+import LedgerRowFilterBar from '../components/LedgerRowFilterBar';
+import { filterLedgerRows, countLedgerFilterStats, ledgerFilterIsActive, collectLedgerVrTypes } from '../utils/ledgerMobileDisplay';
 import { toInputDateString, toOracleDate, toDisplayDate, formatCurBal, getCurBal } from '../utils/dateFormat';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
 import { computeLedgerSummary } from '../utils/ledgerSummary';
@@ -76,6 +80,9 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
   const [billPrintOpen, setBillPrintOpen] = useState(false);
   const [billPrintParams, setBillPrintParams] = useState(null);
   const [compLedgerHeader, setCompLedgerHeader] = useState(null);
+  const [ledgerRowFilter, setLedgerRowFilter] = useState('');
+  const [ledgerAmountSide, setLedgerAmountSide] = useState('all');
+  const [ledgerVrType, setLedgerVrType] = useState('all');
   const [interestRate, setInterestRate] = useState('12');
   const [graceDrDays, setGraceDrDays] = useState('0');
   const [graceCrDays, setGraceCrDays] = useState('0');
@@ -222,6 +229,9 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
       });
       
       if (response.data && response.data.length > 0) {
+        setLedgerRowFilter('');
+        setLedgerAmountSide('all');
+        setLedgerVrType('all');
         setReportData(response.data);
         setShowReport(true);
       } else {
@@ -338,13 +348,37 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
   };
 
   const ledgerTotals = useMemo(() => computeLedgerSummary(reportData), [reportData]);
+  const ledgerVrTypeOptions = useMemo(() => collectLedgerVrTypes(reportData), [reportData]);
+  const ledgerFilterStats = useMemo(
+    () =>
+      countLedgerFilterStats(reportData, ledgerRowFilter, {
+        includeInterest: isLedgerInterest,
+        amountSide: ledgerAmountSide,
+        vrType: ledgerVrType,
+      }),
+    [reportData, ledgerRowFilter, isLedgerInterest, ledgerAmountSide, ledgerVrType]
+  );
+  const filteredReportData = useMemo(
+    () =>
+      filterLedgerRows(reportData, ledgerRowFilter, {
+        keepOpening: true,
+        includeInterest: isLedgerInterest,
+        amountSide: ledgerAmountSide,
+        vrType: ledgerVrType,
+      }),
+    [reportData, ledgerRowFilter, isLedgerInterest, ledgerAmountSide, ledgerVrType]
+  );
   const useMobileLedgerCards = viewMode === 'mobile' && !isLedgerInterest;
+  const isDesktopLedgerView = viewMode === 'desktop';
 
   if (showReport && reportData.length > 0) {
     const account = accounts.find((a) => String(a.CODE) === String(selectedAccount));
     const compName = formData.comp_name ?? formData.COMP_NAME ?? '';
     const compYear = formData.comp_year ?? formData.COMP_YEAR ?? '';
-    const periodLine = `Financial year ${compYear} · ${toDisplayDate(startDate)} – ${toDisplayDate(endDate)}`;
+    const accountName = account?.NAME ?? '';
+    const periodLine = isDesktopLedgerView
+      ? `FY ${compYear} / ${toDisplayDate(startDate)} - ${toDisplayDate(endDate)}`
+      : `Financial year ${compYear} · ${toDisplayDate(startDate)} – ${toDisplayDate(endDate)}`;
     const ledgerHint = isLedgerInterest
       ? `Interest date ${toDisplayDate(interestCalcDate)} · Rate ${String(interestRate).trim() || '0'}% · Grace DR ${String(
           graceDrDays
@@ -354,6 +388,9 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
       setVoucherRows(null);
       setVoucherTitle('');
       setShowReport(false);
+      setLedgerRowFilter('');
+      setLedgerAmountSide('all');
+      setLedgerVrType('all');
       setBillPrintOpen(false);
       setBillPrintParams(null);
     };
@@ -371,6 +408,42 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
         billParams={billPrintParams}
         companyName={formData.comp_name ?? formData.COMP_NAME ?? ''}
       />
+    );
+
+    const handleLedgerExportPdf = () => downloadPDF().catch((e) => alert(e?.message || String(e)));
+    const handleLedgerExportExcel = () => {
+      try {
+        const code = String(selectedAccount || 'account');
+        downloadExcelRows(reportData, 'Ledger', `${compName}_Ledger_${code}`);
+      } catch (e) {
+        alert(String(e?.message || e));
+      }
+    };
+    const handleLedgerExportWhatsApp = () => shareWhatsApp().catch((e) => alert(e?.message || String(e)));
+    const handleLedgerExportPrint = () => {
+      if (!reportData.length) return;
+      const html = buildReportHtml('ledger', reportData, ledgerPdfMeta());
+      printHtmlDocument(html, { title: isLedgerInterest ? 'Ledger With Interest' : 'Ledger Report' });
+    };
+
+    const ledgerHeaderRightSlot = (
+      <>
+        {isDesktopLedgerView ? (
+          <LedgerExportMenu
+            showPdf={!isLedgerInterest}
+            showWhatsApp={!isLedgerInterest}
+            printDisabled={!reportData.length}
+            onPdf={handleLedgerExportPdf}
+            onWhatsApp={handleLedgerExportWhatsApp}
+            onExcel={handleLedgerExportExcel}
+            onPrint={handleLedgerExportPrint}
+          />
+        ) : null}
+        <SessionToolbarChrome
+          helpReportId={isLedgerInterest ? 'ledger-interest' : 'ledger'}
+          helpCompanyName={compName}
+        />
+      </>
     );
 
     if (voucherRows != null) {
@@ -484,72 +557,73 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
 
     return (
       <LedgerReportShell
-        className="fas-tb-host--results fas-ledger-host"
+        className={`fas-tb-host--results fas-ledger-host${isDesktopLedgerView ? ' fas-ledger-host--desktop' : ''}`}
         header={
           <FasReportHeader
-            className="fas-report-header--ledger-toolbar"
+            className={isDesktopLedgerView ? 'fas-report-header--ledger-desktop' : 'fas-report-header--ledger-toolbar'}
             title={isLedgerInterest ? 'Ledger With Interest' : 'Ledger Report'}
             onBack={closeReport}
-            rightSlot={
-              <SessionToolbarChrome
-                helpReportId={isLedgerInterest ? 'ledger-interest' : 'ledger'}
-                helpCompanyName={compName}
-              />
-            }
+            rightSlot={ledgerHeaderRightSlot}
           />
         }
         exportBar={
-          <div className="fas-tb-export-bar fas-tb-export-bar--icons">
-            <button
-              type="button"
-              className="fas-tb-export-icon fas-tb-export-icon--back-nav btn btn-secondary"
-              aria-label="Parameters"
-              title="Parameters"
-              onClick={closeReport}
-            >
-              <span aria-hidden="true">←</span>
-            </button>
-            {!isLedgerInterest ? (
+          isDesktopLedgerView ? null : (
+            <div className="fas-tb-export-bar fas-tb-export-bar--icons">
               <button
                 type="button"
-                className="fas-tb-export-icon btn btn-export"
-                aria-label="PDF"
-                title="PDF"
-                onClick={() => downloadPDF().catch((e) => alert(e?.message || String(e)))}
+                className="fas-tb-export-icon fas-tb-export-icon--back-nav btn btn-secondary"
+                aria-label="Parameters"
+                title="Parameters"
+                onClick={closeReport}
               >
-                <span aria-hidden="true">📄</span>
+                <span aria-hidden="true">←</span>
               </button>
-            ) : null}
-            <button
-              type="button"
-              className="fas-tb-export-icon btn btn-excel"
-              aria-label="Excel"
-              title="Excel"
-              onClick={() => {
-                try {
-                  const code = String(selectedAccount || 'account');
-                  downloadExcelRows(reportData, 'Ledger', `${compName}_Ledger_${code}`);
-                } catch (e) {
-                  alert(String(e?.message || e));
-                }
-              }}
-            >
-              <span aria-hidden="true">📊</span>
-            </button>
-            {!isLedgerInterest ? (
+              {!isLedgerInterest ? (
+                <button
+                  type="button"
+                  className="fas-tb-export-icon btn btn-export"
+                  aria-label="PDF"
+                  title="PDF"
+                  onClick={handleLedgerExportPdf}
+                >
+                  <span aria-hidden="true">📄</span>
+                </button>
+              ) : null}
               <button
                 type="button"
-                className="fas-tb-export-icon btn btn-whatsapp"
-                aria-label="WhatsApp"
-                title="WhatsApp"
-                onClick={() => shareWhatsApp().catch((e) => alert(e?.message || String(e)))}
+                className="fas-tb-export-icon btn btn-excel"
+                aria-label="Excel"
+                title="Excel"
+                onClick={handleLedgerExportExcel}
               >
-                <span aria-hidden="true">💬</span>
+                <span aria-hidden="true">📊</span>
               </button>
-            ) : null}
-          </div>
+              {!isLedgerInterest ? (
+                <button
+                  type="button"
+                  className="fas-tb-export-icon btn btn-whatsapp"
+                  aria-label="WhatsApp"
+                  title="WhatsApp"
+                  onClick={handleLedgerExportWhatsApp}
+                >
+                  <span aria-hidden="true">💬</span>
+                </button>
+              ) : null}
+            </div>
+          )
         }
       >
+        {isDesktopLedgerView ? (
+          <nav className="fas-ledger-desktop-crumb" aria-label="Breadcrumb">
+            <span className="fas-ledger-desktop-crumb__sep">/</span>
+            <span>Ledger</span>
+            <span className="fas-ledger-desktop-crumb__sep">/</span>
+            <span className="fas-ledger-desktop-crumb__account" title={accountName}>
+              {accountName || 'Account'}
+            </span>
+          </nav>
+        ) : null}
+
         <LedgerReportContextCard
           compHeader={compLedgerHeader}
           companyNameFallback={compName}
@@ -561,23 +635,23 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
 
         <div className="fas-ledger-totals">
           <div className="fas-tb-total-card fas-ledger-total-card--opening">
-            <div className="fas-tb-total-card__label">Opening</div>
+            <div className="fas-tb-total-card__label">{isDesktopLedgerView ? 'Opening Balance' : 'Opening'}</div>
             <FlexAmount
               className="fas-tb-total-card__value"
               value={formatIndianAmount(ledgerTotals.opening)}
               prefix="₹"
             />
           </div>
-          <div className="fas-tb-total-card fas-tb-total-card--debit">
-            <div className="fas-tb-total-card__label">Total Dr</div>
+          <div className="fas-tb-total-card fas-tb-total-card--debit fas-ledger-total-card--debit">
+            <div className="fas-tb-total-card__label">{isDesktopLedgerView ? 'Total Debit' : 'Total Dr'}</div>
             <FlexAmount
               className="fas-tb-total-card__value"
               value={formatIndianAmount(ledgerTotals.sumDr)}
               prefix="₹"
             />
           </div>
-          <div className="fas-tb-total-card fas-tb-total-card--credit">
-            <div className="fas-tb-total-card__label">Total Cr</div>
+          <div className="fas-tb-total-card fas-tb-total-card--credit fas-ledger-total-card--credit">
+            <div className="fas-tb-total-card__label">{isDesktopLedgerView ? 'Total Credit' : 'Total Cr'}</div>
             <FlexAmount
               className="fas-tb-total-card__value"
               value={formatIndianAmount(ledgerTotals.sumCr)}
@@ -586,12 +660,26 @@ export default function Slide5({ apiBase, onPrev, onReset, formData, viewMode = 
           </div>
         </div>
 
+        <LedgerRowFilterBar
+          value={ledgerRowFilter}
+          onChange={setLedgerRowFilter}
+          amountSide={ledgerAmountSide}
+          onAmountSideChange={setLedgerAmountSide}
+          vrType={ledgerVrType}
+          vrTypeOptions={ledgerVrTypeOptions}
+          onVrTypeChange={setLedgerVrType}
+          shownCount={ledgerFilterStats.shown}
+          totalCount={ledgerFilterStats.total}
+          className={isDesktopLedgerView ? 'fas-ledger-filter--desktop' : ''}
+        />
+
         <div className="fas-ledger-table-wrap">
           <ReportTable
-            data={reportData}
+            data={filteredReportData}
             type={isLedgerInterest ? 'ledger-interest' : 'ledger'}
             onVoucherClick={runLedgerVoucher}
             onLedgerSaleBillClick={openLedgerSaleBill}
+            filterActive={ledgerFilterIsActive(ledgerRowFilter, ledgerAmountSide, ledgerVrType)}
           />
         </div>
 

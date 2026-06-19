@@ -3,6 +3,9 @@ import SessionToolbarChrome from './SessionToolbarChrome';
 import { mountLedgerFullBleedLayout } from '../utils/ledgerFullBleedLayout';
 import {
   filterLedgerMobileRows,
+  countLedgerFilterStats,
+  ledgerFilterIsActive,
+  collectLedgerVrTypes,
   formatBalanceDrCr,
   formatIndianLedgerAmount,
   formatLedgerMobileShortDate,
@@ -104,15 +107,23 @@ export default function LedgerMobileView({
   helpCompanyName = '',
 }) {
   const [search, setSearch] = useState('');
+  const [amountSide, setAmountSide] = useState('all');
+  const [vrType, setVrType] = useState('all');
   const [menuOpen, setMenuOpen] = useState(false);
 
   useLayoutEffect(() => mountLedgerFullBleedLayout(), []);
 
+  const vrTypeOptions = useMemo(() => collectLedgerVrTypes(rows), [rows]);
   const { openingRows, txnRows } = useMemo(() => splitLedgerMobileRows(rows), [rows]);
   const filteredTxn = useMemo(
-    () => filterLedgerMobileRows(txnRows.map((t) => t.row), search),
-    [txnRows, search]
+    () => filterLedgerMobileRows(txnRows.map((t) => t.row), search, { amountSide, vrType }),
+    [txnRows, search, amountSide, vrType]
   );
+  const filterStats = useMemo(
+    () => countLedgerFilterStats(rows, search, { amountSide, vrType }),
+    [rows, search, amountSide, vrType]
+  );
+  const filterActive = ledgerFilterIsActive(search, amountSide, vrType);
 
   const openingBal =
     openingRows.length > 0
@@ -235,12 +246,59 @@ export default function LedgerMobileView({
           <input
             type="search"
             className="ledger-new-mobile__search-input"
-            placeholder="Search transactions..."
+            placeholder="Filter all fields — date, voucher, detail, amounts, Dr/Cr…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             autoComplete="off"
           />
         </label>
+
+        {vrTypeOptions.length > 0 ? (
+          <label className="ledger-new-mobile__vr-type">
+            <span className="ledger-new-mobile__vr-type-label">Vr.Type</span>
+            <select
+              className="ledger-new-mobile__vr-type-select"
+              value={vrType}
+              onChange={(e) => setVrType(e.target.value)}
+              aria-label="Filter by voucher type"
+            >
+              <option value="all">All types</option>
+              {vrTypeOptions.map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        <div className="ledger-new-mobile__amount-sides" role="group" aria-label="Filter by amount type">
+          {[
+            { id: 'all', label: 'All' },
+            { id: 'dr', label: 'Dr only' },
+            { id: 'cr', label: 'Cr only' },
+          ].map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              className={`ledger-new-mobile__amount-side${amountSide === id ? ' is-active' : ''}${
+                id === 'dr' ? ' ledger-new-mobile__amount-side--dr' : id === 'cr' ? ' ledger-new-mobile__amount-side--cr' : ''
+              }`}
+              aria-pressed={amountSide === id}
+              onClick={() => setAmountSide(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {filterActive ? (
+          <p className="ledger-new-mobile__filter-count">
+            Showing {filterStats.shown} of {filterStats.total} entries
+            {vrType !== 'all' ? ` · Vr ${vrType}` : ''}
+            {amountSide === 'dr' ? ' · Dr only' : amountSide === 'cr' ? ' · Cr only' : ''}
+          </p>
+        ) : null}
 
         <div className="ledger-new-mobile__opening">
           <span>Opening Balance</span>
@@ -250,7 +308,7 @@ export default function LedgerMobileView({
 
       <div className="ledger-new-mobile__list">
         {filteredTxn.length === 0 ? (
-          <p className="ledger-new-mobile__empty">No transactions match your search.</p>
+          <p className="ledger-new-mobile__empty">No transactions match your filter.</p>
         ) : (
           filteredTxn.map((row, i) => (
             <LedgerMobileTxnCard

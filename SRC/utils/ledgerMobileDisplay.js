@@ -121,18 +121,183 @@ export function ledgerMobileRowClickable(row, { onVoucherClick, onLedgerSaleBill
   return { canSaleBill, canDrill, clickable: canSaleBill || canDrill };
 }
 
-export function filterLedgerMobileRows(rows, query) {
-  const q = String(query ?? '')
-    .trim()
+export function isLedgerOpeningRow(row) {
+  return (
+    String(row?.VR_TYPE ?? row?.vr_type ?? '')
+      .trim()
+      .toUpperCase() === 'OP'
+  );
+}
+
+function fieldStr(v) {
+  if (v == null) return '';
+  return String(v).trim();
+}
+
+function amtSearchParts(val) {
+  const n = parseFloat(val);
+  if (!Number.isFinite(n)) return [];
+  const abs = Math.abs(n);
+  const parts = [
+    String(n),
+    String(abs),
+    formatIndianLedgerAmount(n),
+    formatIndianLedgerAmount(abs),
+    n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  ];
+  if (Number.isInteger(abs)) parts.push(String(Math.trunc(abs)));
+  return parts;
+}
+
+/** Lowercase haystack from every ledger column (for filter matching). */
+export function buildLedgerRowSearchText(row, { includeInterest = false } = {}) {
+  const vrDate = row.VR_DATE ?? row.vr_date;
+  const valueDate = row.V_DATE ?? row.v_date;
+  const clBal = ledgerMobileRowRunBal(row);
+  const drAmt = parseFloat(row.DR_AMT ?? row.dr_amt ?? 0) || 0;
+  const crAmt = parseFloat(row.CR_AMT ?? row.cr_amt ?? 0) || 0;
+
+  const parts = [
+    fieldStr(vrDate),
+    formatLedgerDateDisplay(vrDate),
+    formatLedgerMobileShortDate(vrDate),
+    fieldStr(valueDate),
+    formatLedgerDateDisplay(valueDate),
+    formatLedgerMobileShortDate(valueDate),
+    fieldStr(row.VR_NO ?? row.vr_no),
+    fieldStr(row.VR_TYPE ?? row.vr_type),
+    fieldStr(row.TYPE ?? row.type),
+    fieldStr(row.DETAIL ?? row.detail),
+    ...amtSearchParts(row.DR_AMT ?? row.dr_amt),
+    ...amtSearchParts(row.CR_AMT ?? row.cr_amt),
+    ...amtSearchParts(clBal),
+    formatBalanceDrCr(clBal),
+    formatIndianLedgerAmount(Math.abs(clBal)),
+    clBal < 0 ? 'cr credit' : clBal > 0 ? 'dr debit' : '',
+    drAmt > 0 ? 'dr debit' : '',
+    crAmt > 0 ? 'cr credit' : '',
+  ];
+
+  if (includeInterest) {
+    const drDays = parseFloat(row.DR_DAYS ?? row.dr_days ?? 0) || 0;
+    const crDays = parseFloat(row.CR_DAYS ?? row.cr_days ?? 0) || 0;
+    parts.push(
+      fieldStr(row.DR_DAYS ?? row.dr_days),
+      fieldStr(row.CR_DAYS ?? row.cr_days),
+      String(drDays),
+      String(crDays),
+      ...amtSearchParts(row.DR_INTEREST ?? row.dr_interest),
+      ...amtSearchParts(row.CR_INTEREST ?? row.cr_interest)
+    );
+  }
+
+  return parts
+    .filter(Boolean)
+    .join(' ')
     .toLowerCase();
-  if (!q) return rows;
-  return rows.filter((row) => {
-    const vr = String(row.VR_TYPE ?? row.vr_type ?? '').toLowerCase();
-    const vrNo = String(row.VR_NO ?? row.vr_no ?? '').toLowerCase();
-    const detail = String(row.DETAIL ?? row.detail ?? '').toLowerCase();
-    const dt = formatLedgerMobileShortDate(row.VR_DATE ?? row.vr_date).toLowerCase();
-    return vr.includes(q) || vrNo.includes(q) || detail.includes(q) || dt.includes(q);
+}
+
+export function ledgerRowMatchesFilter(row, query, options = {}) {
+  const tokens = String(query ?? '')
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!tokens.length) return true;
+  const blob = buildLedgerRowSearchText(row, options);
+  return tokens.every((t) => blob.includes(t));
+}
+
+export function ledgerRowDrAmt(row) {
+  return parseFloat(row?.DR_AMT ?? row?.dr_amt ?? 0) || 0;
+}
+
+export function ledgerRowCrAmt(row) {
+  return parseFloat(row?.CR_AMT ?? row?.cr_amt ?? 0) || 0;
+}
+
+/** @param {'all'|'dr'|'cr'} amountSide */
+export function ledgerRowMatchesAmountSide(row, amountSide) {
+  if (!amountSide || amountSide === 'all') return true;
+  const dr = ledgerRowDrAmt(row);
+  const cr = ledgerRowCrAmt(row);
+  if (amountSide === 'dr') return dr > 0 && cr <= 0;
+  if (amountSide === 'cr') return cr > 0 && dr <= 0;
+  return true;
+}
+
+export function ledgerRowVrTypeCode(row) {
+  return String(row?.VR_TYPE ?? row?.vr_type ?? '')
+    .trim()
+    .toUpperCase();
+}
+
+/** Unique Vr.Type codes from transaction rows (excludes OP), sorted. */
+export function collectLedgerVrTypes(rows) {
+  const set = new Set();
+  (rows || []).forEach((row) => {
+    if (isLedgerOpeningRow(row)) return;
+    const code = ledgerRowVrTypeCode(row);
+    if (code) set.add(code);
   });
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+export function ledgerRowMatchesVrType(row, vrTypeFilter) {
+  if (!vrTypeFilter || vrTypeFilter === 'all') return true;
+  return ledgerRowVrTypeCode(row) === String(vrTypeFilter).trim().toUpperCase();
+}
+
+export function ledgerRowMatchesFilters(
+  row,
+  query,
+  { includeInterest = false, amountSide = 'all', vrType = 'all' } = {}
+) {
+  if (!ledgerRowMatchesAmountSide(row, amountSide)) return false;
+  if (!ledgerRowMatchesVrType(row, vrType)) return false;
+  return ledgerRowMatchesFilter(row, query, { includeInterest });
+}
+
+export function ledgerFilterIsActive(query, amountSide = 'all', vrType = 'all') {
+  return (
+    Boolean(String(query ?? '').trim()) ||
+    amountSide === 'dr' ||
+    amountSide === 'cr' ||
+    (vrType && vrType !== 'all')
+  );
+}
+
+/** Filter ledger rows; opening (OP) rows stay visible when keepOpening is true. */
+export function filterLedgerRows(
+  rows,
+  query,
+  { keepOpening = true, includeInterest = false, amountSide = 'all', vrType = 'all' } = {}
+) {
+  if (!ledgerFilterIsActive(query, amountSide, vrType)) return rows || [];
+
+  const list = rows || [];
+  const opening = keepOpening ? list.filter(isLedgerOpeningRow) : [];
+  const txn = keepOpening ? list.filter((r) => !isLedgerOpeningRow(r)) : list;
+  const filteredTxn = txn.filter((row) =>
+    ledgerRowMatchesFilters(row, query, { includeInterest, amountSide, vrType })
+  );
+  return [...opening, ...filteredTxn];
+}
+
+export function countLedgerFilterStats(rows, query, { includeInterest = false, amountSide = 'all', vrType = 'all' } = {}) {
+  const list = rows || [];
+  const txn = list.filter((r) => !isLedgerOpeningRow(r));
+  if (!ledgerFilterIsActive(query, amountSide, vrType)) return { shown: txn.length, total: txn.length };
+  const shown = txn.filter((row) =>
+    ledgerRowMatchesFilters(row, query, { includeInterest, amountSide, vrType })
+  ).length;
+  return { shown, total: txn.length };
+}
+
+export function filterLedgerMobileRows(rows, query, options = {}) {
+  const { amountSide = 'all', vrType = 'all', ...rest } = options;
+  if (!ledgerFilterIsActive(query, amountSide, vrType)) return rows || [];
+  return (rows || []).filter((row) => ledgerRowMatchesFilters(row, query, { amountSide, vrType, ...rest }));
 }
 
 export function splitLedgerMobileRows(rows) {

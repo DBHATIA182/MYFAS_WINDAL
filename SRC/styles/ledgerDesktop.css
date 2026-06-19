@@ -1,0 +1,533 @@
+/* Desktop ledger — full-width layout + mockup styling (app--desktop only) */
+
+@media (min-width: 641px) {
+  .app--desktop .fas-ledger-host--desktop.ledger-full-bleed {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    max-width: none !important;
+    height: 100dvh !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-tb-flow {
+    width: 100% !important;
+    max-width: none !important;
+    height: 100% !important;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-tb-body {
+    width: 100% !important;
+    max-width: none !important;
+    padding: 14px 20px 16px !important;
+    gap: 12px !important;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-ledger-context-card {
+    border-radius: 10px;
+    padding: 12px 16px;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-ledger-table-wrap {
+    width: 100% !important;
+    max-width: none !important;
+    border-radius: 10px;
+    border: 1.5px solid var(--fas-border, #d8e0ec);
+  }
+
+  .app--desktop .fas-ledger-host--desktop .table-responsive--ledger {
+    width: 100%;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger {
+    width: 100%;
+    min-width: 100%;
+  }
+
+  /* Desktop header export menu (⋮ → PDF, WhatsApp, Excel, Print) */
+  .fas-ledger-export-menu {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .fas-ledger-export-menu__btn {
+    width: 32px;
+    height: 32px;
+    min-height: 32px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .fas-ledger-export-menu__btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .fas-ledger-export-menu__panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 148px;
+    background: #fff;
+    border: 1px solid var(--fas-border, #d8e0ec);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(15, 30, 60, 0.18);
+    z-index: 50;
+    overflow: hidden;
+  }
+
+  .fas-ledger-export-menu__item {
+    display: block;
+    width: 100%;
+    border: none;
+    background: #fff;
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fas-navy, #0f1e3c);
+    cursor: pointer;
+  }
+
+  .fas-ledger-export-menu__item:hover:not(:disabled) {
+    background: var(--fas-surface, #eef2f7);
+  }
+
+  .fas-ledger-export-menu__item:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .fas-ledger-export-menu__item + .fas-ledger-export-menu__item {
+    border-top: 1px solid var(--fas-border, #d8e0ec);
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-report-header--ledger-desktop .fas-report-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-report-header--ledger-desktop .fas-report-header__back {
+    display: inline-flex;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-report-header--ledger-desktop .btn-report-help,
+  .app--desktop .fas-ledger-host--desktop .fas-report-header--ledger-desktop .toolbar-icon-btn,
+  .app--desktop .fas-ledger-host--desktop .fas-report-header--ledger-desktop .voice-command-btn {
+    width: 32px;
+    height: 32px;
+    min-height: 32px;
+  }
+
+  /* Breadcrumb under header */
+  .fas-ledger-desktop-crumb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    padding: 0 2px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fas-text-secondary, #64748b);
+  }
+
+  .fas-ledger-desktop-crumb__sep {
+    color: var(--fas-text-muted, #94a3b8);
+  }
+
+  .fas-ledger-desktop-crumb__account {
+    color: var(--fas-navy, #0f1e3c);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  /* Summary cards — Opening / Total Debit (red) / Total Credit (green) */
+  .app--desktop .fas-ledger-host--desktop .fas-ledger-totals {
+    gap: 12px;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-ledger-totals .fas-tb-total-card {
+    padding: 12px 14px;
+    border-radius: 10px;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-ledger-total-card--opening {
+    background: var(--fas-white, #fff);
+    border-color: var(--fas-border, #d8e0ec);
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-ledger-total-card--opening .fas-tb-total-card__value {
+    color: var(--fas-navy, #0f1e3c);
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-ledger-total-card--debit {
+    background: rgba(254, 226, 226, 0.65);
+    border-color: rgba(252, 165, 165, 0.6);
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-ledger-total-card--debit .fas-tb-total-card__label {
+    color: #991b1b;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-ledger-total-card--debit .fas-tb-total-card__value {
+    color: #dc2626 !important;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-ledger-total-card--credit {
+    background: rgba(220, 252, 231, 0.65);
+    border-color: rgba(134, 239, 172, 0.6);
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-ledger-total-card--credit .fas-tb-total-card__label {
+    color: #166534;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-ledger-total-card--credit .fas-tb-total-card__value {
+    color: #16a34a !important;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger {
+    width: 100%;
+    min-width: 100%;
+    table-layout: fixed;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .col-ledger-dt {
+    width: 82px;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .col-ledger-value-dt {
+    width: 82px;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .col-ledger-vr-no {
+    width: 56px;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .col-ledger-type {
+    width: 52px;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .col-ledger-line-type {
+    width: 40px;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .col-ledger-detail-narrow,
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .ledger-detail {
+    width: 14%;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    word-break: normal;
+    font-size: 0.72rem;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .col-ledger-amt {
+    width: 88px;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .col-ledger-cl-bal {
+    width: 112px;
+    min-width: 112px;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .ledger-cl-balance-cell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    width: 100%;
+    white-space: nowrap;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .ledger-cl-balance-tag {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 0.62rem;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .ledger-cl-balance-tag--dr {
+    background: rgba(254, 226, 226, 0.85);
+    color: #b91c1c;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .ledger-cl-balance-tag--cr {
+    background: rgba(220, 252, 231, 0.85);
+    color: #15803d;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .ledger-cl-balance--negative .ledger-cl-balance-amt {
+    color: #16a34a !important;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .ledger-cl-balance:not(.ledger-cl-balance--negative) .ledger-cl-balance-amt {
+    color: #dc2626 !important;
+  }
+
+  /* Grand total row — always navy highlight on desktop */
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger tbody tr.ledger-grand-total td {
+    background: var(--fas-navy, #0f1e3c) !important;
+    color: #fff !important;
+    border-color: #0a1628 !important;
+    font-weight: 800;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger tbody tr.ledger-grand-total .dr-amt,
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger tbody tr.ledger-grand-total .cr-amt,
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger tbody tr.ledger-grand-total .ledger-cl-balance-amt,
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger tbody tr.ledger-grand-total .ledger-cl-balance-amt--total {
+    color: #fff !important;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger tbody tr.ledger-grand-total .ledger-cl-balance-tag--dr {
+    background: rgba(254, 202, 202, 0.35);
+    color: #fecaca;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger tbody tr.ledger-grand-total .ledger-cl-balance-tag--cr {
+    background: rgba(187, 247, 208, 0.35);
+    color: #bbf7d0;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger tbody tr.ledger-grand-total.ledger-row-selected td {
+    box-shadow: inset 0 0 0 2px var(--fas-accent, #00c2a8);
+  }
+
+  /* Table — striped rows, Dr red / Cr green, blue voucher no */
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger tbody tr:nth-child(even):not(.ledger-grand-total) td {
+    background: #fffbeb;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger tbody tr:nth-child(odd):not(.ledger-grand-total) td {
+    background: #fff;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger tbody tr.opening-row td {
+    background: #f8fafc !important;
+    font-weight: 600;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .dr-amt {
+    color: #dc2626 !important;
+    font-weight: 700;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .cr-amt {
+    color: #16a34a !important;
+    font-weight: 700;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .col-ledger-vr-no {
+    color: #2563eb;
+    font-weight: 600;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .ledger-cl-balance {
+    color: inherit;
+    font-weight: 700;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger .ledger-cl-balance--negative {
+    color: inherit;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .report-table--ledger tbody tr.clickable-row .col-ledger-vr-no {
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-ledger-context-card__hint {
+    display: none;
+  }
+
+  .app--desktop .fas-ledger-host--desktop .fas-ledger-footer--mobile-only {
+    display: none;
+  }
+
+  .fas-ledger-filter--desktop {
+    margin: 0;
+  }
+}
+
+/* Ledger row filter — desktop + mobile table */
+.fas-ledger-filter {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.fas-ledger-filter__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.fas-ledger-filter__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 200px;
+  min-width: 0;
+  position: relative;
+}
+
+.fas-ledger-filter__icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.fas-ledger-filter__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  padding: 9px 36px 9px 10px;
+  border: 1.5px solid var(--fas-border, #d8e0ec);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--fas-white, #fff);
+  color: var(--fas-navy, #0f1e3c);
+}
+
+.fas-ledger-filter__input:focus {
+  outline: none;
+  border-color: var(--fas-indigo-light, #2a4fa8);
+  box-shadow: 0 0 0 2px rgba(42, 79, 168, 0.15);
+}
+
+.fas-ledger-filter__clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: var(--fas-surface, #eef2f7);
+  color: var(--fas-text-secondary, #64748b);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fas-ledger-filter__clear:hover {
+  background: var(--fas-border, #d8e0ec);
+}
+
+.fas-ledger-filter__vr-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.fas-ledger-filter__vr-type-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fas-text-secondary, #64748b);
+  white-space: nowrap;
+}
+
+.fas-ledger-filter__vr-type-select {
+  min-width: 88px;
+  max-width: 120px;
+  padding: 8px 28px 8px 10px;
+  border: 1.5px solid var(--fas-border, #d8e0ec);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fas-navy, #0f1e3c);
+  background: var(--fas-white, #fff)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M2 4l4 4 4-4'/%3E%3C/svg%3E")
+    no-repeat right 8px center;
+  appearance: none;
+  cursor: pointer;
+}
+
+.fas-ledger-filter__vr-type-select:focus {
+  outline: none;
+  border-color: var(--fas-indigo-light, #2a4fa8);
+  box-shadow: 0 0 0 2px rgba(42, 79, 168, 0.15);
+}
+
+.fas-ledger-filter__count {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fas-text-secondary, #64748b);
+  white-space: nowrap;
+  align-self: flex-end;
+}
+
+.fas-ledger-filter__sides {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1.5px solid var(--fas-border, #d8e0ec);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--fas-white, #fff);
+}
+
+.fas-ledger-filter__side {
+  border: none;
+  background: transparent;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fas-text-secondary, #64748b);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.fas-ledger-filter__side + .fas-ledger-filter__side {
+  border-left: 1.5px solid var(--fas-border, #d8e0ec);
+}
+
+.fas-ledger-filter__side:hover {
+  background: var(--fas-surface, #eef2f7);
+}
+
+.fas-ledger-filter__side.is-active {
+  background: var(--fas-navy, #0f1e3c);
+  color: #fff;
+}
+
+.fas-ledger-filter__side--dr.is-active {
+  background: #dc2626;
+  color: #fff;
+}
+
+.fas-ledger-filter__side--cr.is-active {
+  background: #16a34a;
+  color: #fff;
+}
+
+.fas-ledger-filter-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--fas-text-secondary, #64748b);
+  font-size: 13px;
+}
