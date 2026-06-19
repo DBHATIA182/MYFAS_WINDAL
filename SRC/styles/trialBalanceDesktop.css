@@ -1,0 +1,115 @@
+/* Desktop trial balance — schedule expand/collapse + filters */
+
+.trial-desktop__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.trial-desktop__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.trial-desktop__filter-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.trial-desktop__filter-select {
+  min-width: 140px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  background: #fff;
+}
+
+.trial-desktop__expand-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.trial-desktop__expand-btn {
+  border: 1px solid #93c5fd;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.trial-desktop__expand-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.trial-desktop__filter-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  margin-left: auto;
+}
+
+.trial-desktop__col-expand {
+  width: 36px;
+  min-width: 36px;
+  text-align: center;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
+}
+
+.trial-desktop-expand-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.trial-desktop-expand-btn:hover {
+  background: #1d4ed8;
+}
+
+.trial-desktop-detail-row td {
+  background: #fff !important;
+}
+
+.trial-desktop-detail-row:nth-child(even) td {
+  background: #f8fafc !important;
+}
+
+.trial-desktop__empty {
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
+  padding: 20px 8px !important;
+}
+
+.report-table--trial .trial-desktop-schedule-row .trial-name .name-text {
+  font-weight: 800;
+}

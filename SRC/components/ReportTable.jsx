@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import TrialBalanceDesktopTable from './TrialBalanceDesktopTable';
 import { formatLedgerDateDisplay } from '../utils/dateFormat';
 import {
   buildBrokerOsDisplayRows,
@@ -184,138 +185,9 @@ export default function ReportTable({
     return `${s.slice(0, Math.max(0, maxLen - 1))}…`;
   };
 
-  // --- TRIAL BALANCE VIEW (full grid + grand total; scrolls horizontally on small screens) ---
+  // --- TRIAL BALANCE VIEW (grouped schedules, expand/collapse, filters) ---
   if (type === 'trial-balance') {
-    const trialDisplayRows = sortTrialBalanceRows(data);
-    const summary = computeTrialTopSummary(trialDisplayRows);
-    const gDr = summary.periodDr;
-    const gCr = summary.periodCr;
-    const gCdr = summary.closingDr;
-    const gCcr = summary.closingCr;
-    const scheduleTotals = new Map();
-    const scheduleKey = (row) => String(row.SCHEDULE ?? row.schedule ?? row.SCH_NO ?? row.sch_no ?? '').trim();
-    trialDisplayRows.forEach((row) => {
-      if (trialBalanceRowKind(row) !== 0) return;
-      const key = scheduleKey(row);
-      if (!key) return;
-      const curr = scheduleTotals.get(key) || { cdr: 0, ccr: 0, dr: 0, cr: 0 };
-      curr.cdr += parseFloat(row.CLOSING_DR ?? row.closing_dr ?? 0) || 0;
-      curr.ccr += parseFloat(row.CLOSING_CR ?? row.closing_cr ?? 0) || 0;
-      curr.dr += parseFloat(row.DR_AMT ?? row.dr_amt ?? 0) || 0;
-      curr.cr += parseFloat(row.CR_AMT ?? row.cr_amt ?? 0) || 0;
-      scheduleTotals.set(key, curr);
-    });
-
-    return (
-      <div className="table-responsive table-responsive--trial">
-        <table className="report-table report-table--trial">
-          <thead>
-            <tr>
-              <th scope="col">Sch</th>
-              <th scope="col">Account</th>
-              <th scope="col">Code</th>
-              <th scope="col">City</th>
-              <th scope="col" className="text-right">
-                Clos. Dr
-              </th>
-              <th scope="col" className="text-right">
-                Clos. Cr
-              </th>
-              <th scope="col" className="text-right">
-                Dr amt
-              </th>
-              <th scope="col" className="text-right">
-                Cr amt
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {trialDisplayRows
-              .filter((row) => trialBalanceRowKind(row) !== 2)
-              .map((row, idx) => {
-              const codeVal = row.CODE ?? row.code;
-              const nameVal = trialBalanceRowLabel(row);
-              const cityVal = row.CITY ?? row.city;
-              const schVal = row.SCHEDULE ?? row.schedule ?? row.SCH_NO ?? row.sch_no;
-
-              const cdr = parseFloat(row.CLOSING_DR ?? row.closing_dr ?? 0) || 0;
-              const ccr = parseFloat(row.CLOSING_CR ?? row.closing_cr ?? 0) || 0;
-              const drAmt = parseFloat(row.DR_AMT ?? row.dr_amt ?? 0) || 0;
-              const crAmt = parseFloat(row.CR_AMT ?? row.cr_amt ?? 0) || 0;
-
-              const rowKind = trialBalanceRowKind(row);
-              const isGrandTotal = rowKind === 2;
-              const isScheduleTotal = rowKind === 1;
-              const isTotal = rowKind >= 1;
-              const schTotals = isScheduleTotal ? scheduleTotals.get(scheduleKey(row)) : null;
-              const showCdr = schTotals ? schTotals.cdr : cdr;
-              const showCcr = schTotals ? schTotals.ccr : ccr;
-              const showDr = schTotals ? schTotals.dr : drAmt;
-              const showCr = schTotals ? schTotals.cr : crAmt;
-              const rowClassName = isGrandTotal
-                ? 'trial-grand-total'
-                : isScheduleTotal
-                  ? 'trial-schedule-total-row'
-                  : isTotal
-                    ? 'trial-subtotal-row'
-                    : 'clickable-row';
-              const trialRowKey = `trial-row-${idx}`;
-              const isTrialSelected = trialSelectedKey === trialRowKey;
-
-              return (
-                <tr
-                  key={idx}
-                  className={[rowClassName, isTrialSelected ? 'trial-row-selected' : ''].filter(Boolean).join(' ')}
-                  onClick={() => {
-                    setTrialSelectedKey(trialRowKey);
-                    if (!isTotal && onLedgerClick) onLedgerClick(codeVal, nameVal);
-                  }}
-                >
-                  <td className="trial-sch">{schVal != null && schVal !== '' ? schVal : '—'}</td>
-                  <td className="trial-name">
-                    <span className="name-text">{nameVal}</span>
-                  </td>
-                  <td className="trial-code">{codeVal != null && codeVal !== '' ? codeVal : '—'}</td>
-                  <td className="trial-city">
-                    {isScheduleTotal ? '—' : cityVal != null && cityVal !== '' ? cityVal : '—'}
-                  </td>
-                  <td className={`text-right ${showCdr > 0 ? 'dr-amt' : ''}`}>{showCdr > 0 ? fmt(showCdr) : '—'}</td>
-                  <td className={`text-right ${showCcr > 0 ? 'cr-amt' : ''}`}>{showCcr > 0 ? fmt(showCcr) : '—'}</td>
-                  <td className={`text-right ${showDr > 0 ? 'dr-amt' : ''}`}>{showDr > 0 ? fmt(showDr) : '—'}</td>
-                  <td className={`text-right ${showCr > 0 ? 'cr-amt' : ''}`}>{showCr > 0 ? fmt(showCr) : '—'}</td>
-                </tr>
-              );
-            })}
-            <tr
-              className={[
-                'trial-grand-total',
-                'trial-grand-total-footer',
-                trialSelectedKey === 'trial-grand-footer' ? 'trial-row-selected' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              onClick={() => setTrialSelectedKey('trial-grand-footer')}
-            >
-              <td colSpan={4}>
-                <strong>GRAND TOTAL</strong>
-              </td>
-              <td className="text-right">
-                <strong>{fmtAlways(gCdr)}</strong>
-              </td>
-              <td className="text-right">
-                <strong>{fmtAlways(gCcr)}</strong>
-              </td>
-              <td className="text-right">
-                <strong>{fmtAlways(gDr)}</strong>
-              </td>
-              <td className="text-right">
-                <strong>{fmtAlways(gCr)}</strong>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    );
+    return <TrialBalanceDesktopTable data={data} onLedgerClick={onLedgerClick} />;
   }
 
   // --- TRIAL BALANCE SUMMARY (annexure / schedule totals only) ---

@@ -8,11 +8,15 @@ import FasReportHeader from '../components/FasReportHeader';
 import TrialBalanceSessionCard from '../components/TrialBalanceSessionCard';
 import TrialBalanceMobileView from '../components/TrialBalanceMobileView';
 import LedgerMobileView from '../components/LedgerMobileView';
+import LedgerRowFilterBar from '../components/LedgerRowFilterBar';
+import LedgerExportMenu from '../components/LedgerExportMenu';
 import FlexAmount from '../components/FlexAmount';
 import { computeLedgerSummary } from '../utils/ledgerSummary';
+import { filterLedgerRows, countLedgerFilterStats, ledgerFilterIsActive, collectLedgerVrTypes } from '../utils/ledgerMobileDisplay';
 import { toInputDateString, toOracleDate, toDisplayDate } from '../utils/dateFormat';
-import { generatePDF, sharePdfWithWhatsApp, buildLedgerStatementPdfMetadata } from '../utils/pdfgenerator';
+import { generatePDF, sharePdfWithWhatsApp, buildLedgerStatementPdfMetadata, buildReportHtml } from '../utils/pdfgenerator';
 import { downloadExcelRows } from '../utils/excelExport';
+import { printHtmlDocument } from '../utils/openPrintPreviewWindow';
 import { formatLedgerVoucherApiError } from '../utils/apiLabel';
 import { sortTrialBalanceRows, computeTrialTopSummary } from '../utils/trialBalanceSort';
 import SessionInfoLine from '../components/SessionInfoLine';
@@ -67,6 +71,9 @@ export default function Slide4({ apiBase, formData, onPrev, onReset, viewMode: a
   const [billPrintOpen, setBillPrintOpen] = useState(false);
   const [billPrintParams, setBillPrintParams] = useState(null);
   const [compLedgerHeader, setCompLedgerHeader] = useState(null);
+  const [ledgerRowFilter, setLedgerRowFilter] = useState('');
+  const [ledgerAmountSide, setLedgerAmountSide] = useState('all');
+  const [ledgerVrType, setLedgerVrType] = useState('all');
 
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -164,6 +171,9 @@ export default function Slide4({ apiBase, formData, onPrev, onReset, viewMode: a
     setLoading(true);
     const title = nameHint || ledgerCode;
     setLedgerTitle(title);
+    setLedgerRowFilter('');
+    setLedgerAmountSide('all');
+    setLedgerVrType('all');
 
     try {
       const { data } = await axios.get(`${apiBase}/api/ledger`, {
@@ -319,6 +329,24 @@ export default function Slide4({ apiBase, formData, onPrev, onReset, viewMode: a
     return { closingDr: s.closingDr, closingCr: s.closingCr };
   }, [trialRows]);
   const ledgerTotals = useMemo(() => computeLedgerSummary(ledgerRows), [ledgerRows]);
+  const ledgerVrTypeOptions = useMemo(() => collectLedgerVrTypes(ledgerRows), [ledgerRows]);
+  const ledgerFilterStats = useMemo(
+    () =>
+      countLedgerFilterStats(ledgerRows, ledgerRowFilter, {
+        amountSide: ledgerAmountSide,
+        vrType: ledgerVrType,
+      }),
+    [ledgerRows, ledgerRowFilter, ledgerAmountSide, ledgerVrType]
+  );
+  const filteredLedgerRows = useMemo(
+    () =>
+      filterLedgerRows(ledgerRows, ledgerRowFilter, {
+        keepOpening: true,
+        amountSide: ledgerAmountSide,
+        vrType: ledgerVrType,
+      }),
+    [ledgerRows, ledgerRowFilter, ledgerAmountSide, ledgerVrType]
+  );
   const ledgerFyLine = [compYear ? `FY ${compYear}` : '', periodStartLabel && periodEndLabel ? `${periodStartLabel} – ${periodEndLabel}` : '']
     .filter(Boolean)
     .join(' · ');
@@ -422,54 +450,41 @@ export default function Slide4({ apiBase, formData, onPrev, onReset, viewMode: a
 
     return (
       <TrialBalanceShell
-        className="fas-tb-host--results fas-ledger-host"
+        className="fas-tb-host--results fas-ledger-host fas-ledger-host--desktop"
         header={
           <FasReportHeader
-            className="fas-report-header--ledger-toolbar"
-            title="Ledger Account"
+            className="fas-report-header--ledger-desktop"
+            title="Ledger Report"
             onBack={() => setViewMode(VIEW.TRIAL)}
             rightSlot={
-              <SessionToolbarChrome
-                helpReportId="trial-balance"
-                helpViewKey="ledger"
-                helpCompanyName={compName}
-              />
+              <>
+                <LedgerExportMenu
+                  printDisabled={!ledgerRows.length}
+                  onPdf={() => downloadLedgerPdf().catch((e) => alert(e?.message || String(e)))}
+                  onWhatsApp={() => shareLedgerWhatsApp().catch((e) => alert(e?.message || String(e)))}
+                  onExcel={() => {
+                    try {
+                      downloadExcelRows(ledgerRows, 'Ledger', `${compName}_Ledger_${ledgerAccountCode}`);
+                    } catch (e) {
+                      alert(String(e?.message || e));
+                    }
+                  }}
+                  onPrint={() => {
+                    if (!ledgerRows.length) return;
+                    const html = buildReportHtml('ledger', ledgerRows, ledgerPdfMeta);
+                    printHtmlDocument(html, { title: 'Ledger Report' });
+                  }}
+                />
+                <SessionToolbarChrome
+                  helpReportId="trial-balance"
+                  helpViewKey="ledger"
+                  helpCompanyName={compName}
+                />
+              </>
             }
           />
         }
-        exportBar={
-          <div className="fas-tb-export-bar">
-            <button
-              type="button"
-              className="btn btn-export"
-              disabled={pdfBusy}
-              onClick={() => downloadLedgerPdf().catch((e) => alert(e?.message || String(e)))}
-            >
-              Pdf
-            </button>
-            <button
-              type="button"
-              className="btn btn-excel"
-              onClick={() => {
-                try {
-                  downloadExcelRows(ledgerRows, 'Ledger', `${compName}_Ledger_${ledgerAccountCode}`);
-                } catch (e) {
-                  alert(String(e?.message || e));
-                }
-              }}
-            >
-              📊 Excel
-            </button>
-            <button
-              type="button"
-              className="btn btn-whatsapp"
-              disabled={pdfBusy}
-              onClick={() => shareLedgerWhatsApp().catch((e) => alert(e?.message || String(e)))}
-            >
-              💬 WhatsApp
-            </button>
-          </div>
-        }
+        exportBar={null}
       >
         {pdfBusy ? (
           <p className="fas-tb-status-hint" role="status">
@@ -477,35 +492,44 @@ export default function Slide4({ apiBase, formData, onPrev, onReset, viewMode: a
           </p>
         ) : null}
 
+        <nav className="fas-ledger-desktop-crumb" aria-label="Breadcrumb">
+          <span className="fas-ledger-desktop-crumb__sep">/</span>
+          <span>Ledger</span>
+          <span className="fas-ledger-desktop-crumb__sep">/</span>
+          <span className="fas-ledger-desktop-crumb__account" title={ledgerTitle}>
+            {ledgerTitle || 'Account'}
+          </span>
+        </nav>
+
         <LedgerReportContextCard
           compHeader={compLedgerHeader}
           companyNameFallback={compName}
           account={ledgerFirstRow}
           accountNameFallback={ledgerTitle}
           accountCodeFallback={ledgerAccountCode}
-          fyLine={ledgerFyLine}
-          hint="Tap a row to view voucher detail. Sale bill print opens where mapping is available."
+          fyLine={`FY ${compYear} / ${periodStartLabel} - ${periodEndLabel}`}
+          hint="Tap a row for voucher detail; sale bill print opens where mapping is available."
         />
 
         <div className="fas-ledger-totals">
           <div className="fas-tb-total-card fas-ledger-total-card--opening">
-            <div className="fas-tb-total-card__label">Opening</div>
+            <div className="fas-tb-total-card__label">Opening Balance</div>
             <FlexAmount
               className="fas-tb-total-card__value"
               value={formatIndianAmount(ledgerTotals.opening)}
               prefix="₹"
             />
           </div>
-          <div className="fas-tb-total-card fas-tb-total-card--debit">
-            <div className="fas-tb-total-card__label">Total Dr</div>
+          <div className="fas-tb-total-card fas-tb-total-card--debit fas-ledger-total-card--debit">
+            <div className="fas-tb-total-card__label">Total Debit</div>
             <FlexAmount
               className="fas-tb-total-card__value"
               value={formatIndianAmount(ledgerTotals.sumDr)}
               prefix="₹"
             />
           </div>
-          <div className="fas-tb-total-card fas-tb-total-card--credit">
-            <div className="fas-tb-total-card__label">Total Cr</div>
+          <div className="fas-tb-total-card fas-tb-total-card--credit fas-ledger-total-card--credit">
+            <div className="fas-tb-total-card__label">Total Credit</div>
             <FlexAmount
               className="fas-tb-total-card__value"
               value={formatIndianAmount(ledgerTotals.sumCr)}
@@ -514,16 +538,30 @@ export default function Slide4({ apiBase, formData, onPrev, onReset, viewMode: a
           </div>
         </div>
 
+        <LedgerRowFilterBar
+          value={ledgerRowFilter}
+          onChange={setLedgerRowFilter}
+          amountSide={ledgerAmountSide}
+          onAmountSideChange={setLedgerAmountSide}
+          vrType={ledgerVrType}
+          vrTypeOptions={ledgerVrTypeOptions}
+          onVrTypeChange={setLedgerVrType}
+          shownCount={ledgerFilterStats.shown}
+          totalCount={ledgerFilterStats.total}
+          className="fas-ledger-filter--desktop"
+        />
+
         <div className="fas-ledger-table-wrap">
           <ReportTable
-            data={ledgerRows}
+            data={filteredLedgerRows}
             type="ledger"
             onVoucherClick={runLedgerVoucher}
             onLedgerSaleBillClick={openLedgerSaleBill}
+            filterActive={ledgerFilterIsActive(ledgerRowFilter, ledgerAmountSide, ledgerVrType)}
           />
         </div>
 
-        <div className="fas-ledger-footer">
+        <div className="fas-ledger-footer fas-ledger-footer--mobile-only">
           <button type="button" className="fas-btn fas-btn--outline" onClick={() => setViewMode(VIEW.TRIAL)}>
             ← Trial Balance
           </button>

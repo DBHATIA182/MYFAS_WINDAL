@@ -55,6 +55,7 @@ import './styles/saleListScreen.css';
 import './styles/ledgerFullBleed.css';
 import './styles/ledgerMobile.css';
 import './styles/trialBalanceMobile.css';
+import './styles/trialBalanceDesktop.css';
 import './styles/ledgerDesktop.css';
 
 // Local: Vite dev uses '' so /api/* is proxied to port 5001 (see vite.config.js). Run `npm run server` in another terminal.
